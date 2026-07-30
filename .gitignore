@@ -219,3 +219,5 @@ __marimo__/
 
 # Node modules
 frontend/node_modules/
+
+.DS_Store
