@@ -1,0 +1,1 @@
+from app.domains.notes.presentation.router import router

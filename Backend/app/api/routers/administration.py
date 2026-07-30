@@ -1,0 +1,1 @@
+from app.domains.administration.presentation.router import router

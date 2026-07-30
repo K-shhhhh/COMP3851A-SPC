@@ -1,0 +1,1 @@
+from app.domains.auth.presentation.router import router

@@ -1,0 +1,1 @@
+from app.domains.knowledge_graph.presentation.router import router
