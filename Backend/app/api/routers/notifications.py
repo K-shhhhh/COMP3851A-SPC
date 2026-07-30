@@ -1,0 +1,1 @@
+from app.domains.notifications.presentation.router import router

@@ -1,0 +1,1 @@
+from app.domains.study_groups.presentation.router import router
