@@ -1,0 +1,1 @@
+from app.domains.analytics.presentation.router import router

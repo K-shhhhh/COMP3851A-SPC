@@ -1,0 +1,1 @@
+from app.api.routers.ai import router as ai_router
