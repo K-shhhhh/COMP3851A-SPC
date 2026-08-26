@@ -149,6 +149,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -219,6 +221,8 @@ __marimo__/
 
 # Node modules
 frontend/node_modules/
+Frontend/node_modules/
+Frontend/dist/
 
 .DS_Store
 .DS_Store

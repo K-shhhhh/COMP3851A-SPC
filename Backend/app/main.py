@@ -18,16 +18,13 @@ def create_application() -> FastAPI:
             "including users, notes, study groups, AI companions, "
             "quizzes, summaries, and knowledge retrieval."
         ),
-        version=settings.APP_NAME,
+        version=settings.APP_VERSION,
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
     )
 
-    application.include_router(
-        api_router,
-        prefix="/api/v1",
-    )
+    application.include_router(api_router)
 
     return application
 
