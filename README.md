@@ -12,6 +12,11 @@ Interactive AI-assisted peer-learning platform developed for COMP3851A/B.
 - Docker Compose for local development and Hetzner staging
 - External GPU inference endpoint for the custom Llama model
 
+## Source structure
+
+- [Backend structure](Backend/README.md)
+- [Frontend structure](Frontend/README.md)
+
 ## Run locally
 
 See [DOCKER_LOCAL.md](DOCKER_LOCAL.md).

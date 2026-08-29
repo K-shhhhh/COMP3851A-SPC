@@ -4,8 +4,12 @@
 
 ```bash
 docker compose up --build -d
+docker compose restart nginx
 docker compose ps
 ```
+
+Restarting Nginx refreshes its internal Docker service addresses after a
+backend or frontend container has been replaced.
 
 Open:
 

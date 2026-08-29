@@ -75,6 +75,9 @@ docker compose --env-file .env.staging \
   -f docker-compose.yml -f docker-compose.staging.yml up --build -d
 
 docker compose --env-file .env.staging \
+  -f docker-compose.yml -f docker-compose.staging.yml restart nginx
+
+docker compose --env-file .env.staging \
   -f docker-compose.yml -f docker-compose.staging.yml ps
 ```
 
@@ -99,6 +102,9 @@ git pull --ff-only origin main
 
 docker compose --env-file .env.staging \
   -f docker-compose.yml -f docker-compose.staging.yml up --build -d
+
+docker compose --env-file .env.staging \
+  -f docker-compose.yml -f docker-compose.staging.yml restart nginx
 ```
 
 Check status and logs after every update:
