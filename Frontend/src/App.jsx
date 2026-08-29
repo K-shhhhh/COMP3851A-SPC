@@ -14,10 +14,10 @@ export default function App() {
     <main className="shell">
       <section className="card">
         <p className="eyebrow">SMART PEER COMPANION</p>
-        <h1>Local Docker environment</h1>
+        <h1>Smart Peer Companion platform</h1>
         <p className="intro">
           Nginx, React, FastAPI, PostgreSQL with pgvector, Redis and the
-          background worker are running as one Compose project.
+          background worker are connected as one application stack.
         </p>
 
         <div className={`status status--${backend.status}`}>
