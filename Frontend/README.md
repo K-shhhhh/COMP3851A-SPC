@@ -69,3 +69,11 @@ Frontend/
 
 - [Customer high-fidelity design](https://www.figma.com/make/wXF61zpc81twwJ7zoF0jig/Untitled?t=WdyqcFvKK8ZbcKJw-1)
 - [Admin high-fidelity design](https://www.figma.com/make/b5NA6uTYpkkg5GbHQSlk0W/Admin-Portal-UI-Design?t=WdyqcFvKK8ZbcKJw-1)
+
+## Parallel integration mode
+
+Copy `.env.example` to `.env.local` and keep `VITE_USE_MOCKS=true` while the
+real API, database and model endpoint are under development. Components call
+`submitAIJob`, `getAIJob` and `subscribeToAIJob` from `services/aiService.js`;
+they must not import mock modules directly. When the backend contract is ready,
+set `VITE_USE_MOCKS=false` without changing component code.
