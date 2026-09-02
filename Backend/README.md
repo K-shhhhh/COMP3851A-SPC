@@ -75,3 +75,6 @@ standard layers. Define the repository contract in `domain`, implement it in
 `infrastructure`, inject it into an `application` service, and expose that
 service through `presentation/router.py`. Finally, register its router in
 `app/api/router.py` and add tests at the appropriate levels.
+
+The cross-team HTTP, job, provider and WebSocket boundaries are documented in
+[`docs/INTEGRATION_CONTRACTS.md`](docs/INTEGRATION_CONTRACTS.md).
