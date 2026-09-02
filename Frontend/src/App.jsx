@@ -1,32 +1,8 @@
-import { useEffect, useState } from "react";
+import LoginPage from "./pages/Login/LoginPage";
+import "./styles/styles.css";
 
-export default function App() {
-  const [backend, setBackend] = useState({ status: "checking" });
-
-  useEffect(() => {
-    fetch("/api/v1/health")
-      .then((response) => response.json())
-      .then((payload) => setBackend(payload))
-      .catch(() => setBackend({ status: "unavailable" }));
-  }, []);
-
-  return (
-    <main className="shell">
-      <section className="card">
-        <p className="eyebrow">SMART PEER COMPANION</p>
-        <h1>Smart Peer Companion platform</h1>
-        <p className="intro">
-          Nginx, React, FastAPI, PostgreSQL with pgvector, Redis and the
-          background worker are connected as one application stack.
-        </p>
-
-        <div className={`status status--${backend.status}`}>
-          <span className="status__dot" />
-          Backend: {backend.status}
-        </div>
-
-        <a href="/docs">Open FastAPI documentation</a>
-      </section>
-    </main>
-  );
+function App() {
+  return <LoginPage />;
 }
+
+export default App;
