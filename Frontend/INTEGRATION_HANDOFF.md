@@ -2,7 +2,7 @@
 
 Working agreement based on checkout `f64695d`. A documented route is not necessarily
 a working feature. See [backend contracts](../Backend/docs/INTEGRATION_CONTRACTS.md)
-and [backend next steps](../Backend/docs/NEXT_STEPS.md).
+for shared interface definitions and ownership.
 
 ## Ownership
 

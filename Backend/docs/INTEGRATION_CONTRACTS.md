@@ -7,7 +7,7 @@ parallel. The contracts are intentionally provider- and database-neutral.
 **Readiness:** AI HTTP/WebSocket endpoints below are proposed contracts, not registered
 functionality. Existing CRUD/auth repositories return demo data. The standard error
 envelope is also a target; the frontend temporarily supports FastAPI `detail` errors.
-See [frontend handover](../../Frontend/INTEGRATION_HANDOFF.md) and [next steps](NEXT_STEPS.md).
+See [frontend handover](../../Frontend/INTEGRATION_HANDOFF.md) for the shared team workflow.
 
 ## Integration modes
 
