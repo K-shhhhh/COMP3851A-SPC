@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# Preflight check for required values and obvious placeholders, not a full security audit.
 set -eu
 
 env_file="${1:-.env.staging}"

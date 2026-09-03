@@ -1,3 +1,5 @@
+# Study Groups use cases depend on repository interfaces, not HTTP or SQL.
+# Current methods delegate to repositories; authorization and business rules still need implementation.
 from app.domains.study_groups.domain.models import StudyGroup
 from app.domains.study_groups.domain.repository import StudyGroupRepository
 

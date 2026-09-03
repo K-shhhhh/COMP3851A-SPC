@@ -1,5 +1,8 @@
 # SPC React frontend structure
 
+For service ownership, local proxy setup and current API readiness, read
+[the integration handover](INTEGRATION_HANDOFF.md).
+
 The frontend is a Vite-powered React single-page application. It uses a hybrid
 page/component structure so customer and administrator screens can share UI and
 services without duplicating logic.
@@ -77,3 +80,14 @@ real API, database and model endpoint are under development. Components call
 `submitAIJob`, `getAIJob` and `subscribeToAIJob` from `services/aiService.js`;
 they must not import mock modules directly. When the backend contract is ready,
 set `VITE_USE_MOCKS=false` without changing component code.
+
+This flag applies only to services that implement mock switching (currently AI).
+The AI backend endpoints are not enabled yet. Run the shared helper tests with
+`node --test tests/integration.test.js` from this folder using Node 22.
+
+## Package files
+
+`package.json` defines dependencies and dev/build/preview commands. `package-lock.json`
+records resolved dependencies for `npm ci`. These files use JSON, which does not allow
+code comments. The current Dockerfile still installs from package.json with npm install;
+reproducible lockfile-based Docker installation is a follow-up improvement.

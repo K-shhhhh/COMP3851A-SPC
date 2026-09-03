@@ -1,3 +1,5 @@
+# DEMO auth repository: returns constructed objects instead of executing SQL.
+# Do not interpret successful responses as persisted data or authenticated access.
 from app.domains.auth.domain.models import AuthToken, User
 from app.domains.auth.domain.repository import AuthRepository
 

@@ -1,3 +1,5 @@
+# Interface for the externally hosted trained model, independent of any provider SDK.
+# TODO (backend): implement timeouts, bounded retries and provider credential handling.
 from dataclasses import dataclass, field
 from typing import Protocol
 

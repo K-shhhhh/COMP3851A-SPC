@@ -1,3 +1,5 @@
+# Proposed public AI job payloads; camelCase names match the frontend adapter.
+# These schemas do not register endpoints or enforce study-group permissions on their own.
 from datetime import datetime
 from typing import Any, Literal
 

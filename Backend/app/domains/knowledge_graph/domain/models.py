@@ -1,3 +1,5 @@
+# Knowledge Graph domain data objects, independent of FastAPI and database libraries.
+# These dataclasses are not database tables or migrations.
 from dataclasses import dataclass
 
 

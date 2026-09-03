@@ -1,4 +1,5 @@
-import { integrationConfig } from "../config/integration";
+// Browser-memory simulation only: no database, inference, persistence, or auth checks.
+import { integrationConfig } from "../config/integration.js";
 
 const jobs = new Map();
 
@@ -10,6 +11,8 @@ function snapshot(job) {
   const elapsed = Date.now() - job.createdAtMs;
   const queuedUntil = integrationConfig.mockDelayMs;
   const processingUntil = integrationConfig.mockDelayMs * 3;
+  // Timestamps describe simulated transitions, not when a component happens to poll.
+  const at = (offset) => new Date(job.createdAtMs + offset).toISOString();
 
   if (elapsed < queuedUntil) {
     return { ...job.public, status: "queued", progress: 10, message: "Job queued" };
@@ -21,6 +24,7 @@ function snapshot(job) {
       status: "processing",
       progress: 55,
       message: "Mock AI processing in progress",
+      updatedAt: at(queuedUntil),
     };
   }
 
@@ -29,6 +33,7 @@ function snapshot(job) {
     status: "completed",
     progress: 100,
     message: "Mock response completed",
+    updatedAt: at(processingUntil),
     result: {
       answer:
         "This placeholder response follows the agreed API contract. Replace mock mode when the backend integration endpoint is ready.",
@@ -41,9 +46,10 @@ function snapshot(job) {
 export async function submitMockAIJob(request) {
   await wait(integrationConfig.mockDelayMs);
   const jobId = crypto.randomUUID();
-  const createdAt = new Date().toISOString();
+  const createdAtMs = Date.now();
+  const createdAt = new Date(createdAtMs).toISOString();
   const job = {
-    createdAtMs: Date.now(),
+    createdAtMs,
     public: {
       jobId,
       jobType: request.jobType,
@@ -74,22 +80,28 @@ export async function getMockAIJob(jobId) {
 
 export function subscribeToMockAIJob(jobId, handlers) {
   let stopped = false;
+  let timer;
 
   const publish = async () => {
     try {
       const job = await getMockAIJob(jobId);
-      handlers.onMessage?.({ event: "job.progress", ...job });
+      // A React screen may unmount while the simulated network delay is pending.
+      if (stopped) return;
+      const event = job.status === "completed" ? "job.completed"
+        : job.status === "failed" ? "job.failed" : "job.progress";
+      handlers.onMessage?.({ event, ...job });
 
       if (!stopped && !["completed", "failed", "cancelled"].includes(job.status)) {
-        setTimeout(publish, Math.max(integrationConfig.mockDelayMs, 300));
+        timer = setTimeout(publish, Math.max(integrationConfig.mockDelayMs, 300));
       }
     } catch (error) {
-      handlers.onError?.(error);
+      if (!stopped) handlers.onError?.(error);
     }
   };
 
   publish();
   return () => {
     stopped = true;
+    clearTimeout(timer);
   };
 }

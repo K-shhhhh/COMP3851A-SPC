@@ -1,3 +1,4 @@
+# Search placeholder: wire an authorized search implementation before returning real results.
 class SearchService:
     """Shared search service."""
 

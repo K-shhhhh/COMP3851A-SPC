@@ -1,3 +1,4 @@
+# Cache placeholder: no Redis reads or writes occur in these methods yet.
 class CacheService:
     """Shared cache service."""
 

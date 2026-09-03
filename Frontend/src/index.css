@@ -1,3 +1,4 @@
+/* Shared base styles from the initial scaffold; feature-page styles belong to their UI owners. */
 * {
   box-sizing: border-box;
 }

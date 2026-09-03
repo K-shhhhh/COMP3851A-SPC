@@ -1,3 +1,4 @@
+# Shared wrapper around Python logging; avoid logging passwords, tokens or raw documents.
 import logging
 
 

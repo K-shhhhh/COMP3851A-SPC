@@ -1,3 +1,5 @@
+# Scaffold only: printing a connection message does not establish a database session.
+# The database developer supplies real session/connection handling through agreed interfaces.
 """
 Database configuration.
 

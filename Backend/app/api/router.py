@@ -1,3 +1,5 @@
+# Mount domain routers under /api/v1; these paths form the frontend HTTP contract.
+# The health response checks API liveness only, not the database, worker, or model.
 from fastapi import APIRouter
 
 from app.api.routers.auth import router as auth_router

@@ -4,6 +4,11 @@ This file is the version-controlled source of truth while the frontend,
 database implementation, background workers and trained model are developed in
 parallel. The contracts are intentionally provider- and database-neutral.
 
+**Readiness:** AI HTTP/WebSocket endpoints below are proposed contracts, not registered
+functionality. Existing CRUD/auth repositories return demo data. The standard error
+envelope is also a target; the frontend temporarily supports FastAPI `detail` errors.
+See [frontend handover](../../Frontend/INTEGRATION_HANDOFF.md) and [next steps](NEXT_STEPS.md).
+
 ## Integration modes
 
 | Mode | Frontend | Backend | Database | Inference |
@@ -55,11 +60,18 @@ Response: `202 Accepted`
 `GET /api/v1/ai/jobs/{jobId}` returns the same response shape with the newest
 state.
 
+Authenticate and authorize both submission and retrieval. The current internal JobRecord
+has no owner field; implement owner-scoped storage/lookup before enabling these endpoints.
+
 ### Subscribe to progress
 
 `WS /api/v1/ws/jobs/{jobId}` emits `job.progress`, `job.completed`, or
 `job.failed` messages. Clients must still support polling because WebSocket
 connections can be interrupted.
+
+Browser WebSockets cannot reuse a fetch Authorization header. Agree an authenticated
+cookie or short-lived ticket handshake; never put a normal bearer token in the URL.
+The frontend's single subscription does not implement authentication or reconnection.
 
 ## Job state machine
 

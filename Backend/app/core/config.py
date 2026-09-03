@@ -1,3 +1,5 @@
+# Backend-only settings, loaded from environment variables and the backend .env.
+# Development defaults are placeholders; never expose these secrets as VITE_* variables.
 from pydantic_settings import BaseSettings
 
 

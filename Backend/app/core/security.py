@@ -1,3 +1,5 @@
+# UNSAFE DEMO ONLY: these helpers do not hash passwords or validate JWTs.
+# Replace before real accounts, private documents, or shared-user integration testing.
 """
 Security utilities.
 

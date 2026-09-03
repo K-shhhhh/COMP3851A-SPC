@@ -1,3 +1,5 @@
+# DEMO notifications repository: returns constructed objects instead of executing SQL.
+# Do not interpret successful responses as persisted data or authenticated access.
 from app.domains.notifications.domain.models import Notification
 from app.domains.notifications.domain.repository import (
     NotificationRepository,

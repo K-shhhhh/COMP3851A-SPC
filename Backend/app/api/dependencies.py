@@ -1,3 +1,5 @@
+# Composition boundary: inject repository implementations into application services.
+# These factories currently select demo repositories, not live PostgreSQL adapters.
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.repository import AuthRepository
 from app.domains.auth.infrastructure.repository import PostgreSQLAuthRepository

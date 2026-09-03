@@ -1,3 +1,4 @@
+# Notification placeholder: returning True does not send email or push notifications.
 class NotificationSender:
     """Notification delivery service."""
 
