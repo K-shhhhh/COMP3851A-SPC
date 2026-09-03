@@ -1,0 +1,147 @@
+HENRICK / HEIN MYAT THU — PERSONAL CONTRIBUTION LOG
+Project: Smart Peer Companion (COMP3851A-SPC)
+Branch: henrick only — do not merge this file into main.
+Last updated: 2026-09-04 (Asia/Singapore, UTC+08:00)
+
+HOW THIS LOG WAS COMPILED
+Based on repository commits authored by Henrick19, using the author timestamp
+recorded by Git. Dates show when work was committed, not necessarily when it began.
+Descriptions were checked against file changes; vague commit titles are not treated
+as proof of feature implementation. Merge commits are listed separately to avoid
+claiming teammates' work or counting the same contribution twice.
+
+CURRENT RESPONSIBILITIES
+- Backend HTTP endpoints and request/response schemas.
+- Validation, authentication and permission enforcement.
+- Backend WebSocket authentication, authorization and event delivery.
+- Docker images/Compose and Nginx deployment/routing.
+- Krish owns application/business logic, Redis/Celery behavior and external AI integration.
+- Database implementation and frontend feature services belong to their respective owners.
+- Earlier scaffolding remains a contribution to architecture, not a claim of ownership
+  or completion of Krish's future implementation.
+
+DATED CONTRIBUTIONS (AUTHOR TIMESTAMPS, SINGAPORE TIME)
+
+2026-07-21 16:49 — ac224bf — Frontend folder structure
+Created the initial React-facing folder/file scaffold, including application entry
+points, service placeholders, Redux store placeholder and Vite/package files.
+These files were initially empty; this was structure, not a functioning UI.
+
+2026-07-21 16:52 — 89724cc — add .gitkeep
+Added Git placeholders for assets, reusable component categories, pages, routes,
+hooks, contexts, validators and other frontend directories so Git retains them.
+
+2026-07-21 17:02 — f0f08c7 — backend folder structure
+Created the first backend structure for API, modules, repositories, schemas,
+services, tests and shared utilities. This was a placeholder structure.
+
+2026-07-29 23:25 — 496dd23 — backend updated folder structure
+Reorganised the backend scaffold around API/core, domains, AI companions/engine,
+RAG/providers, platform and workers. Added migration/documentation/script and
+test-category placeholders. This established module boundaries, not real AI processing.
+
+2026-07-31 03:00 — ea214e8 — Backend Skeleton Implementation
+Added the FastAPI skeleton, route composition and dependency factories. Added
+domain presentation schemas/routes, application service delegation, domain models,
+repository interfaces and sample infrastructure repositories. Added configuration,
+logging, security/database placeholders and worker/platform stubs.
+Important: repositories returned demo data; authentication and persistence were
+not completed by this commit. Worker stubs did not perform real background jobs.
+
+2026-07-31 03:13 — fc1ef12 — Remove .DS_Store from repository
+Removed macOS metadata from the tracked repository. Repository housekeeping only.
+
+2026-07-31 12:52 — 35b04ca — update
+Changed only a tracked .DS_Store metadata file. No application feature added.
+
+2026-08-14 11:28 — 598eb26 — testing
+Changed only Project_Documents/.DS_Store. Despite the title, this did not add
+automated tests or demonstrate application testing.
+
+2026-08-14 11:41 — fbe4d6e — Added Individual Presentation Slide
+Added Hein_Myat_Thu_Individual_Contribution.pptx to the project presentation files.
+
+2026-08-26 18:24 — e37d23c — Add shared local Docker development stack
+Added shared Compose configuration, backend/frontend Dockerfiles, ignore files,
+Nginx gateway/static hosting configuration, PostgreSQL vector-extension bootstrap,
+local environment example and DOCKER_LOCAL.md. Added minimal Celery startup/health
+wiring and backend dependencies plus the initial frontend scaffold needed by the stack.
+This was local infrastructure and scaffolding, not a completed production deployment
+or implemented AI worker pipeline.
+
+2026-08-29 23:52 — 80ed13a — Add Hetzner staging deployment configuration
+Added staging Compose overrides, staging environment template, validation helper
+and HETZNER_STAGING.md. Updated gateway routing/configuration and documentation,
+including external inference configuration placeholders. Configuration files alone
+do not prove a live server deployment or working external inference integration.
+
+2026-08-30 00:16 — a6407c8 — Document backend and frontend folder structure
+Documented the backend and frontend structure and placement conventions in their
+READMEs, making the architecture and intended responsibility of folders clearer.
+
+2026-09-02 09:16 — f882d7c — Add contract-first parallel integration scaffold
+Added proposed AI job request/response schemas, provider-neutral inference and job
+interfaces, and integration contracts. Added shared frontend configuration, HTTP
+client and AI mock/real adapter pattern. Updated environment, Compose and Nginx
+wiring for integration modes and WebSocket forwarding.
+This defined contracts and mock behavior; it did not enable real AI job endpoints,
+implement an external provider, or finish the Redis/Celery business pipeline.
+
+2026-09-03 23:34 — c4295ec — Document scaffold ownership and frontend API handover
+Added explanatory comments and explicit placeholder warnings to Henrick-authored
+code/configuration while leaving teammate UI files untouched. Improved the shared
+API helper's token forwarding, error handling, cancellation and FormData support;
+corrected AI mock completion/cleanup; added Vite development proxying and excluded
+private frontend environment files from Docker builds. Added handover/next-step
+guides including Swagger instructions and 11 shared-helper tests.
+Checks recorded during the work: 11 tests passed, production frontend build passed,
+local development proxy passed, and Python edits were verified as comment-only.
+These checks did not prove live backend authentication, database or model readiness.
+
+2026-09-04 00:00 — f33008b — Clarify backend responsibility ownership
+Corrected source comments and handover/contracts/next-step documentation for the
+agreed split: Henrick owns API/security/WebSocket/deployment boundaries; Krish owns
+application logic, Redis/Celery and external inference. Preserved required shared
+scaffolding instead of breaking imports or Compose by deleting it.
+All Python changes in this update were comments only; 11 helper tests passed.
+
+2026-09-04 — 481c68d — Remove personal next-step plan from shared main tree
+Removed Backend/docs/NEXT_STEPS.md from the current main tree and removed links to
+it from shared documentation. The plan is restored only on henrick along with this
+personal log. No application behavior was changed by this housekeeping update.
+
+2026-09-04 — Personal-branch record maintenance (this file's introduction)
+Created this commit-backed contribution log and restored the personal next-step plan
+on henrick only. This is documentation maintenance, not additional feature implementation.
+
+MERGE / INTEGRATION RECORD (NOT ADDITIONAL FEATURE AUTHORSHIP)
+2026-07-21 16:54 — 8966746 — Merge pull request #1 from henrick
+2026-07-21 17:05 — 404390b — Merge pull request #2 from main
+2026-07-21 17:08 — 74e1026 — Merge main into henrick
+2026-07-21 17:12 — 6e87e6f — Merge remote henrick into henrick
+2026-07-29 23:27 — cdf9140 — Merge pull request #4 from henrick
+2026-07-31 03:13 — b3a98d5 — Merge main into henrick
+2026-07-31 03:16 — 19821c4 — Merge pull request #5 from henrick
+2026-07-31 03:17 — 0248a96 — Merge pull request #6 from main
+2026-07-31 12:56 — 2f3a0bd — Merge remote henrick into henrick
+2026-07-31 13:01 — 304cc65 — Merge pull request #7 from henrick
+2026-08-14 11:36 — 65d1e2f — Merge main into henrick
+2026-08-14 11:37 — 0590559 — Merge pull request #8 from henrick
+2026-08-14 11:43 — 3ee9fa4 — Merge pull request #9 from henrick
+2026-08-26 19:07 — 5662483 — Merge pull request #10 from henrick
+2026-08-30 00:07 — 130b3fe — Merge pull request #11 from henrick
+2026-08-30 00:25 — 1f5c85f — Merge pull request #12 from henrick
+2026-09-02 09:30 — f64695d — Merge pull request #14 from henrick
+2026-09-03 23:35 — 5c0c91e — Merge pull request #15 from henrick
+
+SCOPE AND BRANCH RULES
+- Git history does not establish dates for offline research, surveys, meetings,
+  Figma work or Hetzner-console actions. Add those separately with dated evidence.
+- A feature folder, interface, mock or health response is not proof of completed
+  feature implementation. Do not claim production authentication or AI inference yet.
+- Keep HENRICK_LOG.txt and Backend/docs/NEXT_STEPS.md out of PRs/merges into main.
+  Git does not automatically exclude tracked files just because they are personal.
+  Prefer selective feature commits/cherry-picks or review the PR file list carefully.
+- Branch-only is not confidential: people with repository access may read this branch.
+- Removing NEXT_STEPS.md from main's current tree does not erase its earlier Git history.
+- Future entries: date/time, commit ID, concrete changes, checks, and remaining limits.
