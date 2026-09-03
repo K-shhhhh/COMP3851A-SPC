@@ -1,5 +1,6 @@
 # Celery entry point used by the worker container; Redis is the broker/result backend.
 # Only the health task is registered here; business worker classes are not active tasks.
+# Owner: Krish implements Celery tasks and Redis-backed job behavior.
 import os
 
 from celery import Celery

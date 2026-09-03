@@ -9,14 +9,17 @@ and [backend next steps](../Backend/docs/NEXT_STEPS.md).
 | Work | Owner | Coordinate with |
 |---|---|---|
 | React pages, forms, state, feature services, mocks | Frontend developers | Backend for fields, errors and permissions |
-| FastAPI, validation, application services, authentication/authorization | Henrick / backend | Frontend and database developers |
+| FastAPI endpoints/schemas, validation, authentication/authorization | Henrick | Frontend, Krish and database developers |
 | Tables, migrations, queries and concrete database repositories | Database developer | Backend for repository interfaces and transaction boundaries |
-| Redis/Celery, inference adapter, backend WebSockets | Henrick / backend | AI developer for serving protocol and model requirements |
-| Model training, model artifact/version and requirements | AI developer | Backend for inference integration |
+| Application/business logic and orchestration | Krish | Henrick for HTTP/WebSocket contracts |
+| Redis/Celery, background-job lifecycle and external AI integration | Krish | Henrick for deployment and transport boundaries |
+| Backend WebSocket authentication/authorization and event delivery | Henrick | Krish for progress-event source; frontend for subscription behavior |
+| Model training, model artifact/version and requirements | AI developer | Krish for inference integration |
 | Shared HTTP transport/configuration contract | Frontend + backend agreement | Frontend owns callers and session integration |
 | Docker/Nginx | Henrick / backend | Leader approves shared-server deployments |
 
-Henrick does not need to implement every frontend HTTP service. Each feature developer
+Henrick does not implement frontend HTTP services or Krish's application, Redis/Celery
+and inference logic. Each frontend feature developer
 implements their service and UI using the shared helpers. Use reviewed PRs: teammates
 can inspect the pushed `henrick` branch, but should pull `main` after the changes merge.
 
@@ -159,7 +162,8 @@ from the Docker build context. Local Compose defaults AI mocks on; staging turns
 but that override does not implement the missing AI backend.
 
 Never put provider keys, database passwords or other secrets in browser variables.
-React calls SPC's backend; the backend calls the external inference provider.
+React calls SPC's backend. Krish's backend adapter calls the external inference provider;
+provider credentials never belong in React.
 
 ## WebSocket handover
 

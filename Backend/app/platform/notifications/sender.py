@@ -1,4 +1,5 @@
 # Notification placeholder: returning True does not send email or push notifications.
+# Owner: Krish implements notification-delivery application logic.
 class NotificationSender:
     """Notification delivery service."""
 

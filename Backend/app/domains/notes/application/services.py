@@ -1,5 +1,6 @@
 # Notes use cases depend on repository interfaces, not HTTP or SQL.
 # Current methods delegate to repositories; authorization and business rules still need implementation.
+# Owner: Krish implements this application/background/AI behavior.
 from app.domains.notes.domain.models import Note
 from app.domains.notes.domain.repository import NoteRepository
 

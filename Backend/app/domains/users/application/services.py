@@ -1,5 +1,6 @@
 # Users use cases depend on repository interfaces, not HTTP or SQL.
 # Current methods delegate to repositories; authorization and business rules still need implementation.
+# Owner: Krish implements this application/background/AI behavior.
 from app.domains.users.domain.models import User
 from app.domains.users.domain.repository import UserRepository
 

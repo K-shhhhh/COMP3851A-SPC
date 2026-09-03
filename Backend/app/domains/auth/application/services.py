@@ -1,5 +1,6 @@
 # Auth use cases depend on repository interfaces, not HTTP or SQL.
 # Current methods delegate to repositories; authorization and business rules still need implementation.
+# Owner: Krish implements this application/background/AI behavior.
 from app.domains.auth.domain.repository import AuthRepository
 
 

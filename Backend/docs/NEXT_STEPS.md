@@ -1,81 +1,90 @@
-# Backend architect: next implementation steps
+# Backend responsibility split and next steps
 
-Current database adapters return demo objects, password helpers do not hash passwords,
-business workers are placeholders, and AI routes are not enabled. Docker wiring is
-not proof of a working product. This review does not audit or deploy the Hetzner server.
+This plan records the agreed team ownership. The existing repository contains shared
+architecture scaffolding, not ownership of every feature represented by a folder.
+Placeholder files remain because deleting them would break imports, Docker Compose,
+or the integration boundaries their owners will implement.
 
-## 1. Agree contracts and ownership
+## Ownership
 
-Review INTEGRATION_CONTRACTS.md and Frontend/INTEGRATION_HANDOFF.md with the frontend
-and database developers. Agree ID types, methods/paths, fields, responses, errors,
-authentication and job events. Current CRUD uses integer IDs/snake_case; proposed AI
-payloads use string IDs/camelCase. Resolve differences explicitly.
+| Area | Primary owner |
+|---|---|
+| FastAPI endpoints and schemas, request validation, authentication and permissions | Henrick |
+| Backend WebSocket connection, authentication, authorization and event delivery | Henrick |
+| Docker images/Compose, Nginx routing and deployment configuration | Henrick |
+| Application/business logic and orchestration | Krish |
+| Redis usage, Celery task implementation and background-job lifecycle | Krish |
+| External AI inference adapter and provider integration | Krish |
+| Frontend pages, state, feature services and mocks | Frontend developers |
+| Tables, migrations, queries and concrete database repositories | Database developer |
 
-Deliverable: one agreed feature contract with acceptance examples in a reviewed PR.
-Frontend owns its service calls, mocks, UI and session behavior.
+Docker Compose still defines Redis and a Celery worker because deployment wiring belongs
+to Henrick. That does not assign Redis/Celery feature implementation to him. Likewise,
+API schemas may describe an AI job because the HTTP/WebSocket boundary belongs to Henrick,
+while Krish implements the application, queue and inference behavior behind that boundary.
 
-## 2. Secure authentication and the API boundary
+## 1. Agree contracts together
 
-Replace demo authentication/password behavior and agree real user lookup/storage with
-the database owner. Add current-user dependencies and ownership/membership/role checks;
-do not trust browser-supplied owner IDs or roles. Use test repositories while the database
-adapter is being built rather than implementing the teammate's schema unilaterally.
+Resolve methods/paths, ID types, fields, responses, errors, authentication and WebSocket
+events before implementation. Existing CRUD contracts use integer IDs and snake_case;
+the proposed AI contract uses string IDs and camelCase. Record decisions in
+INTEGRATION_CONTRACTS.md and verify HTTP routes in FastAPI Swagger UI.
 
-Implement/register standard errors, request IDs, input limits and sanitized logging.
-Reject deployment placeholder secrets. Optional token forwarding in the frontend helper
-does not issue or validate a token.
+## 2. Henrick: secure the HTTP API boundary
 
-Deliverable: valid/invalid login, validation, 401 and 403 tests; no cross-user access and
-no passwords returned or logged. Do not expose demo routes to real users.
+- Replace demo password/token behavior with approved authentication.
+- Add current-user dependencies and ownership, membership and role permission checks.
+- Do not trust browser-supplied owner IDs or roles.
+- Implement consistent validation and the standard error envelope.
+- Propagate request IDs and ensure logs do not reveal credentials or academic content.
+- Coordinate persistence interfaces with the database developer and use test doubles
+  until their concrete repositories are ready.
 
-## 3. Complete one asynchronous job with a fake inference provider
+Deliverable: OpenAPI-documented endpoints with valid/invalid request, 401, 403 and
+cross-user access tests. Existing demo repositories are not production-ready endpoints.
 
-Implement authenticated submit/status use cases, owner-scoped job state and a concrete
-JobQueue adapter. Enable AI routes only after validation/access checks exist. Use a
-deterministic backend fake provider so model training does not block integration tests.
+## 3. Krish: implement application, queue and inference behavior
 
-Celery performs long-running work; Redis holds queues/progress; repository interfaces
-support durable results. Agree retries, idempotency, expiry and cancellation semantics.
-The existing JobStatus enum implements none of these. JobRecord also needs ownership
-or an equivalent authorized lookup before exposing jobs to users.
+Krish owns the use cases behind the routes, Redis/Celery job lifecycle, parsing and
+generation tasks, retries/idempotency/expiry/cancellation, and the external model adapter.
+The existing application services, worker classes, JobQueue contract and InferenceProvider
+are handoff scaffolds. Krish may extend or replace them through reviewed changes.
 
-Deliverable: POST → 202/job ID → worker → terminal result, plus failure and forbidden-job
-tests. Demonstrate through the real frontend HTTP adapter, not only frontend mocks.
+Deliverable: a deterministic fake-provider path first, followed by the approved external
+provider. Jobs must have owner-scoped state and durable terminal results; credentials
+stay on the backend. Provider cost and data handling must be approved before real uploads.
 
-## 4. Integrate external inference
+## 4. Henrick and Krish: connect one end-to-end AI job
 
-With the AI developer, confirm model artifact/version, serving protocol, credentials,
-limits and examples. Implement InferenceProvider with bounded timeouts, safe retries and
-provider-neutral results. Keep credentials backend-only. Apply authorized retrieval and
-context construction before sending academic material.
+Henrick implements authenticated submit/status endpoints and authorizes access. Krish
+connects the application service, queue, worker and inference result. Together verify:
 
-Deliverable: adapter tests with mocked provider responses, then an explicitly approved
-sandbox call. Confirm cost/data handling before sending real documents.
+1. POST returns 202 and a job ID.
+2. Only the owning user/group can retrieve the job.
+3. The job moves monotonically through documented states.
+4. A completed or failed result remains available through HTTP polling.
+5. Errors cross the boundary using the agreed provider-neutral envelope.
 
-## 5. Add authenticated WebSocket progress
+## 5. Henrick: authenticated WebSocket delivery
 
-Agree cookie or short-lived ticket authentication with frontend. Authorize every job
-subscription; publish documented progress/completed/failed events. Retain HTTP polling.
-Frontend owns cleanup, reconnect and connection UI.
+Agree a secure cookie or short-lived ticket handshake with frontend developers; never
+put the regular access token in a URL. Authorize every requested job. Consume Krish's
+progress events and publish the documented progress/completed/failed payloads. Keep
+HTTP polling available. Frontend owns cleanup, reconnect behavior and connection UI.
 
-Deliverable: correct updates, forbidden cross-user subscriptions, and a durable final
-result available after disconnect/reconnect.
+## 6. Integrate database work in parallel
 
-## 6. Integrate the database developer's implementation in parallel
+Henrick coordinates authentication/permission queries; Krish coordinates business/job
+persistence needs. The database developer owns concrete repositories, migrations and
+transaction behavior. `CREATE EXTENSION vector` is initialization, not an application
+schema or migration system.
 
-Agree transactions, repository errors, migrations and access-scoped queries. Replace
-demo repositories through dependency wiring as the teammate's code becomes ready.
-`CREATE EXTENSION vector` is not the application schema or a migration system.
+## 7. Henrick and the leader: verify staging
 
-Deliverable: persistent data survives container restarts; migrations and authorization
-are jointly tested. This work overlaps steps 2–5 rather than waiting until the end.
+Use reviewed main code, protected secrets, approved SSH/firewall access, HTTPS, private
+database/Redis ports, tested backups/restores, bounded logs, health/readiness checks and
+rollback. Nginx currently handles HTTP routing; production TLS is still a release gate.
+Do not deploy a personal dirty worktree or delete persistent volumes during rollback.
 
-## 7. Verify shared staging with the leader
-
-Use reviewed main code, deployment secrets, domain/TLS, approved SSH/firewall access,
-private database/Redis ports, tested backups/restores, bounded logs, health/readiness and
-rollback. Current Nginx handles HTTP routing; HTTPS and authenticated WebSockets are
-separate requirements. Do not deploy a personal dirty worktree or create another server.
-
-Deliverable: repeatable staging smoke tests and rollback without deleting data volumes.
-Security, tests and observability accompany every step, not just the final release.
+Testing, security and observability accompany each owner's implementation rather than
+being postponed until the final deployment.

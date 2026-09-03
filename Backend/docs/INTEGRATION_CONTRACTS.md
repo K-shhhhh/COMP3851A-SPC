@@ -101,15 +101,14 @@ jobs; `error` is populated only for failed jobs.
 ## Ownership boundaries
 
 - Frontend owns presentation state, mock adapters and reconnect behaviour.
-- FastAPI owns authentication, validation, authorization and orchestration.
-- Celery workers own long-running parsing, embedding and generation tasks.
-- Redis owns queues, short-lived progress and ephemeral job state.
+- Henrick owns FastAPI endpoints/schemas, validation, authentication, authorization,
+  backend WebSocket delivery, Docker and Nginx configuration.
+- Krish owns application/business logic, orchestration, Redis/Celery job behaviour,
+  long-running tasks and external AI inference integration.
 - PostgreSQL owns durable application and completed-result data through
   repository interfaces implemented by the database developer.
-- The inference adapter owns timeouts, retries, provider authentication and
-  translation into provider-neutral response objects.
-- Nginx owns TLS termination, reverse proxying, WebSocket upgrades, request
-  limits and edge request IDs.
+- The shared contracts separate Henrick's transport/security boundary from Krish's
+  application, queue and provider implementations.
 
 ## Definition of contract-ready
 

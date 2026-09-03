@@ -1,5 +1,6 @@
 # Provider-neutral job state and queue interface, shared by application and worker code.
 # This defines shapes only: it does not enqueue tasks or persist their state.
+# Owner: Krish implements the queue and job lifecycle behind this shared contract.
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum

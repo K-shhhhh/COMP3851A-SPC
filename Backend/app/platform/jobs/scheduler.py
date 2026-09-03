@@ -1,5 +1,6 @@
 # Queue placeholder: returning True does not submit a Celery task.
 # Implement the JobQueue contract and return a trackable job identifier.
+# Owner: Krish implements Celery scheduling and job behavior.
 class JobScheduler:
     """Background job scheduler."""
 

@@ -1,4 +1,5 @@
 # Cache placeholder: no Redis reads or writes occur in these methods yet.
+# Owner: Krish implements the Redis-backed cache behavior.
 class CacheService:
     """Shared cache service."""
 
