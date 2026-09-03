@@ -1,3 +1,4 @@
+# Backend runtime dependencies; installing a driver does not implement its integration.
 fastapi
 uvicorn[standard]
 pydantic-settings

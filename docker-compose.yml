@@ -1,3 +1,5 @@
+# Shared local stack; run Compose from the repository root, not Backend/.
+# Named volumes retain development data; down --volumes deletes that data.
 name: spc-local
 
 services:

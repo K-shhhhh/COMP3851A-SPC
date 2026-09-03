@@ -1,5 +1,8 @@
+# Exclude local dependencies and settings from the Docker build context.
 node_modules/
 dist/
 .env
+.env.*
+!.env.example
 .git/
 .DS_Store

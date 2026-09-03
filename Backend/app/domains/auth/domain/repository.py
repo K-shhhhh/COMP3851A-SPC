@@ -1,3 +1,5 @@
+# Auth repository contract used by the application service.
+# The database developer implements these operations; abstract methods provide no storage.
 from abc import ABC, abstractmethod
 
 from app.domains.auth.domain.models import AuthToken, User

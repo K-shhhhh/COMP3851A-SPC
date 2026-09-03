@@ -1,3 +1,5 @@
+# DEMO notes repository: returns constructed objects instead of executing SQL.
+# Do not interpret successful responses as persisted data or authenticated access.
 from app.domains.notes.domain.models import Note
 from app.domains.notes.domain.repository import NoteRepository
 

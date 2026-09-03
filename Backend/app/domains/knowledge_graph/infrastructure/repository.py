@@ -1,3 +1,5 @@
+# DEMO knowledge graph repository: returns constructed objects instead of executing SQL.
+# Do not interpret successful responses as persisted data or authenticated access.
 from app.domains.knowledge_graph.domain.models import (
     KnowledgeNode,
 )

@@ -1,3 +1,5 @@
+# Basic process logging shared by backend modules.
+# TODO (backend): add request/job correlation and redact sensitive values from logs.
 import logging
 
 

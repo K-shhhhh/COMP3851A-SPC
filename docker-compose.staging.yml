@@ -1,3 +1,5 @@
+# Staging overrides; combine with docker-compose.yml and an uncommitted .env.staging.
+# This file does not itself configure HTTPS, real authentication, or backups.
 name: spc-staging
 
 x-logging: &default-logging

@@ -1,3 +1,5 @@
+# File-storage placeholder: no bytes are persisted or retrieved yet.
+# Define upload limits, authorization and quarantine before accepting real material.
 class FileStorageService:
     """Shared file storage service."""
 

@@ -1,3 +1,5 @@
+# DEMO study groups repository: returns constructed objects instead of executing SQL.
+# Do not interpret successful responses as persisted data or authenticated access.
 from app.domains.study_groups.domain.models import StudyGroup
 from app.domains.study_groups.domain.repository import StudyGroupRepository
 

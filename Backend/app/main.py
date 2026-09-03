@@ -1,3 +1,5 @@
+# Application entry point: assemble FastAPI and mount the versioned router.
+# Keep request business rules inside domain application services, not this file.
 from fastapi import FastAPI
 
 from app.core.config import settings

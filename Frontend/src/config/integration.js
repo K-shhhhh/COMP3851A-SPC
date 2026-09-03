@@ -1,21 +1,27 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-const configuredWebSocketUrl = import.meta.env.VITE_WS_BASE_URL || "";
+// Shared frontend settings, not a server or proxy. Keep all private keys on the backend.
+// The factory also lets contract tests exercise configuration without starting Vite.
+export function createIntegrationConfig(env = {}, location = null) {
+  const apiBaseUrl = (env.VITE_API_BASE_URL || "/api/v1").replace(/\/+$/, "");
+  let webSocketBaseUrl = env.VITE_WS_BASE_URL || "";
 
-function defaultWebSocketBaseUrl() {
-  if (typeof window === "undefined") {
-    return "";
+  if (!webSocketBaseUrl && location) {
+    // Resolve both same-origin paths and explicit backend URLs before switching protocol.
+    const url = new URL(apiBaseUrl, location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    webSocketBaseUrl = url.href;
   }
 
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${apiBaseUrl}`;
+  const delay = Number(env.VITE_MOCK_DELAY_MS ?? 800);
+  return Object.freeze({
+    apiBaseUrl,
+    webSocketBaseUrl: webSocketBaseUrl.replace(/\/+$/, ""),
+    // Only services that check this flag use mocks; it does not mock authentication.
+    useMocks: env.VITE_USE_MOCKS === "true",
+    mockDelayMs: Number.isFinite(delay) && delay >= 0 ? delay : 800,
+  });
 }
 
-export const integrationConfig = Object.freeze({
-  apiBaseUrl: apiBaseUrl.replace(/\/$/, ""),
-  webSocketBaseUrl: (configuredWebSocketUrl || defaultWebSocketBaseUrl()).replace(
-    /\/$/,
-    "",
-  ),
-  useMocks: import.meta.env.VITE_USE_MOCKS === "true",
-  mockDelayMs: Number(import.meta.env.VITE_MOCK_DELAY_MS || 800),
-});
+export const integrationConfig = createIntegrationConfig(
+  import.meta.env || {},
+  typeof window === "undefined" ? null : window.location,
+);

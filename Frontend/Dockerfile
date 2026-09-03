@@ -1,3 +1,5 @@
+# Two-stage frontend image: build assets with Node, then serve dist with Nginx.
+# VITE_* values are public build-time settings; changing them requires a rebuild.
 FROM node:22-alpine AS build
 
 WORKDIR /app

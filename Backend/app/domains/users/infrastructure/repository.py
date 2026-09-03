@@ -1,3 +1,5 @@
+# DEMO users repository: returns constructed objects instead of executing SQL.
+# Do not interpret successful responses as persisted data or authenticated access.
 from app.domains.users.domain.models import User
 from app.domains.users.domain.repository import UserRepository
 

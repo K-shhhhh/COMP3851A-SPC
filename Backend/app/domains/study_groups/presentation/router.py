@@ -1,3 +1,5 @@
+# HTTP boundary for study groups: parse request schemas and delegate through Depends.
+# These scaffold routes still need authentication and resource-level authorization.
 from fastapi import APIRouter, Depends, Response, status
 
 from app.api.dependencies import get_study_group_service
