@@ -1,0 +1,9 @@
+# Exclude local environments and generated artifacts from the backend build context.
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.git/
+tests/

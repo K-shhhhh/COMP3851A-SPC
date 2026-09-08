@@ -1,0 +1,517 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+/* =========================
+   WHOLE PAGE
+========================= */
+
+.login-page {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* =========================
+   LEFT SIDE
+========================= */
+
+.login-left {
+  width: 50%;
+  min-height: 100vh;
+
+  background: #2463eb;
+  color: white;
+
+  padding: 38px 42px;
+
+  display: flex;
+  flex-direction: column;
+
+  position: relative;
+  overflow: hidden;
+}
+
+/* Decorative circles */
+
+.login-left::before {
+  content: "";
+  position: absolute;
+
+  width: 250px;
+  height: 250px;
+
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.06);
+
+  top: -90px;
+  right: -70px;
+}
+
+.login-left::after {
+  content: "";
+  position: absolute;
+
+  width: 140px;
+  height: 140px;
+
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.06);
+
+  bottom: 300px;
+  right: 30px;
+}
+
+/* =========================
+   BRAND
+========================= */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  position: relative;
+  z-index: 1;
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.brand h3 {
+  margin: 0;
+
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.brand p {
+  margin: 3px 0 0;
+
+  font-size: 11px;
+
+  opacity: 0.8;
+}
+
+/* =========================
+   HERO
+========================= */
+
+.hero-content {
+  margin-top: 55px;
+
+  max-width: 440px;
+
+  text-align: left;
+
+  position: relative;
+  z-index: 1;
+}
+
+.hero-content h1 {
+  margin: 0;
+
+  font-size: 38px;
+  line-height: 1.05;
+
+  font-weight: 700;
+
+  letter-spacing: -1px;
+
+  text-align: left;
+}
+
+.hero-description {
+  margin-top: 20px;
+
+  font-size: 16px;
+  line-height: 1.5;
+
+  opacity: 0.9;
+
+  text-align: left;
+}
+
+/* =========================
+   FEATURES
+========================= */
+
+.features {
+  margin-top: 30px;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 18px;
+
+  text-align: left;
+}
+
+.feature {
+  display: flex;
+  align-items: center;
+
+  gap: 14px;
+}
+
+.feature-icon {
+  width: 36px;
+  height: 36px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(255, 255, 255, 0.3);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.feature strong {
+  font-size: 13px;
+}
+
+.feature p {
+  margin: 3px 0 0;
+
+  font-size: 12px;
+
+  opacity: 0.8;
+}
+
+/* =========================
+   TESTIMONIAL
+========================= */
+
+.testimonial {
+  margin-top: auto;
+
+  padding: 16px 18px;
+
+  border-radius: 12px;
+
+  background: rgba(255, 255, 255, 0.1);
+
+  border: 1px solid rgba(255, 255, 255, 0.18);
+
+  position: relative;
+  z-index: 1;
+}
+
+.testimonial > p {
+  margin: 0 0 14px;
+
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.student {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: rgba(255, 255, 255, 0.25);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.student div:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.student strong {
+  font-size: 11px;
+}
+
+.student span {
+  margin-top: 2px;
+
+  font-size: 10px;
+
+  opacity: 0.75;
+}
+
+/* =========================
+   RIGHT SIDE
+========================= */
+
+.login-right {
+  width: 50%;
+  min-height: 100vh;
+
+  background: #ffffff;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 40px;
+}
+
+.login-form {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* =========================
+   TITLE
+========================= */
+
+.login-form h2 {
+  margin: 0;
+
+  font-size: 26px;
+  font-weight: 700;
+
+  color: #111827;
+}
+
+.subtitle {
+  margin: 6px 0 28px;
+
+  color: #64748b;
+
+  font-size: 13px;
+}
+
+/* =========================
+   LABELS
+========================= */
+
+.login-form > label {
+  display: block;
+
+  margin: 18px 0 8px;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  color: #1f2937;
+}
+
+/* =========================
+   INPUTS
+========================= */
+
+.login-form > input {
+  display: block;
+
+  width: 100%;
+  height: 46px;
+
+  padding: 0 14px;
+
+  background: #ffffff;
+  color: #111827;
+
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+
+  outline: none;
+}
+
+.login-form > input::placeholder {
+  color: #94a3b8;
+}
+
+.login-form > input:focus {
+  border-color: #2463eb;
+
+  box-shadow: 0 0 0 2px rgba(36, 99, 235, 0.08);
+}
+
+/* =========================
+   REMEMBER / FORGOT
+========================= */
+
+.login-options {
+  margin: 14px 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  font-size: 12px;
+}
+
+.remember {
+  display: flex;
+  align-items: center;
+
+  gap: 7px;
+
+  color: #334155;
+}
+
+.login-options a {
+  color: #2463eb;
+
+  text-decoration: none;
+}
+
+/* =========================
+   SIGN IN BUTTON
+========================= */
+
+.signin-button {
+  width: 100%;
+  height: 46px;
+
+  border: none;
+  border-radius: 10px;
+
+  background: #2463eb;
+  color: #ffffff;
+
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+/* =========================
+   DIVIDER
+========================= */
+
+.divider {
+  display: flex;
+  align-items: center;
+
+  gap: 15px;
+
+  margin: 22px 0;
+
+  color: #94a3b8;
+
+  font-size: 11px;
+}
+
+.divider span {
+  flex: 1;
+
+  height: 1px;
+
+  background: #e2e8f0;
+}
+
+.divider p {
+  margin: 0;
+}
+
+/* =========================
+   GOOGLE BUTTON
+========================= */
+
+.google-button {
+  width: 100%;
+  height: 46px;
+
+  background: #ffffff;
+  color: #334155;
+
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+
+  cursor: pointer;
+}
+
+.google-button strong {
+  margin-right: 10px;
+
+  color: #4285f4;
+}
+
+/* =========================
+   SIGN UP
+========================= */
+
+.signup {
+  margin-top: 24px;
+
+  text-align: center;
+
+  color: #64748b;
+
+  font-size: 12px;
+}
+
+.signup button {
+  padding: 0;
+
+  border: none;
+
+  background: transparent;
+
+  color: #2463eb;
+
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+/* =========================
+   MOBILE
+========================= */
+
+@media (max-width: 800px) {
+
+  .login-left {
+    display: none;
+  }
+
+  .login-right {
+    width: 100%;
+  }
+}
