@@ -4,6 +4,8 @@ Authentication application use cases.
 This service coordinates password security, tokens and repository operations.
 It does not contain HTTP responses or SQL.
 """
+from datetime import datetime
+
 from app.core.config import settings
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
@@ -22,6 +24,9 @@ from app.domains.auth.domain.models import (
     WebSocketTicket,
 )
 from app.domains.auth.domain.repository import AuthRepository
+from app.domains.auth.domain.revocation_store import (
+    AccessTokenRevocationStore,
+)
 from app.domains.auth.domain.ticket_store import WebSocketTicketStore
 
 
@@ -31,9 +36,11 @@ class AuthService:
         self,
         repository: AuthRepository,
         ticket_store: WebSocketTicketStore,
+        revocation_store: AccessTokenRevocationStore,
     ) -> None:
         self.repository = repository
         self.ticket_store = ticket_store
+        self.revocation_store = revocation_store
 
     async def register(
         self,
@@ -134,3 +141,20 @@ class AuthService:
             ticket=ticket,
             expires_in=expires_in,
         )
+
+    async def logout(
+        self,
+        token_id: str,
+        expires_at: datetime,
+    ) -> None:
+        """Revoke the current access token for the rest of its lifetime."""
+
+        await self.revocation_store.revoke(
+            token_id=token_id,
+            expires_at=expires_at,
+        )
+
+    async def is_access_token_revoked(self, token_id: str) -> bool:
+        """Check whether a previously issued token has been logged out."""
+
+        return await self.revocation_store.is_revoked(token_id)

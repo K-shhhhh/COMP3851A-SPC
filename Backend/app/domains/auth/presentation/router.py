@@ -1,12 +1,14 @@
 """HTTP endpoints for registration, login and current-user access."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.api.dependencies import (
     get_auth_service,
+    get_current_access_token_claims,
     get_current_user,
 )
 from app.api.error_handlers import ApiError
+from app.core.security import AccessTokenClaims
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.exceptions import (
     EmailAlreadyRegisteredError,
@@ -103,6 +105,25 @@ async def get_me(
     """Return the user represented by the bearer token."""
 
     return UserResponse.model_validate(current_user)
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def logout(
+    claims: AccessTokenClaims = Depends(
+        get_current_access_token_claims
+    ),
+    service: AuthService = Depends(get_auth_service),
+) -> Response:
+    """Revoke the caller's current access token until it expires."""
+
+    await service.logout(
+        token_id=claims.token_id,
+        expires_at=claims.expires_at,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

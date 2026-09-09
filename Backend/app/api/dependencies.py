@@ -10,9 +10,10 @@ from fastapi.security import (
 
 from app.api.error_handlers import ApiError
 from app.core.security import (
+    AccessTokenClaims,
     AccessTokenError,
     AccessTokenExpiredError,
-    decode_access_token,
+    decode_access_token_claims,
 )
 from app.domains.auth.domain.models import User
 
@@ -20,6 +21,9 @@ from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.repository import AuthRepository
 from app.domains.auth.infrastructure.memory_repository import (
     InMemoryAuthRepository,
+)
+from app.domains.auth.infrastructure.memory_revocation_store import (
+    InMemoryAccessTokenRevocationStore,
 )
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
@@ -59,6 +63,9 @@ from app.domains.administration.infrastructure.repository import PostgreSQLAdmin
 # Creating a new repository for every request would erase registered users.
 _local_auth_repository = InMemoryAuthRepository()
 _local_websocket_ticket_store = InMemoryWebSocketTicketStore()
+_local_access_token_revocation_store = (
+    InMemoryAccessTokenRevocationStore()
+)
 
 # HTTPBearer allows Swagger to send an Authorization: Bearer header.
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -80,16 +87,17 @@ def get_auth_service() -> AuthService:
     return AuthService(
         repository=get_auth_repository(),
         ticket_store=_local_websocket_ticket_store,
+        revocation_store=_local_access_token_revocation_store,
     )
 
 
-async def get_current_user(
+async def get_current_access_token_claims(
     credentials: HTTPAuthorizationCredentials | None = Security(
         bearer_scheme
     ),
     service: AuthService = Depends(get_auth_service),
-) -> User:
-    """Validate the bearer token and return its active user."""
+) -> AccessTokenClaims:
+    """Validate a bearer token and reject logged-out token identifiers."""
 
     if (
         credentials is None
@@ -102,7 +110,7 @@ async def get_current_user(
         )
 
     try:
-        user_id = decode_access_token(
+        claims = decode_access_token_claims(
             credentials.credentials
         )
     except AccessTokenExpiredError as exc:
@@ -118,7 +126,25 @@ async def get_current_user(
             message="The access token is invalid or expired.",
         ) from exc
 
-    user = await service.get_user(user_id)
+    if await service.is_access_token_revoked(claims.token_id):
+        raise ApiError(
+            status_code=401,
+            code="TOKEN_REVOKED",
+            message="The access token has been logged out.",
+        )
+
+    return claims
+
+
+async def get_current_user(
+    claims: AccessTokenClaims = Depends(
+        get_current_access_token_claims
+    ),
+    service: AuthService = Depends(get_auth_service),
+) -> User:
+    """Resolve the active user represented by a valid access token."""
+
+    user = await service.get_user(claims.subject)
 
     if user is None:
         raise ApiError(

@@ -15,6 +15,7 @@ The currently verified local authentication flow provides:
 - Role dependencies
 - Standard API error responses
 - Short-lived, single-use WebSocket tickets
+- Server-side logout through access-token revocation
 - Automated authentication tests
 
 The current in-memory repository is intentionally temporary. It must not be
@@ -356,8 +357,12 @@ and contract tests. Staging must never select it.
 
 ### Access JWT
 
-The current access JWT is stateless. The database developer does not need to
-insert access tokens into `sessions`.
+Each access JWT contains a unique `jti` claim. The database developer does not
+need to insert access tokens or access-token revocations into PostgreSQL.
+
+Logout revokes only that `jti` until the JWT's original expiry time. Local
+development uses an in-memory revocation store. Hetzner staging and production
+must use Redis with a TTL equal to the token's remaining lifetime.
 
 If refresh tokens are added later, store only hashed refresh tokens with:
 
@@ -399,6 +404,7 @@ Before switching authentication to PostgreSQL, confirm:
 - [ ] Parameterized SQL is used
 - [ ] Database errors are translated into domain/API errors
 - [ ] Access JWTs are not stored in PostgreSQL
+- [ ] Access-token revocations use shared Redis in staging
 - [ ] WebSocket tickets use shared Redis in staging
 - [ ] `InMemoryAuthRepository` is not selected in staging
 
@@ -417,8 +423,9 @@ After implementing PostgreSQL:
 7. Reject an incorrect password.
 8. Call `GET /auth/me` using the access token.
 9. Deactivate the database user and confirm protected access is rejected.
-10. Restart the backend and confirm the account still exists.
-11. Run the backend authentication tests.
+10. Log out and confirm that the same token returns `TOKEN_REVOKED`.
+11. Restart the backend and confirm the account still exists.
+12. Run the backend authentication tests.
 
 Local test command:
 
@@ -426,4 +433,3 @@ Local test command:
 cd Backend
 venv/bin/python -m pytest -q tests/security/test_auth_endpoints.py
 ```
-

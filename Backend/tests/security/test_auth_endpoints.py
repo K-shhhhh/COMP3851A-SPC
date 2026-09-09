@@ -13,6 +13,9 @@ from app.domains.auth.application.services import AuthService
 from app.domains.auth.infrastructure.memory_repository import (
     InMemoryAuthRepository,
 )
+from app.domains.auth.infrastructure.memory_revocation_store import (
+    InMemoryAccessTokenRevocationStore,
+)
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
@@ -34,6 +37,7 @@ def auth_context() -> Iterator[AuthTestContext]:
     service = AuthService(
         repository=repository,
         ticket_store=ticket_store,
+        revocation_store=InMemoryAccessTokenRevocationStore(),
     )
 
     app.dependency_overrides[get_auth_service] = lambda: service
@@ -206,3 +210,47 @@ def test_websocket_ticket_is_authenticated_and_single_use(
 
     assert first_consumption == registered["id"]
     assert second_consumption is None
+
+
+def test_logout_revokes_only_the_current_access_token(
+    auth_context: AuthTestContext,
+) -> None:
+    client = auth_context.client
+    register_student(client)
+    first_login = login_student(client)
+    second_login = login_student(client)
+
+    logout = client.post(
+        "/api/v1/auth/logout",
+        headers={
+            "Authorization": f"Bearer {first_login['access_token']}",
+        },
+    )
+    assert logout.status_code == 204
+    assert logout.content == b""
+
+    revoked = client.get(
+        "/api/v1/auth/me",
+        headers={
+            "Authorization": f"Bearer {first_login['access_token']}",
+        },
+    )
+    assert revoked.status_code == 401
+    assert revoked.json()["error"]["code"] == "TOKEN_REVOKED"
+
+    still_valid = client.get(
+        "/api/v1/auth/me",
+        headers={
+            "Authorization": f"Bearer {second_login['access_token']}",
+        },
+    )
+    assert still_valid.status_code == 200
+
+
+def test_logout_requires_authentication(
+    auth_context: AuthTestContext,
+) -> None:
+    response = auth_context.client.post("/api/v1/auth/logout")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "AUTHENTICATION_REQUIRED"

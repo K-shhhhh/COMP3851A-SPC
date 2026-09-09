@@ -5,7 +5,9 @@ This module contains security operations only. It does not access the
 database or contain FastAPI endpoint code.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
@@ -30,6 +32,15 @@ class AccessTokenError(ValueError):
 
 class AccessTokenExpiredError(AccessTokenError):
     """Raised when an otherwise valid access token has expired."""
+
+
+@dataclass(frozen=True, slots=True)
+class AccessTokenClaims:
+    """Validated identity and revocation metadata from an access token."""
+
+    subject: str
+    token_id: str
+    expires_at: datetime
 
 
 def hash_password(password: str) -> str:
@@ -81,6 +92,9 @@ def create_access_token(
         # The token type prevents another token type being accepted here.
         "type": "access",
 
+        # A unique identifier allows this specific token to be revoked.
+        "jti": str(uuid4()),
+
         # Record when the token was issued.
         "iat": now,
 
@@ -95,9 +109,9 @@ def create_access_token(
     )
 
 
-def decode_access_token(token: str) -> str:
+def decode_access_token_claims(token: str) -> AccessTokenClaims:
     """
-    Validate a JWT and return its user identifier.
+    Validate a JWT and return the claims needed by authentication.
 
     The permitted algorithm is explicitly supplied to prevent an attacker
     from choosing a different token-signing algorithm.
@@ -112,6 +126,7 @@ def decode_access_token(token: str) -> str:
                 "require": [
                     "sub",
                     "type",
+                    "jti",
                     "iat",
                     "exp",
                 ]
@@ -126,8 +141,29 @@ def decode_access_token(token: str) -> str:
         raise AccessTokenError("Incorrect token type.")
 
     subject = payload.get("sub")
+    token_id = payload.get("jti")
+    expires_at = payload.get("exp")
 
     if not isinstance(subject, str) or not subject:
         raise AccessTokenError("Token subject is missing.")
 
-    return subject
+    if not isinstance(token_id, str) or not token_id:
+        raise AccessTokenError("Token identifier is missing.")
+
+    if not isinstance(expires_at, (int, float)):
+        raise AccessTokenError("Token expiry is invalid.")
+
+    return AccessTokenClaims(
+        subject=subject,
+        token_id=token_id,
+        expires_at=datetime.fromtimestamp(
+            expires_at,
+            tz=timezone.utc,
+        ),
+    )
+
+
+def decode_access_token(token: str) -> str:
+    """Validate an access token and return its user identifier."""
+
+    return decode_access_token_claims(token).subject

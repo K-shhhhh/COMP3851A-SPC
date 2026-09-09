@@ -150,7 +150,7 @@ Response: `200 OK`
 {
   "access_token": "<jwt-access-token>",
   "token_type": "bearer",
-  "expires_in": 3600,
+  "expires_in": 1800,
   "user": {
     "id": "4cd732cd-60ba-42c5-8312-ae0f02b1ba33",
     "full_name": "Hein Myat Thu",
@@ -187,6 +187,37 @@ Errors:
 - `401 AUTHENTICATION_REQUIRED`
 - `401 TOKEN_INVALID`
 - `401 TOKEN_EXPIRED`
+- `401 TOKEN_REVOKED`
+
+## Logout
+
+```http
+POST /api/v1/auth/logout
+Authorization: Bearer <access_token>
+```
+
+Response: `204 No Content`
+
+The backend revokes only the access token used for this request. Tokens from
+other login sessions remain valid. After receiving the response, the frontend
+must clear its local authentication state.
+
+Reusing the logged-out token on a protected endpoint returns:
+
+```text
+401 TOKEN_REVOKED
+```
+
+Local development stores revocations in memory. Hetzner staging and
+production must use a shared Redis revocation store with an expiry equal to
+the remaining JWT lifetime.
+
+Errors:
+
+- `401 AUTHENTICATION_REQUIRED`
+- `401 TOKEN_INVALID`
+- `401 TOKEN_EXPIRED`
+- `401 TOKEN_REVOKED`
 
 ---
 
@@ -844,4 +875,3 @@ The RAG service must not search:
 Every source included in an answer must refer to a note accessible to the authenticated student.
 
 ---
-

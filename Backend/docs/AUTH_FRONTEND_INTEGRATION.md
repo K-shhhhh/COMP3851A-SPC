@@ -14,7 +14,7 @@ The frontend team owns:
 - Restoring/checking the current session
 - Protected-route behavior
 - Showing API errors
-- Logging out locally
+- Calling backend logout and then clearing local authentication state
 - Requesting a WebSocket ticket before opening a socket
 
 The backend owns:
@@ -50,6 +50,12 @@ GET /api/v1/auth/me
      |
      v
 Authenticated application
+     |
+     v
+POST /api/v1/auth/logout
+     |
+     v
+Clear frontend authentication state
 ```
 
 For WebSocket:
@@ -80,7 +86,7 @@ Frontend/src/
 ├── services/
 │   ├── apiClient.js
 │   └── authService.js
-├── context/ or contexts/
+├── contexts/
 │   └── AuthContext.jsx
 ├── pages/
 │   ├── Login/LoginPage.jsx
@@ -201,6 +207,13 @@ export function login({
 export function getCurrentUser(accessToken) {
   return apiRequest("/auth/me", {
     method: "GET",
+    accessToken,
+  });
+}
+
+export function logout(accessToken) {
+  return apiRequest("/auth/logout", {
+    method: "POST",
     accessToken,
   });
 }
@@ -335,6 +348,26 @@ Relevant errors:
 - `TOKEN_EXPIRED`
 - `ACCOUNT_INACTIVE`
 
+### Logout
+
+```http
+POST /api/v1/auth/logout
+Authorization: Bearer <access_token>
+```
+
+Success: `204 No Content`
+
+After success, clear the access token and user from frontend authentication
+state. If logout returns an invalid, expired or revoked-token error, clear the
+local state anyway and return the user to login.
+
+Relevant errors:
+
+- `AUTHENTICATION_REQUIRED`
+- `TOKEN_INVALID`
+- `TOKEN_EXPIRED`
+- `TOKEN_REVOKED`
+
 ### Create WebSocket ticket
 
 ```http
@@ -385,6 +418,7 @@ Recommended mapping:
 | `AUTHENTICATION_REQUIRED` | Return to login |
 | `TOKEN_INVALID` | Clear local auth state and return to login |
 | `TOKEN_EXPIRED` | Clear local auth state and return to login |
+| `TOKEN_REVOKED` | Clear local auth state and return to login |
 | `VALIDATION_ERROR` | Map field details to form fields |
 
 Do not reveal whether a login email exists.
@@ -424,9 +458,9 @@ Avoid long-lived access tokens and do not place tokens in URLs. If the team
 later adds cookie-based refresh tokens, use secure, HTTP-only, same-site
 cookies managed by the backend.
 
-Logout currently means clearing frontend authentication state. A server-side
-logout/revocation endpoint is not part of the current access-token-only
-contract.
+Logout calls the backend first so the current JWT is revoked, then clears the
+frontend authentication state. Only the current access token is revoked;
+tokens from other login sessions remain active.
 
 ---
 
@@ -517,6 +551,8 @@ Test:
 5. Paste the token value.
 6. Call `GET /auth/me`.
 7. Call `POST /auth/websocket-ticket`.
+8. Call `POST /auth/logout`.
+9. Confirm the logged-out token receives `TOKEN_REVOKED` from `/auth/me`.
 
 The generated request for protected endpoints must include:
 
@@ -533,7 +569,7 @@ Authorization: Bearer <access_token>
 - [ ] Login stores the returned access token and safe user
 - [ ] Protected calls pass `accessToken`
 - [ ] Application startup validates an existing token through `/auth/me`
-- [ ] Logout clears local auth state
+- [ ] Logout calls `/auth/logout` and clears local auth state
 - [ ] Expired/invalid tokens return the user to login
 - [ ] Errors are handled using `error.code`
 - [ ] `request_id` is read correctly
