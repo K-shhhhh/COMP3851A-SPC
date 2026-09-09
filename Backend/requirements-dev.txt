@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Backend endpoint and contract testing.
+pytest>=8,<9
+httpx>=0.28,<1
