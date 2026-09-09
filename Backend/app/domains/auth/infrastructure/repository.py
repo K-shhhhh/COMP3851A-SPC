@@ -1,37 +1,40 @@
-# DEMO auth repository: returns constructed objects instead of executing SQL.
-# Do not interpret successful responses as persisted data or authenticated access.
-from app.domains.auth.domain.models import AuthToken, User
+"""
+PostgreSQL authentication repository placeholder.
+
+The database developer will implement these methods after the authentication
+schema and constraints are finalized. Local authentication currently uses
+InMemoryAuthRepository instead.
+"""
+
+from app.domains.auth.domain.models import User, UserCredentials
 from app.domains.auth.domain.repository import AuthRepository
 
 
 class PostgreSQLAuthRepository(AuthRepository):
-    """
-    Placeholder repository implementation.
+    """Future PostgreSQL implementation of the authentication contract."""
 
-    Later this class will communicate with PostgreSQL.
-    """
-
-    async def login(
+    async def get_credentials_by_email(
         self,
         email: str,
-        password: str,
-    ) -> AuthToken:
-
-        # Placeholder implementation
-        return AuthToken(
-            access_token="demo-access-token",
+    ) -> UserCredentials | None:
+        raise NotImplementedError(
+            "PostgreSQL authentication is not implemented yet."
         )
 
-    async def register(
+    async def get_user_by_id(
+        self,
+        user_id: str,
+    ) -> User | None:
+        raise NotImplementedError(
+            "PostgreSQL authentication is not implemented yet."
+        )
+
+    async def create_user(
         self,
         full_name: str,
         email: str,
-        password: str,
+        hashed_password: str,
     ) -> User:
-
-        # Placeholder implementation
-        return User(
-            id=1,
-            full_name=full_name,
-            email=email,
+        raise NotImplementedError(
+            "PostgreSQL authentication is not implemented yet."
         )

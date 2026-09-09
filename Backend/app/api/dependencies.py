@@ -1,8 +1,29 @@
 # Composition boundary: inject repository implementations into application services.
 # These factories currently select demo repositories, not live PostgreSQL adapters.
+from collections.abc import Callable
+
+from fastapi import Depends, Security
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
+
+from app.api.error_handlers import ApiError
+from app.core.security import (
+    AccessTokenError,
+    AccessTokenExpiredError,
+    decode_access_token,
+)
+from app.domains.auth.domain.models import User
+
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.repository import AuthRepository
-from app.domains.auth.infrastructure.repository import PostgreSQLAuthRepository
+from app.domains.auth.infrastructure.memory_repository import (
+    InMemoryAuthRepository,
+)
+from app.domains.auth.infrastructure.memory_ticket_store import (
+    InMemoryWebSocketTicketStore,
+)
 
 from app.domains.users.application.services import UserService
 from app.domains.users.domain.repository import UserRepository
@@ -34,12 +55,111 @@ from app.domains.administration.infrastructure.repository import PostgreSQLAdmin
 
 # ---------- Auth ----------
 
+# The same in-memory instance must be reused between requests.
+# Creating a new repository for every request would erase registered users.
+_local_auth_repository = InMemoryAuthRepository()
+_local_websocket_ticket_store = InMemoryWebSocketTicketStore()
+
+# HTTPBearer allows Swagger to send an Authorization: Bearer header.
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
 def get_auth_repository() -> AuthRepository:
-    return PostgreSQLAuthRepository()
+    """
+    Return the current authentication repository.
+
+    Replace this with the PostgreSQL implementation before staging.
+    """
+
+    return _local_auth_repository
 
 
 def get_auth_service() -> AuthService:
-    return AuthService(get_auth_repository())
+    """Construct the authentication service with its repository."""
+
+    return AuthService(
+        repository=get_auth_repository(),
+        ticket_store=_local_websocket_ticket_store,
+    )
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Security(
+        bearer_scheme
+    ),
+    service: AuthService = Depends(get_auth_service),
+) -> User:
+    """Validate the bearer token and return its active user."""
+
+    if (
+        credentials is None
+        or credentials.scheme.lower() != "bearer"
+    ):
+        raise ApiError(
+            status_code=401,
+            code="AUTHENTICATION_REQUIRED",
+            message="A valid access token is required.",
+        )
+
+    try:
+        user_id = decode_access_token(
+            credentials.credentials
+        )
+    except AccessTokenExpiredError as exc:
+        raise ApiError(
+            status_code=401,
+            code="TOKEN_EXPIRED",
+            message="The access token has expired.",
+        ) from exc
+    except AccessTokenError as exc:
+        raise ApiError(
+            status_code=401,
+            code="TOKEN_INVALID",
+            message="The access token is invalid or expired.",
+        ) from exc
+
+    user = await service.get_user(user_id)
+
+    if user is None:
+        raise ApiError(
+            status_code=401,
+            code="TOKEN_INVALID",
+            message="The access token is invalid or expired.",
+        )
+
+    if not user.is_active:
+        raise ApiError(
+            status_code=403,
+            code="ACCOUNT_INACTIVE",
+            message="This account is inactive.",
+        )
+
+    return user
+
+
+def require_roles(
+    *allowed_roles: str,
+) -> Callable:
+    """
+    Create a reusable dependency for role-restricted endpoints.
+
+    Example:
+        current_user: User = Depends(require_roles("admin"))
+    """
+
+    async def role_dependency(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise ApiError(
+                status_code=403,
+                code="PERMISSION_DENIED",
+                message="You do not have permission to perform this action.",
+            )
+
+        return current_user
+
+    return role_dependency
 
 
 # ---------- Users ----------
