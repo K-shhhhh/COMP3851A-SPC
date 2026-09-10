@@ -63,7 +63,7 @@ export async function apiRequest(path, options = {}) {
       code: payload?.error?.code || (validation ? "VALIDATION_ERROR" : "HTTP_ERROR"),
       details: payload?.error?.details ?? (validation ? payload.detail : null),
       retryable: payload?.error?.retryable ?? (response.status >= 500 || response.status === 429),
-      requestId: payload?.requestId || response.headers.get("X-Request-ID"),
+      requestId: payload?.request_id || response.headers.get("X-Request-ID"),
     });
   }
 
