@@ -1,5 +1,5 @@
-# Application entry point: assemble FastAPI and mount the versioned router.
-# Keep request business rules inside domain application services, not this file.
+"""Create the FastAPI application and mount shared handlers and routers."""
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
@@ -13,9 +13,7 @@ from app.api.error_handlers import (
 )
 
 def create_application() -> FastAPI:
-    """
-    Create and configure the Smart Peer Companion FastAPI application.
-    """
+    """Create and configure the Smart Peer Companion FastAPI application."""
     logger.info("Starting Smart Peer Companion Backend...")
 
     application = FastAPI(
@@ -55,9 +53,7 @@ app = create_application()
     summary="Backend root endpoint",
 )
 async def root() -> dict[str, str]:
-    """
-    Return basic information about the backend service.
-    """
+    """Return service status and the interactive documentation location."""
 
     return {
         "message": "Smart Peer Companion Backend API",

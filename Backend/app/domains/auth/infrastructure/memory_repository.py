@@ -14,8 +14,11 @@ from app.domains.auth.domain.repository import AuthRepository
 
 
 class InMemoryAuthRepository(AuthRepository):
+    """Store temporary authentication records inside one Python process."""
 
     def __init__(self) -> None:
+        """Initialize empty indexes for email and identifier lookups."""
+
         # Index by normalized email for login and duplicate detection.
         self._users_by_email: dict[str, UserCredentials] = {}
 
@@ -26,12 +29,16 @@ class InMemoryAuthRepository(AuthRepository):
         self,
         email: str,
     ) -> UserCredentials | None:
+        """Return credentials matching a normalized email address."""
+
         return self._users_by_email.get(email)
 
     async def get_user_by_id(
         self,
         user_id: str,
     ) -> User | None:
+        """Return a public user record by identifier."""
+
         return self._users_by_id.get(user_id)
 
     async def create_user(
@@ -40,6 +47,8 @@ class InMemoryAuthRepository(AuthRepository):
         email: str,
         hashed_password: str,
     ) -> User:
+        """Create a temporary student account containing only a password hash."""
+
         user = User(
             id=str(uuid4()),
             full_name=full_name,

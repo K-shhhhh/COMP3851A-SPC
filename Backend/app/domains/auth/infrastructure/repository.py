@@ -17,6 +17,8 @@ class PostgreSQLAuthRepository(AuthRepository):
         self,
         email: str,
     ) -> UserCredentials | None:
+        """Load credentials by email after PostgreSQL integration is added."""
+
         raise NotImplementedError(
             "PostgreSQL authentication is not implemented yet."
         )
@@ -25,6 +27,8 @@ class PostgreSQLAuthRepository(AuthRepository):
         self,
         user_id: str,
     ) -> User | None:
+        """Load a user by identifier after PostgreSQL integration is added."""
+
         raise NotImplementedError(
             "PostgreSQL authentication is not implemented yet."
         )
@@ -35,6 +39,8 @@ class PostgreSQLAuthRepository(AuthRepository):
         email: str,
         hashed_password: str,
     ) -> User:
+        """Persist a user and password hash after PostgreSQL integration."""
+
         raise NotImplementedError(
             "PostgreSQL authentication is not implemented yet."
         )

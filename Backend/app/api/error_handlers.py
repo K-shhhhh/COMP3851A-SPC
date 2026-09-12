@@ -20,6 +20,8 @@ class ApiError(Exception):
         retryable: bool = False,
         details: dict[str, Any] | None = None,
     ) -> None:
+        """Create a safe error carrying the shared API error fields."""
+
         self.status_code = status_code
         self.code = code
         self.message = message
@@ -31,6 +33,8 @@ async def api_error_handler(
     request: Request,
     exc: ApiError,
 ) -> JSONResponse:
+    """Convert an :class:`ApiError` into the shared JSON error envelope."""
+
     # Reuse the Nginx request identifier when available.
     request_id = (
         request.headers.get("X-Request-ID")

@@ -1,5 +1,9 @@
-# Composition boundary: inject repository implementations into application services.
-# These factories currently select demo repositories, not live PostgreSQL adapters.
+"""Construct application services and enforce request authentication.
+
+This module is the backend composition boundary. It currently injects local
+in-memory authentication stores; staging must select PostgreSQL and Redis
+implementations when those integrations are ready.
+"""
 from collections.abc import Callable
 
 from fastapi import Depends, Security
@@ -28,7 +32,6 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
-
 from app.domains.users.application.services import UserService
 from app.domains.users.domain.repository import UserRepository
 from app.domains.users.infrastructure.repository import PostgreSQLUserRepository
@@ -82,7 +85,7 @@ def get_auth_repository() -> AuthRepository:
 
 
 def get_auth_service() -> AuthService:
-    """Construct the authentication service with its repository."""
+    """Construct an authentication service using the active local adapters."""
 
     return AuthService(
         repository=get_auth_repository(),
@@ -97,7 +100,11 @@ async def get_current_access_token_claims(
     ),
     service: AuthService = Depends(get_auth_service),
 ) -> AccessTokenClaims:
-    """Validate a bearer token and reject logged-out token identifiers."""
+    """Validate a bearer token and reject logged-out token identifiers.
+
+    Raises:
+        ApiError: If the token is missing, malformed, expired, or revoked.
+    """
 
     if (
         credentials is None
@@ -142,7 +149,11 @@ async def get_current_user(
     ),
     service: AuthService = Depends(get_auth_service),
 ) -> User:
-    """Resolve the active user represented by a valid access token."""
+    """Resolve the active user represented by a valid access token.
+
+    Raises:
+        ApiError: If the token user is unavailable or the account is inactive.
+    """
 
     user = await service.get_user(claims.subject)
 
@@ -176,6 +187,8 @@ def require_roles(
     async def role_dependency(
         current_user: User = Depends(get_current_user),
     ) -> User:
+        """Return the user when their role is in the permitted role set."""
+
         if current_user.role not in allowed_roles:
             raise ApiError(
                 status_code=403,
@@ -191,50 +204,70 @@ def require_roles(
 # ---------- Users ----------
 
 def get_user_repository() -> UserRepository:
+    """Construct the configured user repository."""
+
     return PostgreSQLUserRepository()
 
 
 def get_user_service() -> UserService:
+    """Construct the user application service."""
+
     return UserService(get_user_repository())
 
 
 # ---------- Notes ----------
 
 def get_note_repository() -> NoteRepository:
+    """Construct the configured note repository."""
+
     return PostgreSQLNoteRepository()
 
 
 def get_note_service() -> NoteService:
+    """Construct the note application service."""
+
     return NoteService(get_note_repository())
 
 
 # ---------- Study Groups ----------
 
 def get_study_group_repository() -> StudyGroupRepository:
+    """Construct the configured study-group repository."""
+
     return PostgreSQLStudyGroupRepository()
 
 
 def get_study_group_service() -> StudyGroupService:
+    """Construct the study-group application service."""
+
     return StudyGroupService(get_study_group_repository())
 
 
 # ---------- Knowledge Graph ----------
 
 def get_knowledge_graph_repository() -> KnowledgeGraphRepository:
+    """Construct the configured knowledge-graph repository."""
+
     return PostgreSQLKnowledgeGraphRepository()
 
 
 def get_knowledge_graph_service() -> KnowledgeGraphService:
+    """Construct the knowledge-graph application service."""
+
     return KnowledgeGraphService(get_knowledge_graph_repository())
 
 
 # ---------- Notificatios ----------
 
 def get_notification_repository() -> NotificationRepository:
+    """Construct the configured notification repository."""
+
     return PostgreSQLNotificationRepository()
 
 
 def get_notification_service() -> NotificationService:
+    """Construct the notification application service."""
+
     return NotificationService(get_notification_repository())
 
 
@@ -242,10 +275,14 @@ def get_notification_service() -> NotificationService:
 
 
 def get_analytics_repository() -> AnalyticsRepository:
+    """Construct the configured analytics repository."""
+
     return PostgreSQLAnalyticsRepository()
 
 
 def get_analytics_service() -> AnalyticsService:
+    """Construct the analytics application service."""
+
     return AnalyticsService(get_analytics_repository())
 
 
@@ -253,8 +290,12 @@ def get_analytics_service() -> AnalyticsService:
 
 
 def get_administration_repository() -> AdministrationRepository:
+    """Construct the configured administration repository."""
+
     return PostgreSQLAdministrationRepository()
 
 
 def get_administration_service() -> AdministrationService:
+    """Construct the administration application service."""
+
     return AdministrationService(get_administration_repository())

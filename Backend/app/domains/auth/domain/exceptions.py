@@ -1,4 +1,8 @@
-"""Authentication errors without HTTP-specific behaviour."""
+"""Authentication errors without HTTP-specific behaviour.
+
+The application service raises these errors to describe use-case failures.
+The presentation router later converts them to suitable HTTP responses.
+"""
 
 
 class AuthenticationError(Exception):

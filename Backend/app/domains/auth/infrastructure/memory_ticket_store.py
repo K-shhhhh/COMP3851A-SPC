@@ -15,6 +15,8 @@ class InMemoryWebSocketTicketStore(WebSocketTicketStore):
     """Keep opaque tickets in local process memory until they are consumed."""
 
     def __init__(self) -> None:
+        """Initialize an empty one-process ticket index."""
+
         self._tickets: dict[str, tuple[str, datetime]] = {}
 
     async def create(
@@ -22,6 +24,8 @@ class InMemoryWebSocketTicketStore(WebSocketTicketStore):
         user_id: str,
         expires_in: int,
     ) -> str:
+        """Create an opaque ticket and retain it until use or expiration."""
+
         ticket = token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(
             seconds=expires_in
@@ -33,6 +37,8 @@ class InMemoryWebSocketTicketStore(WebSocketTicketStore):
         self,
         ticket: str,
     ) -> str | None:
+        """Remove and resolve a valid ticket, returning ``None`` otherwise."""
+
         # Removing before validation guarantees single-use behaviour.
         record = self._tickets.pop(ticket, None)
         if record is None:

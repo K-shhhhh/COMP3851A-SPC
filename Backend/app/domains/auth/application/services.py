@@ -31,6 +31,7 @@ from app.domains.auth.domain.ticket_store import WebSocketTicketStore
 
 
 class AuthService:
+    """Coordinate authentication use cases through abstract storage contracts."""
 
     def __init__(
         self,
@@ -38,6 +39,8 @@ class AuthService:
         ticket_store: WebSocketTicketStore,
         revocation_store: AccessTokenRevocationStore,
     ) -> None:
+        """Initialize the service with repository, ticket, and revocation stores."""
+
         self.repository = repository
         self.ticket_store = ticket_store
         self.revocation_store = revocation_store
@@ -48,6 +51,12 @@ class AuthService:
         email: str,
         password: str,
     ) -> User:
+        """Register a normalized account using a securely hashed password.
+
+        Raises:
+            EmailAlreadyRegisteredError: If the normalized email already exists.
+        """
+
         # Emails are case-insensitive for authentication.
         normalized_email = email.strip().lower()
         normalized_name = full_name.strip()
@@ -75,6 +84,13 @@ class AuthService:
         email: str,
         password: str,
     ) -> AuthSession:
+        """Validate credentials and create a signed access-token session.
+
+        Raises:
+            InvalidCredentialsError: If the email or password is incorrect.
+            InactiveAccountError: If the matched account is disabled.
+        """
+
         normalized_email = email.strip().lower()
 
         credentials = await self.repository.get_credentials_by_email(

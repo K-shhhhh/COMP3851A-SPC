@@ -10,6 +10,7 @@ from app.domains.auth.domain.models import User, UserCredentials
 
 
 class AuthRepository(ABC):
+    """Define persistence operations required by authentication use cases."""
 
     @abstractmethod
     async def get_credentials_by_email(

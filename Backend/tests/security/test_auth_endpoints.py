@@ -24,6 +24,8 @@ from app.main import app
 
 @dataclass
 class AuthTestContext:
+    """Dependencies shared by one isolated authentication endpoint test."""
+
     client: TestClient
     ticket_store: InMemoryWebSocketTicketStore
 
@@ -56,6 +58,8 @@ def register_student(
     *,
     email: str = "student@example.com",
 ) -> dict:
+    """Register a student through the public API and return its response."""
+
     response = client.post(
         "/api/v1/auth/register",
         json={
@@ -73,6 +77,8 @@ def login_student(
     *,
     email: str = "student@example.com",
 ) -> dict:
+    """Log in a student through the public API and return its response."""
+
     response = client.post(
         "/api/v1/auth/login",
         json={

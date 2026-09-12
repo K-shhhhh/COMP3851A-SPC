@@ -1,5 +1,9 @@
-# Backend-only settings, loaded from environment variables and the backend .env.
-# Development defaults are placeholders; never expose these secrets as VITE_* variables.
+"""Load backend-only configuration from environment variables and ``.env``.
+
+Development defaults are placeholders. Private values from this module must
+never be exposed through frontend ``VITE_*`` variables.
+"""
+
 from pathlib import Path
 
 from pydantic import model_validator
@@ -12,6 +16,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
+    """Validated runtime configuration for the SPC backend."""
+
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",
         env_file_encoding="utf-8",
@@ -50,7 +56,7 @@ class Settings(BaseSettings):
     INFERENCE_API_KEY: str = ""
 
     @model_validator(mode="after")
-    def reject_insecure_production_secret(self):
+    def reject_insecure_production_secret(self) -> "Settings":
         """Prevent staging/production from using a known placeholder secret."""
 
         insecure_secrets = {

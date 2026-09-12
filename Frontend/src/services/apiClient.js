@@ -1,7 +1,19 @@
-// Shared HTTP transport. Feature services own endpoint paths and request bodies.
+/** Shared HTTP transport for feature-specific service modules. */
 import { integrationConfig } from "../config/integration.js";
 
+/** Error raised when the backend request or response contract cannot be satisfied. */
 export class ApiError extends Error {
+  /**
+   * Create a normalized frontend API error.
+   *
+   * @param {string} message Human-readable error message.
+   * @param {object} [metadata] Structured backend or network error metadata.
+   * @param {number} [metadata.status=0] HTTP status, or zero for network failures.
+   * @param {string} [metadata.code="NETWORK_ERROR"] Stable application error code.
+   * @param {unknown} [metadata.details=null] Optional validation or diagnostic details.
+   * @param {boolean} [metadata.retryable=false] Whether retrying may succeed.
+   * @param {string|null} [metadata.requestId=null] Correlation identifier for support.
+   */
   constructor(message, {
     status = 0, code = "NETWORK_ERROR", details = null,
     retryable = false, requestId = null,
@@ -16,6 +28,14 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Send a request through the configured API base URL.
+ *
+ * @param {string} path API path beginning with a slash.
+ * @param {RequestInit & {accessToken?: string}} [options={}] Fetch options and optional bearer token.
+ * @returns {Promise<unknown|null>} Parsed JSON, or null for a 204 response.
+ * @throws {ApiError} When the network, HTTP response, or JSON contract fails.
+ */
 export async function apiRequest(path, options = {}) {
   // Authentication state belongs to the frontend team. Accept a token per call;
   // do not choose localStorage, refresh-token policy, or a global token store here.
