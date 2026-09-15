@@ -13,6 +13,7 @@ from fastapi.security import (
 )
 
 from app.api.error_handlers import ApiError
+from app.core.config import settings
 from app.core.security import (
     AccessTokenClaims,
     AccessTokenError,
@@ -37,8 +38,20 @@ from app.domains.users.domain.repository import UserRepository
 from app.domains.users.infrastructure.repository import PostgreSQLUserRepository
 
 from app.domains.notes.application.services import NoteService
-from app.domains.notes.domain.repository import NoteRepository
-from app.domains.notes.infrastructure.repository import PostgreSQLNoteRepository
+from app.domains.notes.domain.processing import (
+    AttachmentProcessingDispatcher,
+)
+from app.domains.notes.domain.repository import AttachmentRepository
+from app.domains.notes.domain.storage import AttachmentStorage
+from app.domains.notes.infrastructure.local_storage import (
+    LocalAttachmentStorage,
+)
+from app.domains.notes.infrastructure.memory_processing import (
+    InMemoryAttachmentProcessingDispatcher,
+)
+from app.domains.notes.infrastructure.memory_repository import (
+    InMemoryAttachmentRepository,
+)
 
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.domain.repository import StudyGroupRepository
@@ -217,16 +230,58 @@ def get_user_service() -> UserService:
 
 # ---------- Notes ----------
 
-def get_note_repository() -> NoteRepository:
-    """Construct the configured note repository."""
+_local_attachment_repository = InMemoryAttachmentRepository()
+_local_attachment_storage: AttachmentStorage | None = None
+_local_attachment_processing_dispatcher = (
+    InMemoryAttachmentProcessingDispatcher()
+)
 
-    return PostgreSQLNoteRepository()
+
+def get_attachment_repository() -> AttachmentRepository:
+    """Return temporary local metadata storage for endpoint development.
+
+    Kaung's PostgreSQL adapter must replace this before staging.
+    """
+
+    return _local_attachment_repository
+
+
+def get_attachment_storage() -> AttachmentStorage:
+    """Lazily initialize and return private PDF storage.
+
+    Delaying directory creation keeps imports side-effect free and lets tests
+    replace the storage dependency before touching the real local directory.
+    """
+
+    global _local_attachment_storage
+
+    if _local_attachment_storage is None:
+        _local_attachment_storage = LocalAttachmentStorage(
+            settings.NOTE_STORAGE_DIRECTORY
+        )
+
+    return _local_attachment_storage
+
+
+def get_attachment_processing_dispatcher(
+) -> AttachmentProcessingDispatcher:
+    """Return the local handoff recorder used before Celery integration.
+
+    Krish's processing adapter must replace this before the live RAG demo.
+    """
+
+    return _local_attachment_processing_dispatcher
 
 
 def get_note_service() -> NoteService:
-    """Construct the note application service."""
+    """Construct Notes use cases from the active adapters."""
 
-    return NoteService(get_note_repository())
+    return NoteService(
+        repository=get_attachment_repository(),
+        storage=get_attachment_storage(),
+        processing_dispatcher=get_attachment_processing_dispatcher(),
+        maximum_file_size_bytes=settings.MAX_NOTE_UPLOAD_SIZE_BYTES,
+    )
 
 
 # ---------- Study Groups ----------

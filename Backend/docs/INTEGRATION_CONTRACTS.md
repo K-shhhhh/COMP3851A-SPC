@@ -259,7 +259,7 @@ Response: `202 Accepted`
 
 ```json
 {
-  "id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+  "id": 1,
   "title": "Software Architecture",
   "file_name": "software-architecture.pdf",
   "content_type": "application/pdf",
@@ -277,6 +277,7 @@ Validation:
 - Only PDF files are accepted during this sprint.
 - The configured upload-size limit must be enforced.
 - Empty files must be rejected.
+- The uploaded bytes must contain a valid PDF signature.
 - Filenames must be sanitized.
 - Ownership is derived from the access token.
 - Uploaded files must not be publicly accessible.
@@ -286,7 +287,12 @@ Errors:
 - `401 AUTHENTICATION_REQUIRED`
 - `413 FILE_TOO_LARGE`
 - `415 UNSUPPORTED_FILE_TYPE`
+- `422 EMPTY_FILE`
+- `422 INVALID_PDF`
+- `422 INVALID_FILENAME`
 - `422 VALIDATION_ERROR`
+- `503 FILE_STORAGE_UNAVAILABLE`
+- `503 PROCESSING_UNAVAILABLE`
 
 ## List the student’s notes
 
@@ -308,7 +314,7 @@ Response: `200 OK`
 {
   "items": [
     {
-      "id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+      "id": 1,
       "title": "Software Architecture",
       "file_name": "software-architecture.pdf",
       "status": "ready",
@@ -335,7 +341,7 @@ Response: `200 OK`
 
 ```json
 {
-  "id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+  "id": 1,
   "title": "Software Architecture",
   "file_name": "software-architecture.pdf",
   "content_type": "application/pdf",
@@ -365,7 +371,7 @@ Processing response:
 
 ```json
 {
-  "note_id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+  "note_id": 1,
   "status": "processing",
   "progress": 60,
   "message": "Generating embeddings",
@@ -378,7 +384,7 @@ Ready response:
 
 ```json
 {
-  "note_id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+  "note_id": 1,
   "status": "ready",
   "progress": 100,
   "message": "Note is ready for questions",
@@ -391,7 +397,7 @@ Failed response:
 
 ```json
 {
-  "note_id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+  "note_id": 1,
   "status": "failed",
   "progress": 40,
   "message": "Document processing failed",

@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # WebSocket tickets are intentionally short-lived and single-use.
     WEBSOCKET_TICKET_EXPIRE_SECONDS: int = 60
 
+    # Private location for original uploaded learning materials.
+    NOTE_STORAGE_DIRECTORY: Path = REPOSITORY_ROOT / "storage" / "notes"
+
+    # Current sprint accepts PDF files up to 10 MiB.
+    MAX_NOTE_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
+
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"

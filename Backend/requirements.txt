@@ -3,6 +3,7 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 email-validator
+python-multipart>=0.0.20,<1
 celery[redis]>=5.4,<6
 psycopg[binary]>=3.2,<4
 redis>=5,<6
