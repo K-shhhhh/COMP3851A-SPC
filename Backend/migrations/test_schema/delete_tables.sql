@@ -5,7 +5,6 @@
 
 -- Drop all tables
 DROP TABLE IF EXISTS user_activity_logs CASCADE;
-DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS knowledge_edges CASCADE;
 DROP TABLE IF EXISTS knowledge_nodes CASCADE;
 DROP TABLE IF EXISTS knowledge_graphs CASCADE;
@@ -24,10 +23,11 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TYPE IF EXISTS actions CASCADE;
 DROP TYPE IF EXISTS ratings CASCADE;
 DROP TYPE IF EXISTS ai_modes CASCADE;
+DROP TYPE IF EXISTS attachment_status CASCADE;
 DROP TYPE IF EXISTS group_types CASCADE;
 DROP TYPE IF EXISTS member_roles CASCADE;
 DROP TYPE IF EXISTS user_roles CASCADE;
-DROP TYPE IF EXISTS status CASCADE;
+DROP TYPE IF EXISTS activity_status CASCADE;
 
 -- Drop vector extension
 drop extension if exists vector;
