@@ -1,16 +1,19 @@
-# Application entry point: assemble FastAPI and mount the versioned router.
-# Keep request business rules inside domain application services, not this file.
+"""Create the FastAPI application and mount shared handlers and routers."""
+
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 
 from app.core.config import settings
 from app.core.observability import logger
 from app.api.router import api_router
-
+from app.api.error_handlers import (
+    ApiError,
+    api_error_handler,
+    validation_error_handler,
+)
 
 def create_application() -> FastAPI:
-    """
-    Create and configure the Smart Peer Companion FastAPI application.
-    """
+    """Create and configure the Smart Peer Companion FastAPI application."""
     logger.info("Starting Smart Peer Companion Backend...")
 
     application = FastAPI(
@@ -24,6 +27,16 @@ def create_application() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+    )
+
+    # Convert ApiError exceptions into the agreed JSON error contract.
+    application.add_exception_handler(
+        ApiError,
+        api_error_handler,
+    )
+    application.add_exception_handler(
+        RequestValidationError,
+        validation_error_handler,
     )
 
     application.include_router(api_router)
@@ -40,9 +53,7 @@ app = create_application()
     summary="Backend root endpoint",
 )
 async def root() -> dict[str, str]:
-    """
-    Return basic information about the backend service.
-    """
+    """Return service status and the interactive documentation location."""
 
     return {
         "message": "Smart Peer Companion Backend API",

@@ -1,5 +1,5 @@
-# Mount domain routers under /api/v1; these paths form the frontend HTTP contract.
-# The health response checks API liveness only, not the database, worker, or model.
+"""Assemble versioned API routers under the public ``/api/v1`` prefix."""
+
 from fastapi import APIRouter
 
 from app.api.routers.auth import router as auth_router
@@ -21,7 +21,9 @@ api_router = APIRouter(
     "/health",
     tags=["System"],
 )
-async def health():
+async def health() -> dict[str, str]:
+    """Report API-process liveness without checking downstream services."""
+
     return {
         "status": "healthy",
         "service": "SPC Backend",

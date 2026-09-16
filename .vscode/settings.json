@@ -1,0 +1,12 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/Backend/venv/bin/python",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/Backend"
+    ],
+    "python.testing.cwd": "${workspaceFolder}/Backend",
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

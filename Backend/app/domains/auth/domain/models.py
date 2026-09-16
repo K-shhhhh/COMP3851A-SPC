@@ -1,20 +1,50 @@
-# Auth domain data objects, independent of FastAPI and database libraries.
-# These dataclasses are not database tables or migrations.
+"""
+Authentication domain models.
+
+These objects are independent of FastAPI and PostgreSQL.
+"""
+
 from dataclasses import dataclass
+from datetime import datetime
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class User:
-    """Domain entity representing an authenticated user."""
+    """A user safe to return to other application layers."""
 
-    id: int
+    id: str
     full_name: str
     email: str
+    role: str
+    is_active: bool
+    created_at: datetime
 
 
-@dataclass(slots=True)
-class AuthToken:
-    """Domain entity representing an authentication token."""
+@dataclass(frozen=True, slots=True)
+class UserCredentials:
+    """
+    A user record containing the password hash.
+
+    This object must never be returned by an API endpoint.
+    """
+
+    user: User
+    hashed_password: str
+
+
+@dataclass(frozen=True, slots=True)
+class AuthSession:
+    """Successful login result returned by the authentication service."""
 
     access_token: str
-    token_type: str = "bearer"
+    token_type: str
+    expires_in: int
+    user: User
+
+
+@dataclass(frozen=True, slots=True)
+class WebSocketTicket:
+    """Short-lived credential used only to open a WebSocket connection."""
+
+    ticket: str
+    expires_in: int

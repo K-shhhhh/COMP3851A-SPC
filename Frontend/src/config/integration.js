@@ -1,5 +1,14 @@
-// Shared frontend settings, not a server or proxy. Keep all private keys on the backend.
-// The factory also lets contract tests exercise configuration without starting Vite.
+/**
+ * Build immutable frontend integration settings from Vite environment values.
+ *
+ * This configuration contains public browser addresses only. API keys and
+ * other private credentials must remain in the backend environment.
+ *
+ * @param {Record<string, string | undefined>} [env={}] Vite environment values.
+ * @param {{href: string}|null} [location=null] Browser location used to derive WebSocket URLs.
+ * @returns {{apiBaseUrl: string, webSocketBaseUrl: string, useMocks: boolean, mockDelayMs: number}}
+ *   Normalized, immutable integration settings.
+ */
 export function createIntegrationConfig(env = {}, location = null) {
   const apiBaseUrl = (env.VITE_API_BASE_URL || "/api/v1").replace(/\/+$/, "");
   let webSocketBaseUrl = env.VITE_WS_BASE_URL || "";
@@ -21,6 +30,7 @@ export function createIntegrationConfig(env = {}, location = null) {
   });
 }
 
+/** Shared integration settings used by frontend service modules. */
 export const integrationConfig = createIntegrationConfig(
   import.meta.env || {},
   typeof window === "undefined" ? null : window.location,

@@ -1,3 +1,7 @@
-# Compatibility import: the actual route implementation lives in domains/*/presentation/router.py.
-# Add domain endpoint behavior there rather than duplicating it in this wrapper.
+"""Expose the authentication domain router through the central API package.
+
+This compatibility module keeps the public import path stable. Authentication
+endpoint behaviour belongs in ``domains.auth.presentation.router``.
+"""
+
 from app.domains.auth.presentation.router import router

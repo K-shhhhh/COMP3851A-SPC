@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Backend endpoint and contract testing.
+pytest>=8,<9
+pytest-asyncio>=0.24,<1
+httpx>=0.28,<1
