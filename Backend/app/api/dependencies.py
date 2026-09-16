@@ -53,6 +53,43 @@ from app.domains.notes.infrastructure.memory_repository import (
     InMemoryAttachmentRepository,
 )
 
+from app.domains.chats.application.services import ChatService
+from app.domains.chats.domain.answering import ChatAnswerGenerator
+from app.domains.chats.domain.repository import ChatRepository
+from app.domains.chats.domain.retrieval import ReadyNoteChunkRepository
+from app.domains.chats.infrastructure.memory_answering import (
+    LocalGroundedAnswerGenerator,
+)
+from app.domains.chats.infrastructure.memory_repository import (
+    InMemoryChatRepository,
+)
+from app.domains.chats.infrastructure.memory_retrieval import (
+    InMemoryReadyNoteChunkRepository,
+)
+
+# ---------- Real integration switch template ----------
+#
+# Keep these imports commented while the PostgreSQL and RAG adapters are only
+# placeholders. Uncomment them after the database developer and Krish have
+# implemented the constructors and their integration tests pass.
+#
+# from app.core.database import async_session_factory
+# from app.domains.auth.infrastructure.repository import (
+#     PostgreSQLAuthRepository,
+# )
+# from app.domains.notes.infrastructure.repository import (
+#     PostgreSQLAttachmentRepository,
+# )
+# from app.domains.chats.infrastructure.repository import (
+#     PostgreSQLChatRepository,
+# )
+# from app.domains.chats.infrastructure.retrieval import (
+#     PostgreSQLReadyNoteChunkRepository,
+# )
+# from app.domains.chats.infrastructure.rag_answering import (
+#     KrishRagAnswerGenerator,
+# )
+
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.domain.repository import StudyGroupRepository
 from app.domains.study_groups.infrastructure.repository import PostgreSQLStudyGroupRepository
@@ -94,6 +131,10 @@ def get_auth_repository() -> AuthRepository:
     Replace this with the PostgreSQL implementation before staging.
     """
 
+    # REAL DATABASE SWITCH:
+    # return PostgreSQLAuthRepository(
+    #     session_factory=async_session_factory,
+    # )
     return _local_auth_repository
 
 
@@ -243,6 +284,10 @@ def get_attachment_repository() -> AttachmentRepository:
     Kaung's PostgreSQL adapter must replace this before staging.
     """
 
+    # REAL DATABASE SWITCH:
+    # return PostgreSQLAttachmentRepository(
+    #     session_factory=async_session_factory,
+    # )
     return _local_attachment_repository
 
 
@@ -281,6 +326,54 @@ def get_note_service() -> NoteService:
         storage=get_attachment_storage(),
         processing_dispatcher=get_attachment_processing_dispatcher(),
         maximum_file_size_bytes=settings.MAX_NOTE_UPLOAD_SIZE_BYTES,
+    )
+
+
+# ---------- Personal Chat ----------
+
+# These shared local adapters deliberately keep endpoint-development state in
+# one process. PostgreSQL and Krish's RAG adapter replace them for integration.
+_local_chat_repository = InMemoryChatRepository()
+_local_ready_note_chunk_repository = InMemoryReadyNoteChunkRepository()
+_local_chat_answer_generator = LocalGroundedAnswerGenerator()
+
+
+def get_chat_repository() -> ChatRepository:
+    """Return temporary local personal-chat persistence."""
+
+    # REAL DATABASE SWITCH:
+    # return PostgreSQLChatRepository(
+    #     session_factory=async_session_factory,
+    # )
+    return _local_chat_repository
+
+
+def get_ready_note_chunk_repository() -> ReadyNoteChunkRepository:
+    """Return temporary authorized-chunk storage for contract testing."""
+
+    # REAL DATABASE/PGVECTOR SWITCH:
+    # return PostgreSQLReadyNoteChunkRepository(
+    #     session_factory=async_session_factory,
+    # )
+    return _local_ready_note_chunk_repository
+
+
+def get_chat_answer_generator() -> ChatAnswerGenerator:
+    """Return the transparent local adapter used before Krish's RAG merge."""
+
+    # REAL RAG SWITCH:
+    # return KrishRagAnswerGenerator()
+    return _local_chat_answer_generator
+
+
+def get_chat_service() -> ChatService:
+    """Construct personal-chat use cases from the active adapters."""
+
+    return ChatService(
+        repository=get_chat_repository(),
+        chunk_repository=get_ready_note_chunk_repository(),
+        answer_generator=get_chat_answer_generator(),
+        maximum_question_length=settings.MAX_CHAT_QUESTION_LENGTH,
     )
 
 

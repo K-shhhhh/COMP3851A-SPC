@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # Current sprint accepts PDF files up to 10 MiB.
     MAX_NOTE_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
 
+    # Personal questions are synchronous for the current demonstration.
+    MAX_CHAT_QUESTION_LENGTH: int = 4000
+
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"

@@ -1,4 +1,4 @@
-# SPC API Integration Contract Version 1.2
+# SPC API Integration Contract Version 1.3
 
 ## 1. Status and scope
 
@@ -19,7 +19,7 @@ Create or reopen a personal chat
         ↓
 Ask a question
         ↓
-Receive a live answer grounded in the student’s own notes
+Receive an answer grounded in the student’s own notes
 ```
 
 The following features are outside this sprint:
@@ -32,6 +32,7 @@ The following features are outside this sprint:
 - Quizzes
 - Knowledge graphs
 - Administration features
+- Asynchronous chat answers through Celery and WebSocket streaming
 
 Study groups are separate collaboration spaces. They are not created from uploaded notes.
 
@@ -574,7 +575,7 @@ Response: `200 OK`
   "chat_id": "83a960b4-91d1-410a-b8f8-d838f956992c",
   "items": [
     {
-      "id": "user-message-uuid",
+      "id": 1,
       "role": "user",
       "content": "What is clean architecture?",
       "status": "completed",
@@ -582,16 +583,16 @@ Response: `200 OK`
       "created_at": "2026-09-08T11:05:00Z"
     },
     {
-      "id": "assistant-message-uuid",
+      "id": 2,
       "role": "assistant",
       "content": "Clean architecture separates software into layers with controlled dependency directions.",
       "status": "completed",
       "sources": [
         {
-          "note_id": "638d1f54-9ef4-49c1-99fc-7444aa3cefaa",
+          "note_id": 7,
           "note_title": "Software Architecture",
           "page": 12,
-          "chunk_id": "chunk-uuid"
+          "chunk_id": 42
         }
       ],
       "created_at": "2026-09-08T11:05:05Z"
@@ -625,22 +626,40 @@ Request:
 }
 ```
 
-Response: `202 Accepted`
+Response: `201 Created`
 
 ```json
 {
-  "request_id": "answer-request-uuid",
   "chat_id": "83a960b4-91d1-410a-b8f8-d838f956992c",
-  "message": {
-    "id": "user-message-uuid",
+  "user_message": {
+    "id": 1,
     "role": "user",
     "content": "What is clean architecture?",
     "status": "completed",
+    "sources": [],
     "created_at": "2026-09-08T11:05:00Z"
   },
-  "answer_status": "queued"
+  "assistant_message": {
+    "id": 2,
+    "role": "assistant",
+    "content": "Clean architecture separates software into layers with controlled dependency directions.",
+    "status": "completed",
+    "sources": [
+      {
+        "note_id": 7,
+        "note_title": "Software Architecture",
+        "chunk_id": 42,
+        "page": 12
+      }
+    ],
+    "created_at": "2026-09-08T11:05:05Z"
+  }
 }
 ```
+
+For the current demonstration, this operation is synchronous: the HTTP
+response contains both the persisted student message and the completed AI
+answer. The frontend must not wait for a WebSocket event after this request.
 
 Rules:
 
@@ -657,13 +676,18 @@ Errors:
 - `404 CHAT_NOT_FOUND`
 - `409 NO_PROCESSED_NOTES`
 - `422 VALIDATION_ERROR`
-- `429 RATE_LIMIT_EXCEEDED`
+- `503 ANSWER_GENERATION_FAILED`
 
 ---
 
-# 6. Personal Chat WebSocket
+# 6. Personal Chat WebSocket (deferred)
 
-HTTP is used to submit a question. WebSocket is used to deliver progress and answer content.
+This section is the planned Sprint 9 asynchronous contract. It is not used by
+the current synchronous personal-chat implementation. The current frontend
+must use the completed response from `POST /api/v1/chats/{chat_id}/messages`.
+
+When Celery-based background processing is introduced, HTTP will submit the
+question and WebSocket will deliver progress and answer content.
 
 ## Create WebSocket ticket
 
