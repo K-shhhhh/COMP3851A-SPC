@@ -41,7 +41,7 @@ const suggestedPrompts = [
 ];
 
 function CompanionPage() {
-  const { accessToken } = useAuth();
+  const { accessToken, logout } = useAuth();
 
   const [message, setMessage] = useState("");
 
@@ -214,13 +214,17 @@ function CompanionPage() {
       );
 
       /*
-       * Backend immediately returns the user's message.
-       * The AI response will later arrive through WebSocket.
+       * The backend returns both the user's message
+       * and the completed AI response synchronously.
        */
-      if (result?.message) {
+      if (
+        result?.user_message &&
+        result?.assistant_message
+      ) {
         setMessages((current) => [
           ...current,
-          result.message,
+          result.user_message,
+          result.assistant_message,
         ]);
       }
 
@@ -228,7 +232,15 @@ function CompanionPage() {
     } catch (err) {
       console.error("Unable to send message:", err.code);
 
-      if (err.code === "NO_PROCESSED_NOTES") {
+      if (
+        err.code === "AUTHENTICATION_REQUIRED" ||
+        err.code === "TOKEN_INVALID" ||
+        err.code === "TOKEN_EXPIRED" ||
+        err.code === "TOKEN_REVOKED"
+      ) {
+        await logout();
+        return;
+      } else if (err.code === "NO_PROCESSED_NOTES") {
         setError(
           "Upload and process at least one note before asking the AI a question.",
         );
@@ -243,6 +255,10 @@ function CompanionPage() {
       } else if (err.code === "VALIDATION_ERROR") {
         setError(
           "Please check your message and try again.",
+        );
+      } else if (err.code === "ANSWER_GENERATION_FAILED") {
+        setError(
+          "The AI could not generate an answer. Please try again.",
         );
       } else {
         setError(
