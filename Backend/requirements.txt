@@ -13,3 +13,13 @@ PyJWT>=2.10,<3
 
 # Secure password hashing using the recommended Argon2 algorithm
 pwdlib[argon2]
+
+# Rag Pipeline Requirements
+nudenet
+openai
+ollama
+nltk
+numpy
+pandas
+os
+pymupdf
