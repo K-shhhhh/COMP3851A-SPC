@@ -46,8 +46,8 @@ from app.domains.notes.domain.storage import AttachmentStorage
 from app.domains.notes.infrastructure.local_storage import (
     LocalAttachmentStorage,
 )
-from app.domains.notes.infrastructure.memory_processing import (
-    InMemoryAttachmentProcessingDispatcher,
+from app.domains.notes.infrastructure.demo_processing import (
+    SynchronousDemoAttachmentProcessingDispatcher,
 )
 from app.domains.notes.infrastructure.memory_repository import (
     InMemoryAttachmentRepository,
@@ -271,10 +271,16 @@ def get_user_service() -> UserService:
 
 # ---------- Notes ----------
 
+# Shared in-memory retrieval is declared here because the temporary demo
+# processor writes chunks that the personal Chat service later reads.
+_local_ready_note_chunk_repository = InMemoryReadyNoteChunkRepository()
 _local_attachment_repository = InMemoryAttachmentRepository()
 _local_attachment_storage: AttachmentStorage | None = None
 _local_attachment_processing_dispatcher = (
-    InMemoryAttachmentProcessingDispatcher()
+    SynchronousDemoAttachmentProcessingDispatcher(
+        attachment_repository=_local_attachment_repository,
+        chunk_repository=_local_ready_note_chunk_repository,
+    )
 )
 
 
@@ -310,9 +316,9 @@ def get_attachment_storage() -> AttachmentStorage:
 
 def get_attachment_processing_dispatcher(
 ) -> AttachmentProcessingDispatcher:
-    """Return the local handoff recorder used before Celery integration.
+    """Return synchronous local text processing for the temporary demo.
 
-    Krish's processing adapter must replace this before the live RAG demo.
+    Krish's real processing adapter must replace this before staging.
     """
 
     return _local_attachment_processing_dispatcher
@@ -334,7 +340,6 @@ def get_note_service() -> NoteService:
 # These shared local adapters deliberately keep endpoint-development state in
 # one process. PostgreSQL and Krish's RAG adapter replace them for integration.
 _local_chat_repository = InMemoryChatRepository()
-_local_ready_note_chunk_repository = InMemoryReadyNoteChunkRepository()
 _local_chat_answer_generator = LocalGroundedAnswerGenerator()
 
 

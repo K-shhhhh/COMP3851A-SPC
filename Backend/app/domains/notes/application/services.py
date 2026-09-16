@@ -99,7 +99,13 @@ class NoteService:
                 "Document processing could not be started."
             ) from exc
 
-        return attachment
+        # A normal Celery dispatcher returns while the attachment is queued.
+        # The temporary demo dispatcher completes synchronously, so reload the
+        # record to return its actual ready/failed state when available.
+        current_attachment = await self._repository.get_attachment_by_id(
+            attachment.attachment_id
+        )
+        return current_attachment or attachment
 
     async def list_notes(
         self,

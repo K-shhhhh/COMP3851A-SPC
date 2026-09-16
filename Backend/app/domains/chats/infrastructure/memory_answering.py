@@ -1,4 +1,6 @@
-"""Deterministic local answer adapter used before Krish's RAG merge."""
+"""Deterministic lexical answer adapter used before Krish's RAG merge."""
+
+import re
 
 from app.domains.chats.domain.answering import (
     ChatAnswerGenerator,
@@ -8,7 +10,7 @@ from app.domains.chats.domain.retrieval import GroundingChunk
 
 
 class LocalGroundedAnswerGenerator(ChatAnswerGenerator):
-    """Return a transparent local answer without pretending to be the AI model."""
+    """Select a relevant local chunk without pretending to be an AI model."""
 
     async def answer_question(
         self,
@@ -16,12 +18,43 @@ class LocalGroundedAnswerGenerator(ChatAnswerGenerator):
         question: str,
         chunks: tuple[GroundingChunk, ...],
     ) -> GeneratedAnswer:
-        """Build a predictable response for endpoint and contract testing."""
+        """Choose the chunk sharing the most useful words with the question."""
 
-        del question
-        first = chunks[0]
+        question_terms = _meaningful_terms(question)
+        selected = max(
+            chunks,
+            key=lambda chunk: len(
+                question_terms.intersection(_meaningful_terms(chunk.content))
+            ),
+        )
         return GeneratedAnswer(
-            content=f"Based on {first.source.note_title}: {first.content}",
-            sources=(first.source,),
+            content=(
+                "Temporary local demo answer based on "
+                f"{selected.source.note_title}: {selected.content}"
+            ),
+            sources=(selected.source,),
         )
 
+
+def _meaningful_terms(value: str) -> set[str]:
+    """Return normalized words suitable for a tiny deterministic ranking."""
+
+    stop_words = {
+        "about",
+        "and",
+        "are",
+        "does",
+        "explain",
+        "for",
+        "from",
+        "how",
+        "the",
+        "this",
+        "what",
+        "with",
+    }
+    return {
+        term
+        for term in re.findall(r"[a-z0-9]+", value.lower())
+        if len(term) > 2 and term not in stop_words
+    }

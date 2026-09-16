@@ -49,7 +49,7 @@ export function getNotes(
     params.set("status", status);
   }
 
-return apiRequest(`/notes/?${params.toString()}`, {
+  return apiRequest(`/notes?${params.toString()}`, {
     method: "GET",
     accessToken,
   });

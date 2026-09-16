@@ -21,5 +21,4 @@ ollama
 nltk
 numpy
 pandas
-os
 pymupdf
