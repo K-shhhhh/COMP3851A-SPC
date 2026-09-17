@@ -1,19 +1,106 @@
+/*
+ * Shared SPC theme colours.
+ *
+ * Components should use these variables instead
+ * of hard-coded colours wherever possible.
+ */
+:root {
+  --spc-bg: #f7f8fc;
+  --spc-surface: #ffffff;
+  --spc-surface-soft: #f8faff;
+  --spc-surface-hover: #f4f3ff;
+  --spc-input-bg: #f7f8fb;
+
+  --spc-text: #1f2937;
+  --spc-heading: #24324a;
+  --spc-muted: #8b93a7;
+  --spc-muted-light: #a0a6b4;
+
+  --spc-border: #e5e7eb;
+  --spc-border-soft: #eef0f4;
+
+  /*
+   * Purple remains SPC's accent colour
+   * in both light and dark themes.
+   */
+  --spc-purple: #7448f5;
+  --spc-purple-hover: #6338e8;
+  --spc-purple-soft: #efedff;
+  --spc-purple-soft-hover: #f4f3ff;
+
+  --spc-danger: #b94a4a;
+  --spc-danger-bg: #fff5f5;
+  --spc-danger-border: #f2c9c9;
+
+  color-scheme: light;
+}
+
+/*
+ * Dark mode.
+ *
+ * We use near-black instead of absolute #000000
+ * so the interface remains easier to read.
+ */
+:root[data-theme="dark"] {
+  --spc-bg: #0f1117;
+  --spc-surface: #171a22;
+  --spc-surface-soft: #12151c;
+  --spc-surface-hover: #222632;
+  --spc-input-bg: #1d212b;
+
+  --spc-text: #eef0f6;
+  --spc-heading: #f7f7fb;
+  --spc-muted: #a1a9b8;
+  --spc-muted-light: #818a9c;
+
+  --spc-border: #2a2f3b;
+  --spc-border-soft: #242933;
+
+  --spc-purple: #9b7cff;
+  --spc-purple-hover: #8a68f6;
+  --spc-purple-soft: #28213d;
+  --spc-purple-soft-hover: #31284a;
+
+  --spc-danger: #ff8b96;
+  --spc-danger-bg: #321d24;
+  --spc-danger-border: #58303a;
+
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
+}
+
+/*
+ * Smooth the colour change when switching themes.
+ */
+html,
+body,
+#root {
+  background: var(--spc-bg);
+}
+
+body {
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .app-shell {
   min-height: 100vh;
   display: flex;
-  background: #f7f8fc;
-  color: #1f2937;
+  background: var(--spc-bg);
+  color: var(--spc-text);
 }
+
+/* Sidebar */
 
 .sidebar {
   width: 250px;
   min-height: 100vh;
-  background: #ffffff;
-  border-right: 1px solid #e5e7eb;
+  background: var(--spc-surface);
+  border-right: 1px solid var(--spc-border);
   padding: 24px 18px;
   display: flex;
   flex-direction: column;
@@ -21,6 +108,10 @@
   top: 0;
   left: 0;
   bottom: 0;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .sidebar-brand {
@@ -37,7 +128,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #6c63ff;
+  background: var(--spc-purple);
   color: #ffffff;
   font-weight: 700;
   font-size: 15px;
@@ -46,12 +137,13 @@
 .sidebar-brand h2 {
   margin: 0;
   font-size: 16px;
+  color: var(--spc-heading);
 }
 
 .sidebar-brand p {
   margin: 2px 0 0;
   font-size: 13px;
-  color: #8b93a7;
+  color: var(--spc-muted);
 }
 
 .sidebar-nav {
@@ -63,7 +155,7 @@
 .sidebar-link,
 .sidebar-sublink {
   text-decoration: none;
-  color: #5f6677;
+  color: var(--spc-muted);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -80,13 +172,13 @@
 
 .sidebar-link:hover,
 .sidebar-sublink:hover {
-  background: #f4f3ff;
-  color: #5a50e5;
+  background: var(--spc-purple-soft-hover);
+  color: var(--spc-purple);
 }
 
 .sidebar-link.active {
-  background: #efedff;
-  color: #5a50e5;
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
   font-weight: 600;
 }
 
@@ -100,7 +192,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #5f6677;
+  color: var(--spc-muted);
   font-size: 14px;
   font-weight: 500;
 }
@@ -114,7 +206,7 @@
 .sidebar-submenu {
   margin-left: 22px;
   padding-left: 13px;
-  border-left: 1px solid #e5e7eb;
+  border-left: 1px solid var(--spc-border);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -127,47 +219,62 @@
 }
 
 .sidebar-sublink.active {
-  color: #5a50e5;
-  background: #f4f3ff;
+  color: var(--spc-purple);
+  background: var(--spc-purple-soft-hover);
   font-weight: 600;
 }
 
 .sidebar-bottom {
   margin-top: auto;
-  border-top: 1px solid #eef0f4;
+  border-top: 1px solid var(--spc-border-soft);
   padding-top: 15px;
 }
+
+/* Main application area */
 
 .app-shell-main {
   margin-left: 250px;
   width: calc(100% - 250px);
   min-height: 100vh;
+  background: var(--spc-bg);
 }
+
+/* Top bar */
 
 .topbar {
   height: 76px;
-  background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--spc-surface);
+  border-bottom: 1px solid var(--spc-border);
   padding: 0 30px;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
+
   position: sticky;
   top: 0;
   z-index: 20;
+
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .topbar-search {
   width: min(540px, 52vw);
   height: 42px;
+
   display: flex;
   align-items: center;
   gap: 10px;
+
   padding: 0 14px;
-  background: #f7f8fb;
-  border: 1px solid #e7e9ef;
+
+  background: var(--spc-input-bg);
+  border: 1px solid var(--spc-border);
   border-radius: 11px;
-  color: #8b93a7;
+
+  color: var(--spc-muted);
 }
 
 .topbar-search input {
@@ -175,12 +282,13 @@
   outline: 0;
   background: transparent;
   width: 100%;
+
   font-size: 14px;
-  color: #303645;
+  color: var(--spc-text);
 }
 
 .topbar-search input::placeholder {
-  color: #a0a6b4;
+  color: var(--spc-muted-light);
 }
 
 .topbar-actions {
@@ -189,21 +297,32 @@
   gap: 18px;
 }
 
+/*
+ * Used for theme, notification and logout buttons.
+ */
 .topbar-icon-button {
   width: 40px;
   height: 40px;
+
   border: 0;
   background: transparent;
   border-radius: 10px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #626a7c;
+
+  color: var(--spc-muted);
   cursor: pointer;
+
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .topbar-icon-button:hover {
-  background: #f5f6fa;
+  background: var(--spc-surface-hover);
+  color: var(--spc-purple);
 }
 
 .topbar-user {
@@ -215,12 +334,16 @@
 .topbar-avatar {
   width: 40px;
   height: 40px;
+
   border-radius: 50%;
-  background: #ebe9ff;
-  color: #5a50e5;
+
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+
   display: flex;
   align-items: center;
   justify-content: center;
+
   font-weight: 700;
 }
 
@@ -231,13 +354,16 @@
 
 .topbar-user-info strong {
   font-size: 13px;
+  color: var(--spc-heading);
 }
 
 .topbar-user-info span {
   max-width: 180px;
   margin-top: 2px;
+
   font-size: 11px;
-  color: #9198a8;
+  color: var(--spc-muted);
+
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -245,6 +371,7 @@
 
 .app-shell-content {
   padding: 32px;
+  background: var(--spc-bg);
 }
 
 @media (max-width: 900px) {
