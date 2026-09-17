@@ -521,3 +521,301 @@
   color: #91a0b7;
   font-size: 12px;
 }
+
+/* =========================================================
+   DARK MODE — MY NOTES
+
+   Preserve the original light mode while making cards,
+   text, buttons and modal readable in dark mode.
+   ========================================================= */
+
+:root[data-theme="dark"] .notes-page-header h1,
+:root[data-theme="dark"] .notes-state-card h2,
+:root[data-theme="dark"] .notes-card-heading h2,
+:root[data-theme="dark"] .notes-modal-header h2,
+:root[data-theme="dark"] .notes-details-grid strong {
+  color: var(--spc-heading);
+}
+
+:root[data-theme="dark"] .notes-page-header p,
+:root[data-theme="dark"] .notes-state-card p,
+:root[data-theme="dark"] .notes-file-name,
+:root[data-theme="dark"] .notes-processing-row,
+:root[data-theme="dark"] .notes-date,
+:root[data-theme="dark"] .notes-details-grid span {
+  color: var(--spc-muted);
+}
+
+/* Empty state and note cards */
+
+:root[data-theme="dark"] .notes-state-card,
+:root[data-theme="dark"] .notes-card {
+  background: var(--spc-surface);
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .notes-card {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+/* Note icon */
+
+:root[data-theme="dark"] .notes-card-icon {
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+}
+
+/* Processing progress */
+
+:root[data-theme="dark"] .notes-progress-track {
+  background: #292e3a;
+}
+
+:root[data-theme="dark"] .notes-progress-value,
+:root[data-theme="dark"] .notes-progress-indeterminate::after {
+  background: var(--spc-purple);
+}
+
+/* Status badges */
+
+:root[data-theme="dark"] .notes-status-queued {
+  background: #3a311b;
+  color: #e7c967;
+}
+
+:root[data-theme="dark"] .notes-status-processing {
+  background: #1c304c;
+  color: #82b5ff;
+}
+
+:root[data-theme="dark"] .notes-status-ready {
+  background: #173528;
+  color: #78d6a1;
+}
+
+:root[data-theme="dark"] .notes-status-failed {
+  background: #3b2025;
+  color: #ff939d;
+}
+
+/* Failure message */
+
+:root[data-theme="dark"] .notes-failure {
+  background: var(--spc-danger-bg);
+  color: var(--spc-danger);
+}
+
+/* Buttons */
+
+:root[data-theme="dark"] .notes-button-secondary {
+  background: var(--spc-input-bg);
+  border-color: var(--spc-border);
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .notes-button-secondary:hover:not(:disabled) {
+  background: var(--spc-surface-hover);
+}
+
+:root[data-theme="dark"] .notes-button-danger {
+  background: var(--spc-input-bg);
+  border-color: #633741;
+  color: #ff8b96;
+}
+
+:root[data-theme="dark"] .notes-button-danger:hover:not(:disabled) {
+  background: var(--spc-danger-bg);
+}
+
+/* Alerts */
+
+:root[data-theme="dark"] .notes-alert-error {
+  background: var(--spc-danger-bg);
+  border-color: var(--spc-danger-border);
+  color: var(--spc-danger);
+}
+
+/* Details modal */
+
+:root[data-theme="dark"] .notes-modal-backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+:root[data-theme="dark"] .notes-modal {
+  background: var(--spc-surface);
+  color: var(--spc-text);
+
+  box-shadow:
+    0 24px 60px
+    rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="dark"] .notes-modal-header,
+:root[data-theme="dark"] .notes-modal-actions {
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .notes-modal-eyebrow {
+  color: var(--spc-purple);
+}
+
+:root[data-theme="dark"] .notes-modal-close {
+  color: var(--spc-muted);
+}
+
+:root[data-theme="dark"] .notes-modal-close:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .notes-details-grid > div {
+  background: var(--spc-input-bg);
+}
+
+:root[data-theme="dark"] .notes-modal-message {
+  background: #1c304c;
+  color: #8bbcff;
+}
+
+:root[data-theme="dark"] .notes-modal-message-error {
+  background: var(--spc-danger-bg);
+  color: var(--spc-danger);
+}
+
+/* =========================================================
+   DARK MODE FIX — UPLOAD NOTES
+   ========================================================= */
+
+:root[data-theme="dark"] .upload-page {
+  color: var(--spc-text);
+}
+
+/* Page heading */
+
+:root[data-theme="dark"] .upload-header h1 {
+  color: var(--spc-heading) !important;
+}
+
+:root[data-theme="dark"] .upload-header p {
+  color: var(--spc-muted) !important;
+}
+
+:root[data-theme="dark"] .upload-eyebrow {
+  color: var(--spc-purple) !important;
+}
+
+/* Main cards */
+
+:root[data-theme="dark"] .upload-card,
+:root[data-theme="dark"] .upload-info-card {
+  background: var(--spc-surface) !important;
+  border-color: var(--spc-border) !important;
+}
+
+/* Headings */
+
+:root[data-theme="dark"] .upload-section-heading h2,
+:root[data-theme="dark"] .info-card-heading h3,
+:root[data-theme="dark"] .generated-feature strong {
+  color: var(--spc-heading) !important;
+}
+
+:root[data-theme="dark"] .upload-section-heading p,
+:root[data-theme="dark"] .generated-feature span,
+:root[data-theme="dark"] .upload-info-card li {
+  color: var(--spc-muted) !important;
+}
+
+/* Note title field */
+
+:root[data-theme="dark"] .upload-title-field label {
+  color: var(--spc-text) !important;
+}
+
+:root[data-theme="dark"] .upload-title-field input {
+  background: var(--spc-input-bg) !important;
+  border-color: var(--spc-border) !important;
+  color: var(--spc-text) !important;
+}
+
+:root[data-theme="dark"] .upload-title-field input::placeholder {
+  color: var(--spc-muted) !important;
+}
+
+/* PDF drag/drop area */
+
+:root[data-theme="dark"] .drop-zone {
+  background: var(--spc-surface-soft) !important;
+  border-color: #3b4250 !important;
+}
+
+:root[data-theme="dark"] .drop-zone h3 {
+  color: var(--spc-heading) !important;
+}
+
+:root[data-theme="dark"] .drop-zone p,
+:root[data-theme="dark"] .drop-zone > span {
+  color: var(--spc-muted) !important;
+}
+
+:root[data-theme="dark"] .drop-zone-icon {
+  background: var(--spc-purple-soft) !important;
+  color: var(--spc-purple) !important;
+}
+
+/* Recent uploads */
+
+:root[data-theme="dark"] .recent-upload-item {
+  border-color: var(--spc-border) !important;
+}
+
+:root[data-theme="dark"] .recent-upload-info strong {
+  color: var(--spc-heading) !important;
+}
+
+:root[data-theme="dark"] .recent-upload-info span,
+:root[data-theme="dark"] .upload-empty-state {
+  color: var(--spc-muted) !important;
+}
+
+/* Selected file */
+
+:root[data-theme="dark"] .selected-file {
+  background: var(--spc-input-bg) !important;
+  border-color: var(--spc-border) !important;
+}
+
+:root[data-theme="dark"] .selected-file-info strong {
+  color: var(--spc-heading) !important;
+}
+
+:root[data-theme="dark"] .selected-file-info span {
+  color: var(--spc-muted) !important;
+}
+
+/* Pro tip */
+
+:root[data-theme="dark"] .upload-pro-tip {
+  background: var(--spc-purple-soft) !important;
+}
+
+:root[data-theme="dark"] .upload-pro-tip strong {
+  color: var(--spc-purple) !important;
+}
+
+:root[data-theme="dark"] .upload-pro-tip p {
+  color: var(--spc-muted) !important;
+}
+
+/* Purple buttons */
+
+:root[data-theme="dark"] .browse-button,
+:root[data-theme="dark"] .upload-submit-button {
+  background: var(--spc-purple) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .browse-button:hover,
+:root[data-theme="dark"] .upload-submit-button:hover:not(:disabled) {
+  background: var(--spc-purple-hover) !important;
+}
