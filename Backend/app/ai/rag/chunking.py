@@ -15,7 +15,22 @@ def chunk_text(text: str, chunk_size_words: int = 350, overlap_words: int = 60) 
     units = []
     for para in paragraphs:
         sentences = nltk.sent_tokenize(para)
-        units.extend([s.strip() for s in sentences if s.strip()])
+        for s in sentences:
+            s = s.strip()
+            if not s:
+                continue
+            s_words = s.split()
+            if len(s_words) > chunk_size_words:
+                # A "sentence" this long usually isn't real prose -- e.g. a
+                # table or dense block with no periods, so sent_tokenize
+                # returned the whole thing as one unit. Hard-split it so no
+                # single unit can ever exceed chunk_size_words -- without
+                # this, one oversized unit sails through as one giant chunk,
+                # which can exceed the embedding model's context length.
+                for i in range(0, len(s_words), chunk_size_words):
+                    units.append(" ".join(s_words[i:i + chunk_size_words]))
+            else:
+                units.append(s)
 
     chunks = []
     current_words = []

@@ -15,6 +15,7 @@ PyJWT>=2.10,<3
 pwdlib[argon2]
 
 # Rag Pipeline Requirements
+python-dotenv
 nudenet
 openai
 ollama

@@ -46,8 +46,8 @@ from app.domains.notes.domain.storage import AttachmentStorage
 from app.domains.notes.infrastructure.local_storage import (
     LocalAttachmentStorage,
 )
-from app.domains.notes.infrastructure.demo_processing import (
-    SynchronousDemoAttachmentProcessingDispatcher,
+from app.domains.notes.infrastructure.rag_processing import (
+    KrishAttachmentProcessingDispatcher,
 )
 from app.domains.notes.infrastructure.memory_repository import (
     InMemoryAttachmentRepository,
@@ -89,6 +89,10 @@ from app.domains.chats.infrastructure.memory_retrieval import (
 # from app.domains.chats.infrastructure.rag_answering import (
 #     KrishRagAnswerGenerator,
 # )
+
+from app.domains.chats.infrastructure.rag_answering import (
+    KrishRagAnswerGenerator,
+)
 
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.domain.repository import StudyGroupRepository
@@ -277,7 +281,7 @@ _local_ready_note_chunk_repository = InMemoryReadyNoteChunkRepository()
 _local_attachment_repository = InMemoryAttachmentRepository()
 _local_attachment_storage: AttachmentStorage | None = None
 _local_attachment_processing_dispatcher = (
-    SynchronousDemoAttachmentProcessingDispatcher(
+    KrishAttachmentProcessingDispatcher(
         attachment_repository=_local_attachment_repository,
         chunk_repository=_local_ready_note_chunk_repository,
     )
@@ -316,10 +320,8 @@ def get_attachment_storage() -> AttachmentStorage:
 
 def get_attachment_processing_dispatcher(
 ) -> AttachmentProcessingDispatcher:
-    """Return synchronous local text processing for the temporary demo.
-
-    Krish's real processing adapter must replace this before staging.
-    """
+    """Return Krish's real processing dispatcher (extraction, chunking,
+    embedding, safety-checking, captioning -- the full pipeline)."""
 
     return _local_attachment_processing_dispatcher
 
@@ -364,11 +366,9 @@ def get_ready_note_chunk_repository() -> ReadyNoteChunkRepository:
 
 
 def get_chat_answer_generator() -> ChatAnswerGenerator:
-    """Return the transparent local adapter used before Krish's RAG merge."""
+    """Return Krish's real RAG answer generator."""
 
-    # REAL RAG SWITCH:
-    # return KrishRagAnswerGenerator()
-    return _local_chat_answer_generator
+    return KrishRagAnswerGenerator()
 
 
 def get_chat_service() -> ChatService:

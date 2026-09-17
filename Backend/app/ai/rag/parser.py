@@ -11,6 +11,7 @@ from dotenv import load_dotenv, find_dotenv
 # loads the repo-root .env even when this module is imported from elsewhere
 # (e.g. Backend/) -- find_dotenv() walks upward until it finds one
 load_dotenv(find_dotenv(usecwd=True))
+import time
 import base64
 from typing import List, Dict
 
@@ -48,20 +49,38 @@ def is_image_safe(image_bytes: bytes) -> bool:
     return True
 
 
-def caption_image(image_bytes: bytes) -> str:
+def caption_image(image_bytes: bytes, max_retries: int = 3) -> str:
+    """
+    Captions an image via a free-tier vision model. Free-tier model
+    availability is unreliable (rate limits, provider-side rejections) --
+    retries with backoff first, then degrades gracefully with a placeholder
+    rather than failing the ENTIRE document over one flaky image call.
+    """
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_uri = f"data:image/jpeg;base64,{b64_image}"
-    response = _client.chat.completions.create(
-        model=VISION_MODEL,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Describe this image in detail. If it is a diagram, chart, or table, describe its structure and the information it conveys, not just what it looks like."},
-                {"type": "image_url", "image_url": {"url": data_uri}},
-            ],
-        }],
-    )
-    return response.choices[0].message.content
+
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = _client.chat.completions.create(
+                model=VISION_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Describe this image in detail. If it is a diagram, chart, or table, describe its structure and the information it conveys, not just what it looks like."},
+                        {"type": "image_url", "image_url": {"url": data_uri}},
+                    ],
+                }],
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 1s, then 2s between retries
+
+    # All retries exhausted -- don't let one bad image kill the whole upload.
+    print(f"Warning: image captioning failed after {max_retries} attempts ({last_error}); using a placeholder caption instead.")
+    return "[An image appears on this page. It could not be automatically captioned due to a temporary AI service error.]"
 
 
 def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[Dict]:
