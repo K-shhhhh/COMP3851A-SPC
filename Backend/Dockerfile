@@ -11,6 +11,11 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Download NLTK's sentence-tokenizer data at build time, so it's baked into
+# the image -- without this, chunking fails at runtime with a LookupError
+# for 'punkt_tab', since a fresh container has no NLTK data on disk.
+RUN python -c "import nltk; nltk.download('punkt_tab')"
+
 COPY app ./app
 
 EXPOSE 8000
