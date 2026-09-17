@@ -955,3 +955,40 @@ input {
     font-size: 26px;
   }
 }
+
+/* Prevent login hero content from overlapping on shorter screens */
+.auth-hero-content {
+  height: auto;
+  min-height: 100vh;
+}
+
+.auth-hero-copy,
+.auth-features,
+.auth-quote {
+  flex-shrink: 0;
+}
+
+.auth-quote {
+  margin-top: 40px;
+}
+
+/* Reduce vertical spacing on shorter laptop screens */
+@media (max-height: 850px) and (min-width: 801px) {
+  .auth-hero-content {
+    padding-top: 32px;
+    padding-bottom: 32px;
+  }
+
+  .auth-hero-copy {
+    margin-top: 55px;
+  }
+
+  .auth-features {
+    margin-top: 30px;
+    gap: 16px;
+  }
+
+  .auth-quote {
+    margin-top: 28px;
+  }
+}
