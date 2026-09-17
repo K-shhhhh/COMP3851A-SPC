@@ -59,13 +59,14 @@ function Sidebar() {
 
             <NavLink
               to="/notes"
+              end
               className={({ isActive }) =>
                 `sidebar-sublink ${isActive ? "active" : ""}`
               }
             >
-              <FolderOpen size={17} />
-              <span>My Notes</span>
-            </NavLink>
+  <FolderOpen size={17} />
+  <span>My Notes</span>
+</NavLink>
           </div>
         </div>
 
