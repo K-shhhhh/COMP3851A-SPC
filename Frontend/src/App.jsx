@@ -1,9 +1,15 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
 
 import LoginPage from "./pages/Login/LoginPage.jsx";
 import RegisterPage from "./pages/Register/RegisterPage";
 import DashboardPage from "./pages/Dashboard/DashboardPage";
 import UploadNotesPage from "./pages/UploadNotes/UploadNotesPage";
+import NotesPage from "./pages/Notes/NotesPage.jsx";
 import CompanionPage from "./pages/Companion/CompanionPage";
 
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
@@ -14,10 +20,25 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to="/login"
+              replace
+            />
+          }
+        />
 
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/login"
+          element={<LoginPage />}
+        />
+
+        <Route
+          path="/register"
+          element={<RegisterPage />}
+        />
 
         <Route
           path="/dashboard"
@@ -46,9 +67,29 @@ function App() {
           }
         />
 
+        {/*
+         * My Notes Library.
+         *
+         * This page is protected because every Notes API request
+         * depends on the authenticated student's bearer token.
+         */}
+        <Route
+          path="/notes"
+          element={
+            <ProtectedRoute>
+              <NotesPage />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="*"
-          element={<Navigate to="/dashboard" replace />}
+          element={
+            <Navigate
+              to="/dashboard"
+              replace
+            />
+          }
         />
       </Routes>
     </BrowserRouter>
