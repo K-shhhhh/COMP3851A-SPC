@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     DATABASE_URL: str = (
-        "postgresql://postgres:password@localhost:5432/spc"
+        "postgresql+psycopg://postgres:password@localhost:5432/spc"
     )
 
     SECRET_KEY: str = "CHANGE_ME"
