@@ -11,6 +11,7 @@ import DashboardPage from "./pages/Dashboard/DashboardPage";
 import UploadNotesPage from "./pages/UploadNotes/UploadNotesPage";
 import NotesPage from "./pages/Notes/NotesPage.jsx";
 import CompanionPage from "./pages/Companion/CompanionPage";
+import GroupStudyPage from "./pages/GroupStudy/GroupStudyPage";
 
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 
@@ -78,6 +79,15 @@ function App() {
           element={
             <ProtectedRoute>
               <NotesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/groups"
+          element={
+            <ProtectedRoute>
+             <GroupStudyPage />
             </ProtectedRoute>
           }
         />

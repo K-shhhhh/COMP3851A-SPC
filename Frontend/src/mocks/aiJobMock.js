@@ -45,7 +45,7 @@ function snapshot(job) {
 
 export async function submitMockAIJob(request) {
   await wait(integrationConfig.mockDelayMs);
-  const jobId = crypto.randomUUID();
+  const jobId = generateId();
   const createdAtMs = Date.now();
   const createdAt = new Date(createdAtMs).toISOString();
   const job = {

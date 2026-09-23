@@ -992,3 +992,389 @@ input {
     margin-top: 28px;
   }
 }
+
+/* =========================================================
+   AUTH THEME SUPPORT
+   Shared light / dark mode for Login + Register
+   ========================================================= */
+
+.auth-form-section {
+  position: relative;
+
+  background: var(--spc-surface);
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+/* =========================================================
+   THEME BUTTON
+   ========================================================= */
+
+.auth-theme-toggle {
+  position: absolute;
+
+  top: 28px;
+  right: 30px;
+
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+
+  border: 1px solid var(--spc-border);
+  border-radius: 11px;
+
+  background: var(--spc-surface-soft);
+  color: var(--spc-muted);
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.auth-theme-toggle:hover {
+  transform: translateY(-1px);
+
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+
+  border-color:
+    color-mix(
+      in srgb,
+      var(--spc-purple) 25%,
+      var(--spc-border)
+    );
+}
+
+/* =========================================================
+   AUTH TEXT
+   ========================================================= */
+
+.auth-form-heading h2,
+.auth-form-container h2 {
+  color: var(--spc-heading);
+}
+
+.auth-form-heading p,
+.auth-form-subtitle {
+  color: var(--spc-muted);
+}
+
+.auth-field label {
+  color: var(--spc-text);
+}
+
+/* =========================================================
+   INPUTS
+   ========================================================= */
+
+.auth-field input {
+  background: var(--spc-input-bg);
+  color: var(--spc-text);
+
+  border-color: var(--spc-border);
+}
+
+.auth-field input::placeholder {
+  color: var(--spc-muted-light);
+}
+
+.auth-field input:focus {
+  background: var(--spc-surface);
+
+  border-color: var(--spc-purple);
+
+  box-shadow: var(--spc-focus-ring);
+}
+
+/* =========================================================
+   PASSWORD TOGGLE
+   ========================================================= */
+
+.auth-password-toggle {
+  color: var(--spc-muted);
+}
+
+.auth-password-toggle:hover {
+  color: var(--spc-purple);
+}
+
+/* =========================================================
+   REMEMBER ME
+   ========================================================= */
+
+.auth-checkbox {
+  color: var(--spc-muted);
+}
+
+.auth-checkbox input {
+  accent-color: var(--spc-purple);
+}
+
+/* =========================================================
+   LINKS
+   ========================================================= */
+
+.auth-link-button,
+.auth-switch button,
+.auth-inline-link {
+  color: var(--spc-purple);
+}
+
+/* =========================================================
+   PRIMARY BUTTONS
+   ========================================================= */
+
+.auth-primary-button,
+.auth-submit-button {
+  background:
+    linear-gradient(
+      135deg,
+      var(--spc-purple) 0%,
+      var(--spc-purple-strong) 100%
+    );
+
+  color: #ffffff;
+}
+
+.auth-primary-button:hover:not(:disabled),
+.auth-submit-button:hover:not(:disabled) {
+  background:
+    linear-gradient(
+      135deg,
+      var(--spc-purple-hover) 0%,
+      var(--spc-purple-strong) 100%
+    );
+}
+
+/* =========================================================
+   DIVIDER
+   ========================================================= */
+
+.auth-divider {
+  color: var(--spc-muted-light);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  background: var(--spc-border-soft);
+}
+
+/* =========================================================
+   GOOGLE BUTTON
+   ========================================================= */
+
+.auth-google-button {
+  background: var(--spc-surface);
+  color: var(--spc-text);
+
+  border-color: var(--spc-border);
+}
+
+.auth-google-button:hover {
+  background: var(--spc-surface-hover);
+}
+
+/* =========================================================
+   BOTTOM AUTH TEXT
+   ========================================================= */
+
+.auth-switch,
+.auth-signup-text {
+  color: var(--spc-muted);
+}
+
+/* =========================================================
+   ERROR
+   ========================================================= */
+
+.auth-error {
+  background: var(--spc-danger-bg);
+  color: var(--spc-danger);
+
+  border-color: var(--spc-danger-border);
+}
+
+/* =========================================================
+   DARK AUTH PAGE
+   ========================================================= */
+
+:root[data-theme="dark"] body {
+  background: var(--spc-bg);
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .auth-layout {
+  background: var(--spc-bg);
+}
+
+:root[data-theme="dark"] .auth-form-section {
+  background: var(--spc-bg);
+}
+
+/*
+ * Dark-mode hero:
+ * deep charcoal/purple instead of the
+ * bright purple used in light mode.
+ */
+:root[data-theme="dark"] .auth-hero {
+  background:
+    radial-gradient(
+      circle at 18% 18%,
+      rgba(154, 124, 255, 0.22),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 82% 78%,
+      rgba(112, 71, 235, 0.16),
+      transparent 36%
+    ),
+    linear-gradient(
+      145deg,
+      #171326 0%,
+      #211938 48%,
+      #11131b 100%
+    );
+}
+
+/* Decorative hero circles */
+
+:root[data-theme="dark"] .auth-hero::before,
+:root[data-theme="dark"] .auth-hero::after {
+  border-color:
+    rgba(
+      154,
+      124,
+      255,
+      0.12
+    );
+}
+
+/* Hero feature icons */
+
+:root[data-theme="dark"] .auth-feature-icon {
+  background:
+    rgba(
+      154,
+      124,
+      255,
+      0.13
+    );
+
+  border:
+    1px solid
+    rgba(
+      154,
+      124,
+      255,
+      0.1
+    );
+}
+
+/* Hero testimonial */
+
+:root[data-theme="dark"] .auth-quote {
+  background:
+    rgba(
+      20,
+      18,
+      31,
+      0.42
+    );
+
+  border-color:
+    rgba(
+      154,
+      124,
+      255,
+      0.16
+    );
+}
+
+/* Hero secondary text */
+
+:root[data-theme="dark"] .auth-brand span,
+:root[data-theme="dark"] .auth-hero-copy p,
+:root[data-theme="dark"] .auth-feature span,
+:root[data-theme="dark"] .auth-quote span {
+  color:
+    rgba(
+      235,
+      232,
+      255,
+      0.68
+    );
+}
+
+/* =========================================================
+   DARK AUTH FORM
+   ========================================================= */
+
+:root[data-theme="dark"] .auth-form-wrapper,
+:root[data-theme="dark"] .auth-form-container {
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .auth-theme-toggle {
+  background: var(--spc-surface);
+
+  border-color: var(--spc-border);
+
+  color: var(--spc-muted);
+}
+
+:root[data-theme="dark"] .auth-theme-toggle:hover {
+  background: var(--spc-purple-soft);
+
+  color: var(--spc-purple);
+}
+
+:root[data-theme="dark"] .auth-field input {
+  background: var(--spc-input-bg);
+}
+
+:root[data-theme="dark"] .auth-google-button {
+  background: var(--spc-surface);
+
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .auth-google-button:hover {
+  background: var(--spc-surface-hover);
+}
+
+/* =========================================================
+   MOBILE AUTH BRAND
+   ========================================================= */
+
+:root[data-theme="dark"] .auth-mobile-brand strong {
+  color: var(--spc-heading);
+}
+
+:root[data-theme="dark"] .auth-mobile-brand {
+  color: var(--spc-purple);
+}
+
+/* =========================================================
+   AUTH THEME BUTTON RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 520px) {
+  .auth-theme-toggle {
+    top: 18px;
+    right: 18px;
+
+    width: 38px;
+    height: 38px;
+  }
+}

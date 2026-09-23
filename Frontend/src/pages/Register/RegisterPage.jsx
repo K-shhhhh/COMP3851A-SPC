@@ -1,32 +1,86 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+
 import {
+  useNavigate,
+} from "react-router-dom";
+
+import {
+  Bot,
   BrainCircuit,
   Eye,
   EyeOff,
   GraduationCap,
+  Moon,
+  Sun,
   Users,
 } from "lucide-react";
 
-import { useAuth } from "../../contexts/AuthContext.jsx";
+import {
+  useAuth,
+} from "../../contexts/AuthContext.jsx";
+
+import {
+  useTheme,
+} from "../../contexts/ThemeContext.jsx";
+
+import "../../styles/styles.css";
 
 function RegisterPage() {
-  const navigate = useNavigate();
-  const { register } = useAuth();
+  const navigate =
+    useNavigate();
 
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const {
+    register,
+  } = useAuth();
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const {
+    theme,
+    toggleTheme,
+  } = useTheme();
 
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [
+    fullName,
+    setFullName,
+  ] = useState("");
 
-  async function handleSubmit(event) {
+  const [
+    email,
+    setEmail,
+  ] = useState("");
+
+  const [
+    password,
+    setPassword,
+  ] = useState("");
+
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState("");
+
+  const [
+    showPassword,
+    setShowPassword,
+  ] = useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const [
+    isSubmitting,
+    setIsSubmitting,
+  ] = useState(false);
+
+  async function handleSubmit(
+    event,
+  ) {
     event.preventDefault();
 
     setError("");
@@ -37,7 +91,10 @@ function RegisterPage() {
       !password ||
       !confirmPassword
     ) {
-      setError("Please complete all fields.");
+      setError(
+        "Please complete all fields.",
+      );
+
       return;
     }
 
@@ -45,11 +102,18 @@ function RegisterPage() {
       setError(
         "Password must be at least 8 characters long.",
       );
+
       return;
     }
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+    if (
+      password !==
+      confirmPassword
+    ) {
+      setError(
+        "Passwords do not match.",
+      );
+
       return;
     }
 
@@ -57,20 +121,33 @@ function RegisterPage() {
       setIsSubmitting(true);
 
       await register({
-        fullName: fullName.trim(),
-        email: email.trim(),
+        fullName:
+          fullName.trim(),
+
+        email:
+          email.trim(),
+
         password,
       });
 
-      navigate("/login", {
-        replace: true,
-      });
+      navigate(
+        "/login",
+        {
+          replace: true,
+        },
+      );
     } catch (err) {
-      if (err.code === "EMAIL_ALREADY_EXISTS") {
+      if (
+        err.code ===
+        "EMAIL_ALREADY_EXISTS"
+      ) {
         setError(
           "An account with this email already exists.",
         );
-      } else if (err.code === "VALIDATION_ERROR") {
+      } else if (
+        err.code ===
+        "VALIDATION_ERROR"
+      ) {
         setError(
           "Please check your details and try again.",
         );
@@ -86,105 +163,212 @@ function RegisterPage() {
 
   return (
     <div className="auth-layout">
+
+      {/* ==================================================
+          LEFT HERO
+          ================================================== */}
+
       <section className="auth-hero">
+
         <div className="auth-hero-content">
+
           <div className="auth-brand">
+
             <div className="auth-brand-icon">
-              <GraduationCap size={24} />
+              <GraduationCap
+                size={28}
+              />
             </div>
 
             <div>
-              <strong>Smart Peer</strong>
-              <span>Companion</span>
+              <strong>
+                Smart Peer
+              </strong>
+
+              <span>
+                Companion
+              </span>
             </div>
+
           </div>
 
-          <div className="auth-hero-main">
+          <div className="auth-hero-copy">
+
             <h1>
               Study smarter,
-              <br />
               together.
             </h1>
 
             <p>
-              Your intelligent learning companion that
-              transforms lecture notes into interactive
-              study experiences.
+              Your intelligent learning
+              companion that transforms
+              lecture notes into
+              interactive study
+              experiences.
             </p>
 
-            <div className="auth-feature-list">
-              <div className="auth-feature">
-                <div className="auth-feature-icon">
-                  <BrainCircuit size={20} />
-                </div>
+          </div>
 
-                <div>
-                  <strong>AI Study Assistant</strong>
-                  <span>
-                    Ask questions and understand difficult
-                    concepts faster.
-                  </span>
-                </div>
+          <div className="auth-features">
+
+            <div className="auth-feature">
+
+              <div className="auth-feature-icon">
+                <Bot
+                  size={21}
+                />
               </div>
 
-              <div className="auth-feature">
-                <div className="auth-feature-icon">
-                  <Users size={20} />
-                </div>
+              <div>
+                <strong>
+                  AI Study Assistant
+                </strong>
 
-                <div>
-                  <strong>
-                    Collaborative Study Groups
-                  </strong>
-                  <span>
-                    Learn together and share knowledge with
-                    classmates.
-                  </span>
-                </div>
+                <span>
+                  Ask questions and
+                  understand difficult
+                  concepts faster.
+                </span>
               </div>
 
-              <div className="auth-feature">
-                <div className="auth-feature-icon">
-                  <BrainCircuit size={20} />
-                </div>
-
-                <div>
-                  <strong>Knowledge Graphs</strong>
-                  <span>
-                    Turn your notes into connected concepts
-                    and learning paths.
-                  </span>
-                </div>
-              </div>
             </div>
+
+            <div className="auth-feature">
+
+              <div className="auth-feature-icon">
+                <Users
+                  size={21}
+                />
+              </div>
+
+              <div>
+                <strong>
+                  Collaborative Study
+                  Groups
+                </strong>
+
+                <span>
+                  Learn together and
+                  share knowledge with
+                  classmates.
+                </span>
+              </div>
+
+            </div>
+
+            <div className="auth-feature">
+
+              <div className="auth-feature-icon">
+                <BrainCircuit
+                  size={21}
+                />
+              </div>
+
+              <div>
+                <strong>
+                  Knowledge Graphs
+                </strong>
+
+                <span>
+                  Turn your notes into
+                  connected concepts and
+                  learning paths.
+                </span>
+              </div>
+
+            </div>
+
           </div>
 
-          <div className="auth-testimonial">
+          <div className="auth-quote">
+
             <p>
-              “SPC completely changed the way I prepare for
-              exams. Everything I need is finally in one
-              place.”
+              “SPC completely changed
+              the way I prepare for
+              exams. Everything I need
+              is finally in one place.”
             </p>
 
-            <span>— University Student</span>
+            <span>
+              — University Student
+            </span>
+
           </div>
+
         </div>
+
       </section>
 
-      <section className="auth-form-section">
-        <div className="auth-form-container">
-          <h2>Create account</h2>
+      {/* ==================================================
+          REGISTER FORM
+          ================================================== */}
 
-          <p className="auth-form-subtitle">
-            Join Smart Peer Companion and start studying
-            smarter.
-          </p>
+      <section className="auth-form-section">
+
+        <button
+          type="button"
+          className="auth-theme-toggle"
+          onClick={toggleTheme}
+          title={
+            theme === "dark"
+              ? "Switch to light mode"
+              : "Switch to dark mode"
+          }
+          aria-label={
+            theme === "dark"
+              ? "Switch to light mode"
+              : "Switch to dark mode"
+          }
+          aria-pressed={
+            theme === "dark"
+          }
+        >
+          {theme === "dark" ? (
+            <Sun size={19} />
+          ) : (
+            <Moon size={19} />
+          )}
+        </button>
+
+        <div className="auth-form-wrapper">
+
+          <div className="auth-mobile-brand">
+
+            <GraduationCap
+              size={25}
+            />
+
+            <strong>
+              Smart Peer Companion
+            </strong>
+
+          </div>
+
+          <div className="auth-form-heading">
+
+            <h2>
+              Create account
+            </h2>
+
+            <p>
+              Join Smart Peer
+              Companion and start
+              studying smarter.
+            </p>
+
+          </div>
 
           <form
             className="auth-form"
-            onSubmit={handleSubmit}
+            onSubmit={
+              handleSubmit
+            }
           >
+
+            {/* Full name */}
+
             <div className="auth-field">
+
               <label htmlFor="full-name">
                 Full Name
               </label>
@@ -194,14 +378,25 @@ function RegisterPage() {
                 type="text"
                 placeholder="Enter your full name"
                 value={fullName}
-                onChange={(event) =>
-                  setFullName(event.target.value)
+                onChange={(
+                  event,
+                ) =>
+                  setFullName(
+                    event.target.value,
+                  )
                 }
-                disabled={isSubmitting}
+                autoComplete="name"
+                disabled={
+                  isSubmitting
+                }
               />
+
             </div>
 
+            {/* Email */}
+
             <div className="auth-field">
+
               <label htmlFor="register-email">
                 University Email
               </label>
@@ -209,21 +404,33 @@ function RegisterPage() {
               <input
                 id="register-email"
                 type="email"
-                placeholder="Enter your university email"
+                placeholder="you@university.edu"
                 value={email}
-                onChange={(event) =>
-                  setEmail(event.target.value)
+                onChange={(
+                  event,
+                ) =>
+                  setEmail(
+                    event.target.value,
+                  )
                 }
-                disabled={isSubmitting}
+                autoComplete="email"
+                disabled={
+                  isSubmitting
+                }
               />
+
             </div>
 
+            {/* Password */}
+
             <div className="auth-field">
+
               <label htmlFor="register-password">
                 Password
               </label>
 
-              <div className="auth-password-wrapper">
+              <div className="auth-password-field">
+
                 <input
                   id="register-password"
                   type={
@@ -233,10 +440,17 @@ function RegisterPage() {
                   }
                   placeholder="Create a password"
                   value={password}
-                  onChange={(event) =>
-                    setPassword(event.target.value)
+                  onChange={(
+                    event,
+                  ) =>
+                    setPassword(
+                      event.target.value,
+                    )
                   }
-                  disabled={isSubmitting}
+                  autoComplete="new-password"
+                  disabled={
+                    isSubmitting
+                  }
                 />
 
                 <button
@@ -244,7 +458,8 @@ function RegisterPage() {
                   className="auth-password-toggle"
                   onClick={() =>
                     setShowPassword(
-                      (current) => !current,
+                      (current) =>
+                        !current,
                     )
                   }
                   aria-label={
@@ -254,20 +469,30 @@ function RegisterPage() {
                   }
                 >
                   {showPassword ? (
-                    <EyeOff size={18} />
+                    <EyeOff
+                      size={18}
+                    />
                   ) : (
-                    <Eye size={18} />
+                    <Eye
+                      size={18}
+                    />
                   )}
                 </button>
+
               </div>
+
             </div>
 
+            {/* Confirm password */}
+
             <div className="auth-field">
+
               <label htmlFor="confirm-password">
                 Confirm Password
               </label>
 
-              <div className="auth-password-wrapper">
+              <div className="auth-password-field">
+
                 <input
                   id="confirm-password"
                   type={
@@ -276,13 +501,20 @@ function RegisterPage() {
                       : "password"
                   }
                   placeholder="Confirm your password"
-                  value={confirmPassword}
-                  onChange={(event) =>
+                  value={
+                    confirmPassword
+                  }
+                  onChange={(
+                    event,
+                  ) =>
                     setConfirmPassword(
                       event.target.value,
                     )
                   }
-                  disabled={isSubmitting}
+                  autoComplete="new-password"
+                  disabled={
+                    isSubmitting
+                  }
                 />
 
                 <button
@@ -290,7 +522,8 @@ function RegisterPage() {
                   className="auth-password-toggle"
                   onClick={() =>
                     setShowConfirmPassword(
-                      (current) => !current,
+                      (current) =>
+                        !current,
                     )
                   }
                   aria-label={
@@ -300,13 +533,21 @@ function RegisterPage() {
                   }
                 >
                   {showConfirmPassword ? (
-                    <EyeOff size={18} />
+                    <EyeOff
+                      size={18}
+                    />
                   ) : (
-                    <Eye size={18} />
+                    <Eye
+                      size={18}
+                    />
                   )}
                 </button>
+
               </div>
+
             </div>
+
+            {/* Error */}
 
             {error && (
               <div className="auth-error">
@@ -314,29 +555,44 @@ function RegisterPage() {
               </div>
             )}
 
+            {/* Submit */}
+
             <button
               type="submit"
-              className="auth-submit-button"
-              disabled={isSubmitting}
+              className="auth-primary-button"
+              disabled={
+                isSubmitting
+              }
             >
               {isSubmitting
                 ? "Creating account..."
                 : "Create Account"}
             </button>
+
           </form>
 
-          <p className="auth-signup-text">
-            Already have an account?{" "}
+          <p className="auth-switch">
+
+            Already have an
+            account?{" "}
+
             <button
               type="button"
-              className="auth-inline-link"
-              onClick={() => navigate("/login")}
+              onClick={() =>
+                navigate(
+                  "/login",
+                )
+              }
             >
               Sign in
             </button>
+
           </p>
+
         </div>
+
       </section>
+
     </div>
   );
 }
