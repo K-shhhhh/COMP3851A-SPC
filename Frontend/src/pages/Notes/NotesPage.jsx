@@ -4,6 +4,8 @@ import {
   useState,
 } from "react";
 
+import { Link } from "react-router-dom";
+
 import {
   AlertCircle,
   Eye,
@@ -657,9 +659,16 @@ function NotesPage() {
             <h2>No notes yet</h2>
 
             <p>
-              Upload a PDF and it will
-              appear here.
+              Upload your first study note and it will
+              appear here once processing begins.
             </p>
+
+            <Link
+            to="/notes/upload"
+            className="notes-empty-action"
+            >
+              Upload your first note
+            </Link>
           </div>
         ) : (
           <div className="notes-list">
