@@ -1,4 +1,7 @@
-"""Create the FastAPI application and mount shared handlers and routers."""
+"""Create the FastAPI application and manage shared infrastructure."""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -11,6 +14,23 @@ from app.api.error_handlers import (
     api_error_handler,
     validation_error_handler,
 )
+
+from app.core.database import database
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Verify PostgreSQL at startup and dispose its pool at shutdown."""
+
+    logger.info("Connecting to PostgreSQL...")
+    await database.connect()
+
+    try:
+        yield
+    finally:
+        logger.info("Closing PostgreSQL connection pool...")
+        await database.disconnect()
+
 
 def create_application() -> FastAPI:
     """Create and configure the Smart Peer Companion FastAPI application."""
@@ -27,6 +47,7 @@ def create_application() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     # Convert ApiError exceptions into the agreed JSON error contract.

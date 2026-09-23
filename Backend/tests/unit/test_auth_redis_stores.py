@@ -17,6 +17,9 @@ from app.domains.auth.infrastructure.redis_revocation_store import (
 from app.domains.auth.infrastructure.redis_ticket_store import (
     RedisWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_repository import (
+    InMemoryAuthRepository,
+)
 
 
 class FakeAsyncRedis:
@@ -91,10 +94,17 @@ def test_expired_token_is_not_added_to_redis() -> None:
     asyncio.run(scenario())
 
 
-def test_dependency_injection_still_uses_local_memory_stores() -> None:
-    service = get_auth_service()
+def test_auth_service_still_uses_local_token_stores() -> None:
+    """Redis migration is deferred; tickets and revocations remain local."""
 
-    assert isinstance(service.ticket_store, InMemoryWebSocketTicketStore)
+    service = get_auth_service(
+        repository=InMemoryAuthRepository(),
+    )
+
+    assert isinstance(
+        service.ticket_store,
+        InMemoryWebSocketTicketStore,
+    )
     assert isinstance(
         service.revocation_store,
         InMemoryAccessTokenRevocationStore,

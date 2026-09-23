@@ -1,8 +1,8 @@
 """Construct application services and enforce request authentication.
 
-This module is the backend composition boundary. It currently injects local
-in-memory authentication stores; staging must select PostgreSQL and Redis
-implementations when those integrations are ready.
+This module is the backend composition boundary. Persistent domain data uses
+PostgreSQL while short-lived ticket and revocation data remains local until
+the Redis deployment switch is enabled.
 """
 from collections.abc import Callable
 
@@ -20,13 +20,18 @@ from app.core.security import (
     AccessTokenExpiredError,
     decode_access_token_claims,
 )
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db_session
+from app.domains.auth.infrastructure.repository import (
+    PostgreSQLAuthRepository,
+)
+
 from app.domains.auth.domain.models import User
 
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.repository import AuthRepository
-from app.domains.auth.infrastructure.memory_repository import (
-    InMemoryAuthRepository,
-)
 from app.domains.auth.infrastructure.memory_revocation_store import (
     InMemoryAccessTokenRevocationStore,
 )
@@ -49,43 +54,22 @@ from app.domains.notes.infrastructure.local_storage import (
 from app.domains.notes.infrastructure.rag_processing import (
     KrishAttachmentProcessingDispatcher,
 )
-from app.domains.notes.infrastructure.memory_repository import (
-    InMemoryAttachmentRepository,
+from app.domains.notes.infrastructure.repository import (
+    PostgreSQLAttachmentRepository,
 )
 
 from app.domains.chats.application.services import ChatService
 from app.domains.chats.domain.answering import ChatAnswerGenerator
 from app.domains.chats.domain.repository import ChatRepository
 from app.domains.chats.domain.retrieval import ReadyNoteChunkRepository
-from app.domains.chats.infrastructure.memory_answering import (
-    LocalGroundedAnswerGenerator,
+from app.domains.chats.infrastructure.repository import (
+    PostgreSQLChatRepository,
 )
-from app.domains.chats.infrastructure.memory_repository import (
-    InMemoryChatRepository,
-)
-from app.domains.chats.infrastructure.memory_retrieval import (
-    InMemoryReadyNoteChunkRepository,
+from app.domains.chats.infrastructure.retrieval import (
+    PostgreSQLReadyNoteChunkRepository,
 )
 
-# ---------- Real integration switch template ----------
-#
-# Keep these imports commented while the PostgreSQL and RAG adapters are only
-# placeholders. Uncomment them after the database developer and Krish have
-# implemented the constructors and their integration tests pass.
-#
-# from app.core.database import async_session_factory
-# from app.domains.auth.infrastructure.repository import (
-#     PostgreSQLAuthRepository,
-# )
-# from app.domains.notes.infrastructure.repository import (
-#     PostgreSQLAttachmentRepository,
-# )
-# from app.domains.chats.infrastructure.repository import (
-#     PostgreSQLChatRepository,
-# )
-# from app.domains.chats.infrastructure.retrieval import (
-#     PostgreSQLReadyNoteChunkRepository,
-# )
+# ---------- Remaining integration switch templates ----------
 # from app.domains.chats.infrastructure.rag_answering import (
 #     KrishRagAnswerGenerator,
 # )
@@ -116,9 +100,7 @@ from app.domains.administration.infrastructure.repository import PostgreSQLAdmin
 
 # ---------- Auth ----------
 
-# The same in-memory instance must be reused between requests.
-# Creating a new repository for every request would erase registered users.
-_local_auth_repository = InMemoryAuthRepository()
+# Ticket and revocation stores remain process-local until Redis is enabled.
 _local_websocket_ticket_store = InMemoryWebSocketTicketStore()
 _local_access_token_revocation_store = (
     InMemoryAccessTokenRevocationStore()
@@ -128,25 +110,25 @@ _local_access_token_revocation_store = (
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_auth_repository() -> AuthRepository:
+def get_auth_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> AuthRepository:
+    """Return a PostgreSQL repository using the request-scoped session."""
+
+    return PostgreSQLAuthRepository(session)
+
+
+def get_auth_service(
+    repository: AuthRepository = Depends(get_auth_repository),
+) -> AuthService:
+    """Construct authentication use cases with PostgreSQL persistence.
+
+    WebSocket tickets and logout revocations remain in local memory until the
+    Redis integration is enabled in a later step.
     """
-    Return the current authentication repository.
-
-    Replace this with the PostgreSQL implementation before staging.
-    """
-
-    # REAL DATABASE SWITCH:
-    # return PostgreSQLAuthRepository(
-    #     session_factory=async_session_factory,
-    # )
-    return _local_auth_repository
-
-
-def get_auth_service() -> AuthService:
-    """Construct an authentication service using the active local adapters."""
 
     return AuthService(
-        repository=get_auth_repository(),
+        repository=repository,
         ticket_store=_local_websocket_ticket_store,
         revocation_store=_local_access_token_revocation_store,
     )
@@ -275,30 +257,23 @@ def get_user_service() -> UserService:
 
 # ---------- Notes ----------
 
-# Shared in-memory retrieval is declared here because the temporary demo
-# processor writes chunks that the personal Chat service later reads.
-_local_ready_note_chunk_repository = InMemoryReadyNoteChunkRepository()
-_local_attachment_repository = InMemoryAttachmentRepository()
 _local_attachment_storage: AttachmentStorage | None = None
-_local_attachment_processing_dispatcher = (
-    KrishAttachmentProcessingDispatcher(
-        attachment_repository=_local_attachment_repository,
-        chunk_repository=_local_ready_note_chunk_repository,
-    )
-)
 
 
-def get_attachment_repository() -> AttachmentRepository:
-    """Return temporary local metadata storage for endpoint development.
+def get_attachment_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> AttachmentRepository:
+    """Return request-scoped PostgreSQL attachment persistence."""
 
-    Kaung's PostgreSQL adapter must replace this before staging.
-    """
+    return PostgreSQLAttachmentRepository(session)
 
-    # REAL DATABASE SWITCH:
-    # return PostgreSQLAttachmentRepository(
-    #     session_factory=async_session_factory,
-    # )
-    return _local_attachment_repository
+
+def get_ready_note_chunk_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> ReadyNoteChunkRepository:
+    """Return PostgreSQL persistence for ready, authorized note chunks."""
+
+    return PostgreSQLReadyNoteChunkRepository(session)
 
 
 def get_attachment_storage() -> AttachmentStorage:
@@ -319,50 +294,46 @@ def get_attachment_storage() -> AttachmentStorage:
 
 
 def get_attachment_processing_dispatcher(
+    attachment_repository: AttachmentRepository = Depends(
+        get_attachment_repository
+    ),
+    chunk_repository: ReadyNoteChunkRepository = Depends(
+        get_ready_note_chunk_repository
+    ),
 ) -> AttachmentProcessingDispatcher:
-    """Return Krish's real processing dispatcher (extraction, chunking,
-    embedding, safety-checking, captioning -- the full pipeline)."""
+    """Return the synchronous RAG processor with persistent adapters."""
 
-    return _local_attachment_processing_dispatcher
+    return KrishAttachmentProcessingDispatcher(
+        attachment_repository=attachment_repository,
+        chunk_repository=chunk_repository,
+    )
 
 
-def get_note_service() -> NoteService:
+def get_note_service(
+    repository: AttachmentRepository = Depends(get_attachment_repository),
+    storage: AttachmentStorage = Depends(get_attachment_storage),
+    processing_dispatcher: AttachmentProcessingDispatcher = Depends(
+        get_attachment_processing_dispatcher
+    ),
+) -> NoteService:
     """Construct Notes use cases from the active adapters."""
 
     return NoteService(
-        repository=get_attachment_repository(),
-        storage=get_attachment_storage(),
-        processing_dispatcher=get_attachment_processing_dispatcher(),
+        repository=repository,
+        storage=storage,
+        processing_dispatcher=processing_dispatcher,
         maximum_file_size_bytes=settings.MAX_NOTE_UPLOAD_SIZE_BYTES,
     )
 
 
 # ---------- Personal Chat ----------
 
-# These shared local adapters deliberately keep endpoint-development state in
-# one process. PostgreSQL and Krish's RAG adapter replace them for integration.
-_local_chat_repository = InMemoryChatRepository()
-_local_chat_answer_generator = LocalGroundedAnswerGenerator()
+def get_chat_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> ChatRepository:
+    """Return request-scoped PostgreSQL personal-chat persistence."""
 
-
-def get_chat_repository() -> ChatRepository:
-    """Return temporary local personal-chat persistence."""
-
-    # REAL DATABASE SWITCH:
-    # return PostgreSQLChatRepository(
-    #     session_factory=async_session_factory,
-    # )
-    return _local_chat_repository
-
-
-def get_ready_note_chunk_repository() -> ReadyNoteChunkRepository:
-    """Return temporary authorized-chunk storage for contract testing."""
-
-    # REAL DATABASE/PGVECTOR SWITCH:
-    # return PostgreSQLReadyNoteChunkRepository(
-    #     session_factory=async_session_factory,
-    # )
-    return _local_ready_note_chunk_repository
+    return PostgreSQLChatRepository(session)
 
 
 def get_chat_answer_generator() -> ChatAnswerGenerator:
@@ -371,13 +342,21 @@ def get_chat_answer_generator() -> ChatAnswerGenerator:
     return KrishRagAnswerGenerator()
 
 
-def get_chat_service() -> ChatService:
+def get_chat_service(
+    repository: ChatRepository = Depends(get_chat_repository),
+    chunk_repository: ReadyNoteChunkRepository = Depends(
+        get_ready_note_chunk_repository
+    ),
+    answer_generator: ChatAnswerGenerator = Depends(
+        get_chat_answer_generator
+    ),
+) -> ChatService:
     """Construct personal-chat use cases from the active adapters."""
 
     return ChatService(
-        repository=get_chat_repository(),
-        chunk_repository=get_ready_note_chunk_repository(),
-        answer_generator=get_chat_answer_generator(),
+        repository=repository,
+        chunk_repository=chunk_repository,
+        answer_generator=answer_generator,
         maximum_question_length=settings.MAX_CHAT_QUESTION_LENGTH,
     )
 

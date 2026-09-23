@@ -25,7 +25,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
         VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-}
-        VITE_USE_MOCKS: ${VITE_USE_MOCKS:-true}
+        VITE_USE_MOCKS: ${VITE_USE_MOCKS:-false}
         VITE_MOCK_DELAY_MS: ${VITE_MOCK_DELAY_MS:-800}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
@@ -129,6 +129,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-pgvector.sql:ro
+      - ./Backend/migrations/004_create_initial_test_schema.sql:/docker-entrypoint-initdb.d/02-application-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spc_backend} -d ${POSTGRES_DB:-spc}"]
       interval: 10s

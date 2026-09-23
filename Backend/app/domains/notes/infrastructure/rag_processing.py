@@ -17,6 +17,7 @@ database does the chunk lookup for chat, not this code.
 
 import asyncio
 import logging
+from typing import Any
 
 from app.domains.notes.domain.processing import AttachmentProcessingDispatcher
 from app.domains.notes.domain.repository import AttachmentRepository
@@ -24,10 +25,6 @@ from app.domains.notes.domain.models import NoteProcessingStatus
 
 from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.chats.domain.models import ChatSource
-from app.domains.chats.infrastructure.memory_retrieval import (
-    InMemoryReadyNoteChunkRepository,
-)
-
 from app.ai.rag.parser import extract_structured_pdf
 from app.ai.rag.chunking import chunk_documents
 from app.ai.rag.embedding import embed_chunks
@@ -42,7 +39,7 @@ class KrishAttachmentProcessingDispatcher(AttachmentProcessingDispatcher):
         self,
         *,
         attachment_repository: AttachmentRepository,
-        chunk_repository: InMemoryReadyNoteChunkRepository,
+        chunk_repository: Any,
     ) -> None:
         self._attachment_repository = attachment_repository
         self._chunk_repository = chunk_repository
@@ -98,6 +95,19 @@ class KrishAttachmentProcessingDispatcher(AttachmentProcessingDispatcher):
     async def _publish_chunks(self, attachment_id: int, embedded_chunks: list[dict]) -> None:
         """Convert embedded chunks into GroundingChunks and publish them for
         this one attachment, without disturbing the user's other notes."""
+        database_writer = getattr(
+            self._chunk_repository,
+            "replace_embedded_attachment_chunks",
+            None,
+        )
+        if callable(database_writer):
+            await database_writer(
+                attachment_id=attachment_id,
+                chunks=embedded_chunks,
+            )
+            return
+
+        # Compatibility path retained for isolated in-memory unit tests.
         attachment = await self._attachment_repository.get_attachment_by_id(attachment_id)
         if attachment is None:
             raise ValueError(f"attachment {attachment_id} not found after processing")
