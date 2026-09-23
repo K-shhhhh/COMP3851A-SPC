@@ -5,9 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.api.dependencies import get_auth_service
-from app.domains.auth.infrastructure.memory_repository import (
-    InMemoryAuthRepository,
-)
 from app.domains.auth.infrastructure.memory_revocation_store import (
     InMemoryAccessTokenRevocationStore,
 )
@@ -19,6 +16,9 @@ from app.domains.auth.infrastructure.redis_revocation_store import (
 )
 from app.domains.auth.infrastructure.redis_ticket_store import (
     RedisWebSocketTicketStore,
+)
+from app.domains.auth.infrastructure.memory_repository import (
+    InMemoryAuthRepository,
 )
 
 
@@ -95,11 +95,16 @@ def test_expired_token_is_not_added_to_redis() -> None:
 
 
 def test_auth_service_still_uses_local_token_stores() -> None:
+    """Redis migration is deferred; tickets and revocations remain local."""
+
     service = get_auth_service(
         repository=InMemoryAuthRepository(),
     )
 
-    assert isinstance(service.ticket_store, InMemoryWebSocketTicketStore)
+    assert isinstance(
+        service.ticket_store,
+        InMemoryWebSocketTicketStore,
+    )
     assert isinstance(
         service.revocation_store,
         InMemoryAccessTokenRevocationStore,
