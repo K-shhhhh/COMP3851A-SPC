@@ -10,6 +10,11 @@ celery_app = Celery(
     "spc",
     broker=os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"),
     backend=os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1"),
+    # Tells the worker process which modules to import at startup, so any
+    # @celery_app.task defined there actually gets registered. Without this,
+    # the file can exist and be perfectly correct, but the worker never
+    # knows the task exists, and .delay() calls just queue forever unread.
+    include=["app.workers.attachment.processing_worker"],
 )
 
 celery_app.conf.update(

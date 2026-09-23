@@ -51,8 +51,8 @@ from app.domains.notes.domain.storage import AttachmentStorage
 from app.domains.notes.infrastructure.local_storage import (
     LocalAttachmentStorage,
 )
-from app.domains.notes.infrastructure.rag_processing import (
-    KrishAttachmentProcessingDispatcher,
+from app.domains.notes.infrastructure.celery_processing import (
+    CeleryAttachmentProcessingDispatcher,
 )
 from app.domains.notes.infrastructure.repository import (
     PostgreSQLAttachmentRepository,
@@ -294,19 +294,10 @@ def get_attachment_storage() -> AttachmentStorage:
 
 
 def get_attachment_processing_dispatcher(
-    attachment_repository: AttachmentRepository = Depends(
-        get_attachment_repository
-    ),
-    chunk_repository: ReadyNoteChunkRepository = Depends(
-        get_ready_note_chunk_repository
-    ),
 ) -> AttachmentProcessingDispatcher:
-    """Return the synchronous RAG processor with persistent adapters."""
+    """Queue attachment processing for the PostgreSQL-aware Celery worker."""
 
-    return KrishAttachmentProcessingDispatcher(
-        attachment_repository=attachment_repository,
-        chunk_repository=chunk_repository,
-    )
+    return CeleryAttachmentProcessingDispatcher()
 
 
 def get_note_service(

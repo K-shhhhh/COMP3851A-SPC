@@ -71,6 +71,37 @@ class PostgreSQLChatRepository(ChatRepository):
             .limit(1)
         )
 
+    async def _unique_channel_name(
+        self,
+        *,
+        group_id: uuid.UUID,
+        requested_name: str,
+        exclude_channel_id: uuid.UUID | None = None,
+    ) -> str:
+        """Return a display title that satisfies the active-name constraint."""
+
+        statement = select(Channel.channel_name).where(
+            Channel.group_id == group_id,
+            Channel.deleted_at.is_(None),
+        )
+        if exclude_channel_id is not None:
+            statement = statement.where(
+                Channel.channel_id != exclude_channel_id
+            )
+        existing_names = set((await self.session.scalars(statement)).all())
+        if requested_name not in existing_names:
+            return requested_name
+
+        sequence = 2
+        while True:
+            suffix = f" ({sequence})"
+            candidate = (
+                requested_name[: 100 - len(suffix)].rstrip() + suffix
+            )
+            if candidate not in existing_names:
+                return candidate
+            sequence += 1
+
     async def create_chat(self, *, owner_id: str, title: str) -> PersonalChat:
         owner_uuid = self._parse_uuid(owner_id)
         if owner_uuid is None:
@@ -87,8 +118,12 @@ class PostgreSQLChatRepository(ChatRepository):
             raise LookupError("personal AI Assistant group not found")
 
         now = datetime.now(timezone.utc)
+        unique_title = await self._unique_channel_name(
+            group_id=personal_group.group_id,
+            requested_name=title,
+        )
         channel = Channel(
-            channel_name=title,
+            channel_name=unique_title,
             group_id=personal_group.group_id,
             description="Personal AI Assistant conversation",
             created_by=owner_uuid,
@@ -198,7 +233,11 @@ class PostgreSQLChatRepository(ChatRepository):
         channel = await self.session.get(Channel, uuid.UUID(chat_id))
         if channel is None:
             return None
-        channel.channel_name = title
+        channel.channel_name = await self._unique_channel_name(
+            group_id=channel.group_id,
+            requested_name=title,
+            exclude_channel_id=channel.channel_id,
+        )
         channel.last_updated_at = datetime.now(timezone.utc)
         await self.session.commit()
         return await self.get_owned_chat(chat_id=chat_id, owner_id=owner_id)

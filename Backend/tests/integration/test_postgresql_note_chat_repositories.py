@@ -117,6 +117,12 @@ async def test_note_chunks_and_personal_chat_persist_end_to_end() -> None:
                 owner_id=user.id,
                 title="Database Revision",
             )
+            duplicate_title_chat = await chat_repository.create_chat(
+                owner_id=user.id,
+                title="Database Revision",
+            )
+            assert duplicate_title_chat.title == "Database Revision (2)"
+
             user_message = await chat_repository.create_message(
                 chat_id=chat.chat_id,
                 role=ChatMessageRole.USER,
