@@ -1,22 +1,37 @@
+/*
+ * Smart Peer Companion
+ * Study Groups
+ */
+
+/* =========================================================
+   MAIN WORKSPACE
+   ========================================================= */
+
 .study-groups-page {
-  height: calc(100vh - 140px);
+  width: 100%;
+
+  height: calc(100vh - 146px);
+  height: calc(100dvh - 146px);
+
   min-height: 0;
 
   display: grid;
-  grid-template-columns: 280px 230px minmax(0, 1fr);
 
-  background: var(--spc-bg);
-  color: var(--spc-text);
-
-  border: 1px solid var(--spc-border);
-  border-radius: 12px;
+  grid-template-columns:
+    280px
+    230px
+    minmax(0, 1fr);
 
   overflow: hidden;
 
-  transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    border-color 0.2s ease;
+  background: var(--spc-surface);
+
+  border: 1px solid var(--spc-border);
+  border-radius: var(--spc-radius-lg);
+
+  box-shadow: var(--spc-shadow-sm);
+
+  color: var(--spc-text);
 }
 
 /* =========================================================
@@ -25,55 +40,65 @@
 
 .groups-panel {
   min-height: 0;
-  padding: 20px 16px;
 
-  background: var(--spc-surface);
-  border-right: 1px solid var(--spc-border);
+  padding: 17px 14px;
 
   overflow-y: auto;
 
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease;
+  background: var(--spc-surface);
+
+  border-right: 1px solid var(--spc-border-soft);
 }
 
-/* Public / Private */
+/* =========================================================
+   PUBLIC / PRIVATE TOGGLE
+   ========================================================= */
 
 .group-type-toggle {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 4px;
+
+  margin-bottom: 14px;
 
   padding: 4px;
-  margin-bottom: 16px;
 
   background: var(--spc-input-bg);
+
   border: 1px solid var(--spc-border-soft);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .group-type-toggle button {
+  min-height: 36px;
+
   display: flex;
   align-items: center;
   justify-content: center;
+
   gap: 6px;
 
-  padding: 8px 10px;
+  padding: 0 10px;
 
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
 
   background: transparent;
+
   color: var(--spc-muted);
 
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
 
   cursor: pointer;
 
   transition:
     background 0.15s ease,
-    color 0.15s ease;
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .group-type-toggle button:hover {
@@ -82,63 +107,95 @@
 
 .group-type-toggle button.active {
   background: var(--spc-surface);
+
   color: var(--spc-purple);
 
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--spc-shadow-sm);
 }
 
-/* Create group */
+/* =========================================================
+   CREATE GROUP
+   ========================================================= */
 
 .create-group-button {
   width: 100%;
+  min-height: 43px;
 
   display: flex;
   align-items: center;
   justify-content: center;
+
   gap: 7px;
 
-  padding: 10px;
   margin-bottom: 14px;
 
   border: none;
-  border-radius: 7px;
+  border-radius: 11px;
 
-  background: var(--spc-purple);
+  background:
+    linear-gradient(
+      135deg,
+      var(--spc-purple) 0%,
+      var(--spc-purple-strong) 100%
+    );
+
   color: #ffffff;
 
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 650;
 
   cursor: pointer;
 
-  transition: background 0.15s ease;
+  box-shadow:
+    0 8px 20px rgba(112, 71, 235, 0.16);
+
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .create-group-button:hover {
-  background: var(--spc-purple-hover);
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 11px 24px rgba(112, 71, 235, 0.22);
 }
 
-/* Search */
+/* =========================================================
+   GROUP SEARCH
+   ========================================================= */
 
 .group-search {
-  height: 38px;
+  height: 40px;
 
   display: flex;
   align-items: center;
+
   gap: 8px;
 
-  padding: 0 11px;
   margin-bottom: 14px;
 
-  border: 1px solid var(--spc-border);
-  border-radius: 7px;
+  padding: 0 11px;
 
   background: var(--spc-input-bg);
+
+  border: 1px solid var(--spc-border);
+  border-radius: 10px;
+
   color: var(--spc-muted);
+
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .group-search:focus-within {
+  background: var(--spc-surface);
+
   border-color: var(--spc-purple);
+
+  box-shadow: var(--spc-focus-ring);
 }
 
 .group-search input {
@@ -149,31 +206,36 @@
   outline: none;
 
   background: transparent;
+
   color: var(--spc-text);
 
-  font-size: 13px;
+  font-size: 11px;
 }
 
 .group-search input::placeholder {
   color: var(--spc-muted-light);
 }
 
+/* =========================================================
+   GROUP LIST
+   ========================================================= */
+
 .groups-list-label {
-  margin: 16px 4px 8px;
+  margin: 17px 6px 8px;
 
   color: var(--spc-muted-light);
 
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
+
   letter-spacing: 0.08em;
 }
-
-/* Group list */
 
 .groups-list {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+
+  gap: 4px;
 }
 
 .group-card {
@@ -181,43 +243,54 @@
 
   display: flex;
   align-items: flex-start;
+
   gap: 10px;
 
-  padding: 11px;
-
-  border: none;
-  border-radius: 8px;
-
-  background: transparent;
+  padding: 10px;
 
   text-align: left;
+
+  border: 1px solid transparent;
+  border-radius: 10px;
+
+  background: transparent;
 
   cursor: pointer;
 
   transition:
     background 0.15s ease,
-    color 0.15s ease;
+    border-color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .group-card:hover {
   background: var(--spc-surface-hover);
+
+  transform: translateX(1px);
 }
 
 .group-card.active {
   background: var(--spc-purple-soft);
+
+  border-color:
+    color-mix(
+      in srgb,
+      var(--spc-purple) 15%,
+      transparent
+    );
 }
 
 .group-card-icon {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
 
-  flex: 0 0 32px;
+  flex: 0 0 34px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  border-radius: 7px;
+  border-radius: 9px;
 
   background: var(--spc-purple-soft);
   color: var(--spc-purple);
@@ -233,61 +306,62 @@
 .group-card-info strong {
   overflow: hidden;
 
-  color: var(--spc-text);
+  color: var(--spc-heading);
 
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 650;
 
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .group-card-info > span {
-  margin-top: 2px;
+  margin-top: 3px;
 
   color: var(--spc-muted);
 
-  font-size: 10px;
+  font-size: 9px;
 }
 
 .group-card-meta {
   display: flex;
-  gap: 4px;
+
+  gap: 5px;
 
   margin-top: 5px;
 
   color: var(--spc-muted-light);
 
-  font-size: 9px;
+  font-size: 8px;
 }
 
 /* =========================================================
-   GROUP DETAILS
+   GROUP DETAILS PANEL
    ========================================================= */
 
 .group-details-panel {
   min-height: 0;
 
-  background: var(--spc-surface);
-
-  border-right: 1px solid var(--spc-border);
-
   overflow-y: auto;
 
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease;
+  background: var(--spc-surface-soft);
+
+  border-right: 1px solid var(--spc-border-soft);
 }
 
-/* Selected group */
+/* =========================================================
+   SELECTED GROUP HEADER
+   ========================================================= */
 
 .selected-group-heading {
-  min-height: 68px;
+  min-height: 70px;
 
   display: flex;
   align-items: center;
 
-  padding: 0 18px;
+  padding: 0 17px;
+
+  background: var(--spc-surface);
 
   border-bottom: 1px solid var(--spc-border-soft);
 }
@@ -310,21 +384,27 @@
 }
 
 .selected-group-heading strong {
+  overflow: hidden;
+
   color: var(--spc-heading);
 
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 650;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .selected-group-heading span {
-  margin-top: 3px;
+  margin-top: 4px;
 
   color: var(--spc-muted);
 
-  font-size: 10px;
+  font-size: 9px;
 }
 
 /* =========================================================
-   GROUP ACTIONS
+   GROUP + CHANNEL ACTION BUTTONS
    ========================================================= */
 
 .group-actions-wrapper,
@@ -357,43 +437,46 @@
   width: 30px;
   height: 30px;
 
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .group-actions-button:hover,
 .channel-actions-button:hover,
 .add-channel-small-button:hover {
-  background: var(--spc-surface-hover);
+  background: var(--spc-purple-soft);
   color: var(--spc-purple);
 }
 
-/* Dropdown menus */
+/* =========================================================
+   DROPDOWN MENUS
+   ========================================================= */
 
 .group-actions-menu,
 .channel-actions-menu {
   position: absolute;
+
   right: 0;
 
   z-index: 50;
 
-  width: 155px;
+  width: 160px;
 
   padding: 5px;
 
-  border: 1px solid var(--spc-border);
-  border-radius: 8px;
-
   background: var(--spc-surface);
 
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--spc-border);
+  border-radius: 10px;
+
+  box-shadow: var(--spc-shadow-lg);
 }
 
 .group-actions-menu {
-  top: 34px;
+  top: 35px;
 }
 
 .channel-actions-menu {
-  top: 27px;
+  top: 29px;
 }
 
 .group-actions-menu button,
@@ -403,12 +486,13 @@
   padding: 8px 9px;
 
   border: none;
-  border-radius: 5px;
+  border-radius: 7px;
 
   background: transparent;
+
   color: var(--spc-text);
 
-  font-size: 10px;
+  font-size: 9px;
 
   text-align: left;
 
@@ -422,6 +506,7 @@
 .group-actions-menu button:hover,
 .channel-actions-menu button:hover {
   background: var(--spc-surface-hover);
+
   color: var(--spc-purple);
 }
 
@@ -433,6 +518,7 @@
 .group-actions-menu button.danger:hover,
 .channel-actions-menu button.danger:hover {
   background: var(--spc-danger-bg);
+
   color: var(--spc-danger);
 }
 
@@ -442,7 +528,7 @@
 
 .channels-section,
 .members-section {
-  padding: 18px 12px 10px;
+  padding: 17px 12px 10px;
 }
 
 .channels-heading {
@@ -459,31 +545,33 @@
 
   color: var(--spc-muted-light);
 
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
 
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
 }
 
 .add-channel-small-button {
-  width: 24px;
-  height: 24px;
+  width: 25px;
+  height: 25px;
 
-  border-radius: 5px;
+  border-radius: 7px;
 }
 
-/* Individual channel */
+/* Channel */
 
 .channel-row {
   position: relative;
 
   width: 100%;
-  min-height: 34px;
+  min-height: 35px;
 
   display: flex;
   align-items: center;
 
-  border-radius: 6px;
+  margin-bottom: 2px;
+
+  border-radius: 8px;
 
   color: var(--spc-muted);
 
@@ -498,17 +586,17 @@
 
 .channel-row.active {
   background: var(--spc-purple-soft);
+
   color: var(--spc-purple);
 
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .channel-main-button {
   min-width: 0;
-
   flex: 1;
 
-  height: 34px;
+  height: 35px;
 
   display: flex;
   align-items: center;
@@ -530,7 +618,7 @@
 .channel-main-button span {
   overflow: hidden;
 
-  font-size: 11px;
+  font-size: 10px;
 
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -540,18 +628,21 @@
   width: 27px;
   height: 27px;
 
-  margin-right: 4px;
+  margin-right: 3px;
 
-  border-radius: 5px;
+  border-radius: 7px;
 
   opacity: 0;
 }
 
-.channel-row:hover .channel-actions-button {
+.channel-row:hover
+  .channel-actions-button {
   opacity: 1;
 }
 
-.channel-actions-wrapper:has(.channel-actions-menu)
+.channel-actions-wrapper:has(
+  .channel-actions-menu
+)
   .channel-actions-button {
   opacity: 1;
 }
@@ -563,7 +654,7 @@
 
   color: var(--spc-muted-light);
 
-  font-size: 9px;
+  font-size: 8px;
 }
 
 /* =========================================================
@@ -571,7 +662,7 @@
    ========================================================= */
 
 .members-section {
-  margin-top: 8px;
+  margin-top: 7px;
 
   border-top: 1px solid var(--spc-border-soft);
 }
@@ -582,11 +673,11 @@
 
   gap: 9px;
 
-  padding: 6px 7px;
+  padding: 7px;
 
   color: var(--spc-text);
 
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .member-avatar,
@@ -604,16 +695,16 @@
 }
 
 .member-avatar {
-  width: 27px;
-  height: 27px;
+  width: 28px;
+  height: 28px;
 
-  flex: 0 0 27px;
+  flex: 0 0 28px;
 
-  font-size: 9px;
+  font-size: 8px;
 }
 
 /* =========================================================
-   CHAT
+   GROUP CHAT
    ========================================================= */
 
 .group-chat {
@@ -623,15 +714,15 @@
   display: flex;
   flex-direction: column;
 
-  background: var(--spc-surface);
-
   overflow: hidden;
 
-  transition: background 0.2s ease;
+  background: var(--spc-surface);
 }
 
+/* Header */
+
 .group-chat-header {
-  height: 68px;
+  height: 70px;
 
   flex-shrink: 0;
 
@@ -640,46 +731,60 @@
 
   gap: 7px;
 
-  padding: 0 24px;
+  padding: 0 23px;
 
-  border-bottom: 1px solid var(--spc-border);
+  background: var(--spc-surface);
+
+  border-bottom: 1px solid var(--spc-border-soft);
 
   color: var(--spc-heading);
 }
 
 .group-chat-header svg {
-  color: var(--spc-muted);
+  color: var(--spc-purple);
 }
 
 .group-chat-header strong {
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .group-chat-header > span {
-  padding-left: 10px;
   margin-left: 5px;
+
+  padding-left: 11px;
 
   border-left: 1px solid var(--spc-border);
 
   color: var(--spc-muted);
 
-  font-size: 10px;
+  font-size: 9px;
 }
 
-/* Messages */
+/* =========================================================
+   GROUP CHAT MESSAGES
+   ========================================================= */
 
 .group-chat-messages {
   flex: 1;
-
   min-height: 0;
-
-  padding: 24px 28px;
-
-  background: var(--spc-surface);
 
   overflow-y: auto;
 
   overscroll-behavior: contain;
+
+  padding: 26px 30px;
+
+  background:
+    linear-gradient(
+      180deg,
+      var(--spc-surface-soft) 0%,
+      color-mix(
+        in srgb,
+        var(--spc-purple-soft) 7%,
+        var(--spc-surface-soft)
+      ) 100%
+    );
 }
 
 .group-message {
@@ -692,16 +797,26 @@
 }
 
 .message-avatar {
-  width: 34px;
-  height: 34px;
+  width: 35px;
+  height: 35px;
 
-  flex: 0 0 34px;
+  flex: 0 0 35px;
 
-  font-size: 10px;
+  font-size: 9px;
+
+  border:
+    1px solid
+    color-mix(
+      in srgb,
+      var(--spc-purple) 12%,
+      var(--spc-border)
+    );
 }
 
 .message-content {
   min-width: 0;
+
+  max-width: 720px;
 }
 
 .message-heading {
@@ -714,13 +829,14 @@
 .message-heading strong {
   color: var(--spc-heading);
 
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .message-heading span {
   color: var(--spc-muted-light);
 
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .message-content p {
@@ -728,13 +844,15 @@
 
   color: var(--spc-text);
 
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: 10px;
+  line-height: 1.6;
 
   overflow-wrap: anywhere;
 }
 
-/* Message input */
+/* =========================================================
+   MESSAGE INPUT
+   ========================================================= */
 
 .group-message-form {
   flex-shrink: 0;
@@ -742,36 +860,41 @@
   display: flex;
   align-items: center;
 
-  gap: 10px;
+  gap: 9px;
 
-  padding: 15px 24px 18px;
-
-  border-top: 1px solid var(--spc-border-soft);
+  padding:
+    14px
+    22px
+    16px;
 
   background: var(--spc-surface);
+
+  border-top: 1px solid var(--spc-border-soft);
 }
 
 .group-message-form input {
+  min-width: 0;
   flex: 1;
 
-  min-width: 0;
-  height: 40px;
+  height: 44px;
 
   padding: 0 14px;
-
-  border: 1px solid var(--spc-border);
-  border-radius: 7px;
 
   outline: none;
 
   color: var(--spc-text);
+
   background: var(--spc-input-bg);
 
-  font-size: 11px;
+  border: 1px solid var(--spc-border);
+  border-radius: 11px;
+
+  font-size: 10px;
 
   transition:
     border-color 0.15s ease,
-    background 0.15s ease;
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .group-message-form input::placeholder {
@@ -779,30 +902,48 @@
 }
 
 .group-message-form input:focus {
+  background: var(--spc-surface);
+
   border-color: var(--spc-purple);
+
+  box-shadow: var(--spc-focus-ring);
 }
 
 .group-message-form button {
-  height: 40px;
+  height: 44px;
 
   padding: 0 18px;
 
   border: none;
-  border-radius: 7px;
+  border-radius: 11px;
 
-  background: var(--spc-purple);
+  background:
+    linear-gradient(
+      135deg,
+      var(--spc-purple) 0%,
+      var(--spc-purple-strong) 100%
+    );
+
   color: #ffffff;
 
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 650;
 
   cursor: pointer;
 
-  transition: background 0.15s ease;
+  box-shadow:
+    0 7px 18px rgba(112, 71, 235, 0.14);
+
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .group-message-form button:hover {
-  background: var(--spc-purple-hover);
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 10px 22px rgba(112, 71, 235, 0.2);
 }
 
 /* =========================================================
@@ -817,39 +958,50 @@
   align-items: center;
   justify-content: center;
 
-  color: var(--spc-muted);
-
   text-align: center;
 }
 
+/* Group-list empty */
+
 .groups-empty {
-  gap: 6px;
+  gap: 7px;
 
-  padding: 45px 15px;
+  margin-top: 24px;
+
+  padding: 32px 14px;
 }
 
-.groups-empty svg,
-.group-chat-empty svg,
-.chat-empty-state svg {
-  color: var(--spc-muted-light);
-}
+.groups-empty svg {
+  width: 42px;
+  height: 42px;
 
-.groups-empty strong,
-.group-chat-empty strong,
-.chat-empty-state strong {
-  color: var(--spc-heading);
+  padding: 10px;
+
+  color: var(--spc-purple);
+
+  background: var(--spc-purple-soft);
+
+  border-radius: 12px;
 }
 
 .groups-empty strong {
-  font-size: 12px;
+  margin-top: 4px;
+
+  color: var(--spc-heading);
+
+  font-size: 11px;
 }
 
-.groups-empty span,
-.chat-empty-state span {
+.groups-empty span {
+  max-width: 190px;
+
   color: var(--spc-muted);
 
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.5;
 }
+
+/* Empty middle panel */
 
 .group-details-empty {
   height: 100%;
@@ -858,35 +1010,98 @@
   align-items: center;
   justify-content: center;
 
-  padding: 20px;
+  padding: 24px;
 
-  color: var(--spc-muted);
+  color: var(--spc-muted-light);
 
-  font-size: 11px;
+  font-size: 9px;
 
   text-align: center;
 }
 
+/* Empty chat */
+
 .group-chat-empty {
   flex: 1;
 
-  gap: 7px;
+  gap: 8px;
+
+  padding: 40px;
 }
+
+.group-chat-empty svg {
+  width: 60px;
+  height: 60px;
+
+  padding: 14px;
+
+  color: var(--spc-purple);
+
+  background: var(--spc-purple-soft);
+
+  border-radius: 17px;
+}
+
+.group-chat-empty strong {
+  margin-top: 5px;
+
+  color: var(--spc-heading);
+
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.group-chat-empty span {
+  max-width: 390px;
+
+  color: var(--spc-muted);
+
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* Empty selected channel */
 
 .chat-empty-state {
   min-height: 100%;
 
   gap: 7px;
+
+  padding: 30px;
+}
+
+.chat-empty-state svg {
+  width: 48px;
+  height: 48px;
+
+  padding: 11px;
+
+  color: var(--spc-purple);
+
+  background: var(--spc-purple-soft);
+
+  border-radius: 14px;
 }
 
 .chat-empty-state strong {
   margin-top: 4px;
 
+  color: var(--spc-heading);
+
   font-size: 13px;
 }
 
+.chat-empty-state span {
+  max-width: 420px;
+
+  color: var(--spc-muted);
+
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 /* =========================================================
-   MODALS
+   MODAL OVERLAY
    ========================================================= */
 
 .create-group-overlay {
@@ -902,29 +1117,28 @@
 
   padding: 20px;
 
-  background: rgba(0, 0, 0, 0.48);
+  background: rgba(14, 18, 28, 0.52);
 
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
+
+/* =========================================================
+   MODALS
+   ========================================================= */
 
 .create-group-modal {
   width: min(460px, 100%);
 
   padding: 24px;
 
-  border: 1px solid var(--spc-border);
-  border-radius: 14px;
-
   background: var(--spc-surface);
   color: var(--spc-text);
 
-  box-shadow:
-    0 20px 45px rgba(0, 0, 0, 0.24),
-    0 4px 12px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--spc-border);
+  border-radius: var(--spc-radius-lg);
 
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease;
+  box-shadow: var(--spc-shadow-lg);
 }
 
 .create-group-modal-header {
@@ -942,8 +1156,10 @@
 
   color: var(--spc-heading);
 
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 700;
+
+  letter-spacing: -0.25px;
 }
 
 .create-group-modal-header p {
@@ -951,14 +1167,15 @@
 
   color: var(--spc-muted);
 
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .close-modal-button {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
 
-  flex-shrink: 0;
+  flex: 0 0 34px;
 
   display: flex;
   align-items: center;
@@ -967,7 +1184,7 @@
   padding: 0;
 
   border: none;
-  border-radius: 7px;
+  border-radius: 9px;
 
   background: transparent;
   color: var(--spc-muted);
@@ -981,10 +1198,11 @@
 
 .close-modal-button:hover {
   background: var(--spc-surface-hover);
+
   color: var(--spc-purple);
 }
 
-/* Modal form */
+/* Form */
 
 .create-group-modal form {
   display: flex;
@@ -1001,32 +1219,30 @@
 
   color: var(--spc-text);
 
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 
 .create-group-modal label input {
   width: 100%;
-  height: 42px;
+  height: 44px;
 
   padding: 0 12px;
-
-  border: 1px solid var(--spc-border);
-  border-radius: 7px;
 
   outline: none;
 
   background: var(--spc-input-bg);
   color: var(--spc-text);
 
-  font: inherit;
-  font-weight: 400;
+  border: 1px solid var(--spc-border);
+  border-radius: 10px;
 
-  box-sizing: border-box;
+  font-size: 10px;
 
   transition:
     background 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .create-group-modal label input::placeholder {
@@ -1034,10 +1250,16 @@
 }
 
 .create-group-modal label input:focus {
+  background: var(--spc-surface);
+
   border-color: var(--spc-purple);
+
+  box-shadow: var(--spc-focus-ring);
 }
 
-/* Public / Private inside modal */
+/* =========================================================
+   MODAL GROUP TYPE
+   ========================================================= */
 
 .create-group-type {
   display: flex;
@@ -1049,13 +1271,15 @@
 .create-group-type > span {
   color: var(--spc-text);
 
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 
 .create-group-type > div {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
 
   gap: 9px;
 }
@@ -1069,13 +1293,13 @@
 
   gap: 7px;
 
-  border: 1px solid var(--spc-border);
-  border-radius: 7px;
-
   background: var(--spc-input-bg);
   color: var(--spc-muted);
 
-  font-size: 11px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+
+  font-size: 10px;
   font-weight: 600;
 
   cursor: pointer;
@@ -1091,13 +1315,16 @@
 }
 
 .create-group-type button.active {
+  background: var(--spc-purple-soft);
+
   border-color: var(--spc-purple);
 
-  background: var(--spc-purple-soft);
   color: var(--spc-purple);
 }
 
-/* Modal actions */
+/* =========================================================
+   MODAL ACTIONS
+   ========================================================= */
 
 .create-group-modal-actions {
   display: flex;
@@ -1109,27 +1336,28 @@
 }
 
 .create-group-modal-actions button {
-  height: 38px;
+  height: 39px;
 
   padding: 0 17px;
 
-  border-radius: 7px;
+  border-radius: 9px;
 
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 650;
 
   cursor: pointer;
 }
 
 .cancel-create-button {
-  border: 1px solid var(--spc-border);
-
   background: var(--spc-input-bg);
   color: var(--spc-muted);
+
+  border: 1px solid var(--spc-border);
 }
 
 .cancel-create-button:hover {
   background: var(--spc-surface-hover);
+
   color: var(--spc-text);
 }
 
@@ -1137,6 +1365,7 @@
   border: none;
 
   background: var(--spc-purple);
+
   color: #ffffff;
 }
 
@@ -1145,12 +1374,14 @@
 }
 
 .confirm-create-button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
 
   cursor: not-allowed;
 }
 
-/* Delete confirmation */
+/* =========================================================
+   DELETE CONFIRMATION
+   ========================================================= */
 
 .delete-group-content {
   display: flex;
@@ -1162,25 +1393,27 @@
 .delete-warning {
   padding: 12px;
 
-  border: 1px solid var(--spc-danger-border);
-  border-radius: 7px;
-
-  background: var(--spc-danger-bg);
   color: var(--spc-danger);
 
-  font-size: 11px;
+  background: var(--spc-danger-bg);
+
+  border: 1px solid var(--spc-danger-border);
+  border-radius: 9px;
+
+  font-size: 10px;
   line-height: 1.5;
 }
 
 .delete-group-button {
-  border: 1px solid var(--spc-danger-border);
+  color: var(--spc-danger);
 
   background: var(--spc-danger-bg);
-  color: var(--spc-danger);
+
+  border: 1px solid var(--spc-danger-border);
 }
 
 .delete-group-button:hover {
-  filter: brightness(0.95);
+  filter: brightness(0.96);
 }
 
 /* =========================================================
@@ -1191,6 +1424,7 @@
 .group-details-panel,
 .group-chat-messages {
   scrollbar-width: thin;
+
   scrollbar-color:
     var(--spc-border)
     transparent;
@@ -1212,39 +1446,45 @@
 .group-details-panel::-webkit-scrollbar-thumb,
 .group-chat-messages::-webkit-scrollbar-thumb {
   background: var(--spc-border);
+
   border-radius: 999px;
 }
 
 /* =========================================================
-   DARK MODE SMALL ADJUSTMENTS
+   DARK MODE
    ========================================================= */
 
-/*
- * Most dark-mode styling is already handled by the shared
- * --spc-* variables from appShell.css.
- *
- * These rules are only for effects that need slightly
- * different opacity/shadows in dark mode.
- */
-
-:root[data-theme="dark"] .group-type-toggle button.active {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.35);
+:root[data-theme="dark"]
+  .study-groups-page {
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .group-actions-menu,
-:root[data-theme="dark"] .channel-actions-menu {
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.45);
+:root[data-theme="dark"]
+  .create-group-button,
+:root[data-theme="dark"]
+  .group-message-form button {
+  box-shadow: none;
 }
 
-:root[data-theme="dark"] .create-group-overlay {
-  background: rgba(0, 0, 0, 0.62);
+:root[data-theme="dark"]
+  .group-type-toggle
+  button.active {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-:root[data-theme="dark"] .create-group-modal {
+:root[data-theme="dark"]
+  .group-actions-menu,
+:root[data-theme="dark"]
+  .channel-actions-menu {
   box-shadow:
-    0 22px 55px rgba(0, 0, 0, 0.5);
+    0 10px 30px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme="dark"]
+  .create-group-overlay {
+  background:
+    rgba(0, 0, 0, 0.68);
 }
 
 /* =========================================================
