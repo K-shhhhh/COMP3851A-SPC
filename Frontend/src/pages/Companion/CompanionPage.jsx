@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -35,10 +36,6 @@ import {
 
 import "./companion.css";
 
-/*
- * Errors that mean the authentication session
- * is no longer valid.
- */
 const AUTH_ERROR_CODES = new Set([
   "AUTHENTICATION_REQUIRED",
   "TOKEN_INVALID",
@@ -69,6 +66,19 @@ function CompanionPage() {
 
   const [message, setMessage] =
     useState("");
+
+  /*
+   * Response format selected by the user.
+   *
+   * Values sent to the backend:
+   * paragraph
+   * bullet_points
+   * table
+   */
+  const [
+    responseFormat,
+    setResponseFormat,
+  ] = useState("paragraph");
 
   const [
     conversations,
@@ -103,9 +113,6 @@ function CompanionPage() {
     setIsSending,
   ] = useState(false);
 
-  /*
-   * Rename state.
-   */
   const [
     editingChatId,
     setEditingChatId,
@@ -121,9 +128,6 @@ function CompanionPage() {
     setRenamingChatId,
   ] = useState(null);
 
-  /*
-   * Delete state.
-   */
   const [
     deletingChatId,
     setDeletingChatId,
@@ -133,25 +137,29 @@ function CompanionPage() {
     useState("");
 
   /*
-   * Clear an invalid session.
-   *
-   * ProtectedRoute will take care of returning
-   * the user to the authentication flow.
+   * Bottom marker used for automatic
+   * scrolling to the newest message.
    */
+  const messagesEndRef =
+    useRef(null);
+
   async function clearInvalidSession() {
     try {
       await logout();
     } catch {
       /*
-       * AuthContext clears local authentication
+       * AuthContext clears authentication
        * state in its finally block.
        */
     }
   }
 
   /*
-   * Load all chats owned by the current student.
+   * =========================================================
+   * LOAD CONVERSATIONS
+   * =========================================================
    */
+
   useEffect(() => {
     if (!accessToken) {
       return;
@@ -176,12 +184,6 @@ function CompanionPage() {
 
         setConversations(chatItems);
 
-        /*
-         * Keep the currently selected chat if
-         * it still exists.
-         *
-         * Otherwise open the first available chat.
-         */
         setSelectedChatId(
           (currentChatId) => {
             const stillExists =
@@ -238,9 +240,11 @@ function CompanionPage() {
   }, [accessToken]);
 
   /*
-   * Load messages whenever another conversation
-   * is selected from the sidebar.
+   * =========================================================
+   * LOAD CHAT MESSAGES
+   * =========================================================
    */
+
   useEffect(() => {
     if (
       !accessToken ||
@@ -289,13 +293,6 @@ function CompanionPage() {
           return;
         }
 
-        /*
-         * CHAT_NOT_FOUND can happen if the chat
-         * was removed somewhere else.
-         *
-         * Remove stale UI state without making
-         * assumptions about who owned the chat.
-         */
         if (
           err.code ===
           "CHAT_NOT_FOUND"
@@ -342,8 +339,38 @@ function CompanionPage() {
   ]);
 
   /*
-   * Create a new backend conversation.
+   * =========================================================
+   * AUTO SCROLL
+   * =========================================================
+   *
+   * When messages change, move to the
+   * actual bottom of the conversation.
+   *
+   * There is no artificial spacer.
    */
+
+  useEffect(() => {
+    if (isLoadingMessages) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+    });
+  }, [
+    messages,
+    isLoadingMessages,
+  ]);
+
+  /*
+   * =========================================================
+   * CREATE CONVERSATION
+   * =========================================================
+   */
+
   async function handleNewConversation() {
     if (
       !accessToken ||
@@ -375,9 +402,6 @@ function CompanionPage() {
       setMessages([]);
       setMessage("");
 
-      /*
-       * Close any active rename editor.
-       */
       setEditingChatId(null);
       setEditingTitle("");
     } catch (err) {
@@ -404,8 +428,11 @@ function CompanionPage() {
   }
 
   /*
-   * Open an existing conversation.
+   * =========================================================
+   * SELECT CONVERSATION
+   * =========================================================
    */
+
   function handleSelectConversation(
     chatId,
   ) {
@@ -416,8 +443,11 @@ function CompanionPage() {
   }
 
   /*
-   * Begin editing a chat title.
+   * =========================================================
+   * RENAME CONVERSATION
+   * =========================================================
    */
+
   function startRename(
     conversation,
   ) {
@@ -433,20 +463,11 @@ function CompanionPage() {
     setError("");
   }
 
-  /*
-   * Cancel the rename without changing
-   * anything in the backend.
-   */
   function cancelRename() {
     setEditingChatId(null);
     setEditingTitle("");
   }
 
-  /*
-   * Save the new title using:
-   *
-   * PATCH /api/v1/chats/{chat_id}
-   */
   async function handleRenameChat(
     event,
     chatId,
@@ -475,10 +496,6 @@ function CompanionPage() {
           newTitle,
         );
 
-      /*
-       * Update the sidebar immediately after
-       * the backend confirms the rename.
-       */
       setConversations(
         (current) =>
           current.map((chat) =>
@@ -543,13 +560,11 @@ function CompanionPage() {
   }
 
   /*
-   * Delete a chat using:
-   *
-   * DELETE /api/v1/chats/{chat_id}
-   *
-   * The user must confirm before anything
-   * is removed.
+   * =========================================================
+   * DELETE CONVERSATION
+   * =========================================================
    */
+
   async function handleDeleteChat(
     conversation,
   ) {
@@ -577,10 +592,6 @@ function CompanionPage() {
         conversation.id,
       );
 
-      /*
-       * Determine which chats remain after
-       * this one is removed.
-       */
       const remainingChats =
         conversations.filter(
           (chat) =>
@@ -592,13 +603,6 @@ function CompanionPage() {
         remainingChats,
       );
 
-      /*
-       * If the deleted chat was currently open,
-       * automatically open another conversation.
-       *
-       * If none remain, return to the empty
-       * AI Assistant welcome screen.
-       */
       if (
         selectedChatId ===
         conversation.id
@@ -676,8 +680,11 @@ function CompanionPage() {
   }
 
   /*
-   * Send a message to the real backend.
+   * =========================================================
+   * SEND MESSAGE
+   * =========================================================
    */
+
   async function handleSubmit(
     event,
   ) {
@@ -703,8 +710,7 @@ function CompanionPage() {
 
       /*
        * Automatically create a conversation
-       * if the student sends a question while
-       * no chat exists yet.
+       * if the user has not selected one yet.
        */
       if (!chatId) {
         const newChat =
@@ -727,18 +733,26 @@ function CompanionPage() {
           newChat.id;
       }
 
+      /*
+       * responseFormat is passed separately
+       * from the question.
+       *
+       * Example:
+       *
+       * content: "Explain machine learning"
+       * responseFormat: "bullet_points"
+       */
       const result =
         await sendChatMessage(
           accessToken,
           chatId,
           content,
+          responseFormat,
         );
 
       /*
-       * The backend currently returns both:
-       *
-       * - the student's message
-       * - the completed AI response
+       * Backend returns both the student's
+       * message and the AI response.
        */
       if (
         result?.user_message &&
@@ -826,6 +840,12 @@ function CompanionPage() {
     }
   }
 
+  /*
+   * =========================================================
+   * SUGGESTED PROMPTS
+   * =========================================================
+   */
+
   function handleSuggestedPrompt(
     prompt,
   ) {
@@ -833,8 +853,11 @@ function CompanionPage() {
   }
 
   /*
-   * Format message time for the chat UI.
+   * =========================================================
+   * TIME
+   * =========================================================
    */
+
   function formatMessageTime(
     createdAt,
   ) {
@@ -858,7 +881,9 @@ function CompanionPage() {
     <AppShell>
       <div className="companion-layout">
 
-        {/* Conversation sidebar */}
+        {/* ==============================
+            CONVERSATION SIDEBAR
+        ============================== */}
 
         <aside className="conversation-sidebar">
           <div className="conversation-new-wrapper">
@@ -922,9 +947,6 @@ function CompanionPage() {
                       }`}
                     >
                       {isEditing ? (
-                        /*
-                         * Inline rename form.
-                         */
                         <form
                           className="conversation-rename-form"
                           onSubmit={(
@@ -965,9 +987,7 @@ function CompanionPage() {
                             }
                           >
                             <Check
-                              size={
-                                14
-                              }
+                              size={14}
                             />
                           </button>
 
@@ -981,9 +1001,7 @@ function CompanionPage() {
                             aria-label="Cancel rename"
                           >
                             <X
-                              size={
-                                14
-                              }
+                              size={14}
                             />
                           </button>
                         </form>
@@ -1015,9 +1033,7 @@ function CompanionPage() {
                               aria-label={`Rename ${conversation.title || "conversation"}`}
                             >
                               <Pencil
-                                size={
-                                  14
-                                }
+                                size={14}
                               />
                             </button>
 
@@ -1037,9 +1053,7 @@ function CompanionPage() {
                               aria-label={`Delete ${conversation.title || "conversation"}`}
                             >
                               <Trash2
-                                size={
-                                  14
-                                }
+                                size={14}
                               />
                             </button>
                           </div>
@@ -1053,9 +1067,14 @@ function CompanionPage() {
           </div>
         </aside>
 
-        {/* Main AI chat */}
+        {/* ==============================
+            CHAT
+        ============================== */}
 
         <section className="chat-section">
+
+          {/* HEADER */}
+
           <header className="chat-header">
             <div className="chat-header-icon">
               <Sparkles
@@ -1076,9 +1095,13 @@ function CompanionPage() {
             </div>
           </header>
 
+          {/* ==============================
+              SCROLLABLE MESSAGE AREA
+          ============================== */}
+
           <div className="chat-content">
 
-            {/* Empty/welcome state */}
+            {/* EMPTY CHAT */}
 
             {messages.length ===
                 0 &&
@@ -1091,7 +1114,7 @@ function CompanionPage() {
                       />
                     </div>
 
-                    <div>
+                    <div className="assistant-message-container">
                       <div className="assistant-message">
                         <p>
                           Hi! I&apos;m
@@ -1139,9 +1162,7 @@ function CompanionPage() {
                         >
                           <span>
                             <Icon
-                              size={
-                                18
-                              }
+                              size={18}
                             />
                           </span>
 
@@ -1153,7 +1174,7 @@ function CompanionPage() {
                 </>
               )}
 
-            {/* Message loading state */}
+            {/* LOADING */}
 
             {isLoadingMessages && (
               <div className="chat-loading">
@@ -1161,7 +1182,7 @@ function CompanionPage() {
               </div>
             )}
 
-            {/* Real chat messages */}
+            {/* MESSAGES */}
 
             {!isLoadingMessages &&
               messages.map(
@@ -1170,35 +1191,58 @@ function CompanionPage() {
                     chatMessage.role ===
                     "user";
 
+                  /*
+                   * USER MESSAGE
+                   */
+
+                  if (isUser) {
+                    return (
+                      <div
+                        key={
+                          chatMessage.id
+                        }
+                        className="user-message-row"
+                      >
+                        <div className="user-message-container">
+                          <div className="user-message">
+                            <p>
+                              {
+                                chatMessage.content
+                              }
+                            </p>
+                          </div>
+
+                          <div className="message-meta user-message-meta">
+                            <span>
+                              {formatMessageTime(
+                                chatMessage.created_at,
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  /*
+                   * AI MESSAGE
+                   */
+
                   return (
                     <div
                       key={
                         chatMessage.id
                       }
-                      className={
-                        isUser
-                          ? "user-message-row"
-                          : "assistant-message-row"
-                      }
+                      className="assistant-message-row"
                     >
-                      {!isUser && (
-                        <div className="assistant-avatar">
-                          <Sparkles
-                            size={
-                              20
-                            }
-                          />
-                        </div>
-                      )}
+                      <div className="assistant-avatar">
+                        <Sparkles
+                          size={20}
+                        />
+                      </div>
 
-                      <div>
-                        <div
-                          className={
-                            isUser
-                              ? "user-message"
-                              : "assistant-message"
-                          }
-                        >
+                      <div className="assistant-message-container">
+                        <div className="assistant-message">
                           <p>
                             {
                               chatMessage.content
@@ -1244,63 +1288,107 @@ function CompanionPage() {
                             )}
                           </span>
 
-                          {!isUser && (
-                            <>
-                              <button
-                                type="button"
-                                aria-label="Copy message"
-                                onClick={() =>
-                                  navigator.clipboard.writeText(
-                                    chatMessage.content,
-                                  )
-                                }
-                              >
-                                <Copy
-                                  size={
-                                    13
-                                  }
-                                />
-                              </button>
+                          <button
+                            type="button"
+                            aria-label="Copy message"
+                            onClick={() =>
+                              navigator.clipboard.writeText(
+                                chatMessage.content,
+                              )
+                            }
+                          >
+                            <Copy
+                              size={13}
+                            />
+                          </button>
 
-                              <button
-                                type="button"
-                                aria-label="Like message"
-                              >
-                                <ThumbsUp
-                                  size={
-                                    13
-                                  }
-                                />
-                              </button>
+                          <button
+                            type="button"
+                            aria-label="Like message"
+                          >
+                            <ThumbsUp
+                              size={13}
+                            />
+                          </button>
 
-                              <button
-                                type="button"
-                                aria-label="Dislike message"
-                              >
-                                <ThumbsDown
-                                  size={
-                                    13
-                                  }
-                                />
-                              </button>
-                            </>
-                          )}
+                          <button
+                            type="button"
+                            aria-label="Dislike message"
+                          >
+                            <ThumbsDown
+                              size={13}
+                            />
+                          </button>
                         </div>
                       </div>
                     </div>
                   );
                 },
               )}
+
+            {/* REAL END OF CHAT */}
+
+            <div
+              ref={messagesEndRef}
+              className="chat-scroll-end"
+              aria-hidden="true"
+            />
           </div>
 
-          {/* Chat input */}
+          {/* ==============================
+              INPUT AREA
+          ============================== */}
 
           <div className="chat-input-area">
+
+            {/* ERROR */}
+
             {error && (
               <div className="chat-error">
                 {error}
               </div>
             )}
+
+            {/* RESPONSE FORMAT */}
+
+            <div className="response-format-control">
+              <span className="response-format-label">
+                Response format:
+              </span>
+
+              <select
+                className="response-format-select"
+                value={
+                  responseFormat
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setResponseFormat(
+                    event.target
+                      .value,
+                  )
+                }
+                disabled={
+                  isSending
+                }
+                aria-label="Select AI response format"
+              >
+                <option value="paragraph">
+                  Paragraph
+                </option>
+
+                <option value="bullet_points">
+                  Bullet points
+                </option>
+
+                <option value="table">
+                  Table
+                </option>
+              </select>
+            </div>
+
+            {/* MESSAGE INPUT */}
 
             <form
               className="chat-input-form"
@@ -1341,7 +1429,9 @@ function CompanionPage() {
                   className="chat-tool-button"
                   aria-label="Voice input"
                 >
-                  <Mic size={18} />
+                  <Mic
+                    size={18}
+                  />
                 </button>
               </div>
 
@@ -1354,7 +1444,9 @@ function CompanionPage() {
                   !message.trim()
                 }
               >
-                <Send size={20} />
+                <Send
+                  size={20}
+                />
               </button>
             </form>
 

@@ -120,12 +120,14 @@ export function sendChatMessage(
   accessToken,
   chatId,
   content,
+  responseFormat = "paragraph",
 ) {
   return apiRequest(`/chats/${chatId}/messages`, {
     method: "POST",
     accessToken,
     body: JSON.stringify({
       content,
+      response_format: responseFormat,
     }),
   });
 }
