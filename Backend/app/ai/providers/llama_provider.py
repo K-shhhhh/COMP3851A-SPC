@@ -14,11 +14,22 @@ load_dotenv(find_dotenv(usecwd=True))
 
 from openai import OpenAI
 
-_client = OpenAI(
-    base_url=os.environ.get("INFERENCE_API_URL") or "https://openrouter.ai/api/v1",
-    api_key=os.environ.get("INFERENCE_API_KEY"),
-)
 CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
+
+
+def _get_inference_client() -> OpenAI:
+    """Create the external client only when answer generation is requested."""
+
+    api_key = os.environ.get("INFERENCE_API_KEY")
+    if not api_key:
+        raise RuntimeError("INFERENCE_API_KEY is required for AI answers")
+    return OpenAI(
+        base_url=(
+            os.environ.get("INFERENCE_API_URL")
+            or "https://openrouter.ai/api/v1"
+        ),
+        api_key=api_key,
+    )
 
 
 def generate_answer(question: str, context: str, model: str = CHAT_MODEL) -> str:
@@ -29,7 +40,7 @@ Question: {question}
 
 Answer the question using only the context above. If the answer isn't in the context, say so."""
 
-    response = _client.chat.completions.create(
+    response = _get_inference_client().chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}]
     )

@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.api.dependencies import get_auth_service
+from app.domains.auth.infrastructure.memory_repository import (
+    InMemoryAuthRepository,
+)
 from app.domains.auth.infrastructure.memory_revocation_store import (
     InMemoryAccessTokenRevocationStore,
 )
@@ -91,8 +94,10 @@ def test_expired_token_is_not_added_to_redis() -> None:
     asyncio.run(scenario())
 
 
-def test_dependency_injection_still_uses_local_memory_stores() -> None:
-    service = get_auth_service()
+def test_auth_service_still_uses_local_token_stores() -> None:
+    service = get_auth_service(
+        repository=InMemoryAuthRepository(),
+    )
 
     assert isinstance(service.ticket_store, InMemoryWebSocketTicketStore)
     assert isinstance(
