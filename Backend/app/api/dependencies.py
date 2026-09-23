@@ -4,7 +4,10 @@ This module is the backend composition boundary. It currently injects local
 in-memory authentication stores; staging must select PostgreSQL and Redis
 implementations when those integrations are ready.
 """
+import os
 from collections.abc import Callable
+
+from redis.asyncio import Redis
 
 from fastapi import Depends, Security
 from fastapi.security import (
@@ -27,6 +30,9 @@ from app.domains.auth.domain.repository import AuthRepository
 from app.domains.auth.infrastructure.memory_repository import (
     InMemoryAuthRepository,
 )
+from app.domains.auth.infrastructure.redis_auth_repository import (
+    RedisAuthRepository,
+)
 from app.domains.auth.infrastructure.memory_revocation_store import (
     InMemoryAccessTokenRevocationStore,
 )
@@ -46,11 +52,14 @@ from app.domains.notes.domain.storage import AttachmentStorage
 from app.domains.notes.infrastructure.local_storage import (
     LocalAttachmentStorage,
 )
-from app.domains.notes.infrastructure.rag_processing import (
-    KrishAttachmentProcessingDispatcher,
+from app.domains.notes.infrastructure.celery_processing import (
+    CeleryAttachmentProcessingDispatcher,
 )
 from app.domains.notes.infrastructure.memory_repository import (
     InMemoryAttachmentRepository,
+)
+from app.domains.notes.infrastructure.redis_repository import (
+    RedisAttachmentRepository,
 )
 
 from app.domains.chats.application.services import ChatService
@@ -63,8 +72,14 @@ from app.domains.chats.infrastructure.memory_answering import (
 from app.domains.chats.infrastructure.memory_repository import (
     InMemoryChatRepository,
 )
+from app.domains.chats.infrastructure.redis_chat_repository import (
+    RedisChatRepository,
+)
 from app.domains.chats.infrastructure.memory_retrieval import (
     InMemoryReadyNoteChunkRepository,
+)
+from app.domains.chats.infrastructure.redis_retrieval import (
+    RedisReadyNoteChunkRepository,
 )
 
 # ---------- Real integration switch template ----------
@@ -114,11 +129,23 @@ from app.domains.administration.application.services import AdministrationServic
 from app.domains.administration.domain.repository import AdministrationRepository
 from app.domains.administration.infrastructure.repository import PostgreSQLAdministrationRepository
 
+# ---------- Shared Redis client ----------
+
+# One shared client, reused across auth, notes, and chats -- Celery tasks
+# run in a separate container and cannot see this process's in-memory
+# state, so anything that needs to survive a restart or be visible to the
+# worker lives in Redis instead. Interim until PostgreSQL/pgvector adapters
+# replace these piece by piece.
+_redis_client = Redis.from_url(
+    os.environ.get("REDIS_URL", "redis://redis:6379/0"),
+    decode_responses=True,
+)
+
 # ---------- Auth ----------
 
-# The same in-memory instance must be reused between requests.
-# Creating a new repository for every request would erase registered users.
-_local_auth_repository = InMemoryAuthRepository()
+# Redis-backed so registered accounts survive a backend restart, instead of
+# disappearing the moment the process restarts.
+_local_auth_repository = RedisAuthRepository(_redis_client)
 _local_websocket_ticket_store = InMemoryWebSocketTicketStore()
 _local_access_token_revocation_store = (
     InMemoryAccessTokenRevocationStore()
@@ -275,23 +302,27 @@ def get_user_service() -> UserService:
 
 # ---------- Notes ----------
 
-# Shared in-memory retrieval is declared here because the temporary demo
-# processor writes chunks that the personal Chat service later reads.
-_local_ready_note_chunk_repository = InMemoryReadyNoteChunkRepository()
-_local_attachment_repository = InMemoryAttachmentRepository()
+# Attachment and chunk repositories reuse the shared _redis_client defined
+# above with auth, for the same reason -- the worker process needs to reach
+# the same data, until Kaung's PostgreSQL adapter is ready.
+_local_attachment_repository = RedisAttachmentRepository(_redis_client)
+
+# Shared retrieval is declared here because the Celery worker writes chunks
+# that the personal Chat service later reads, from a separate process.
+_local_ready_note_chunk_repository = RedisReadyNoteChunkRepository(_redis_client)
+
 _local_attachment_storage: AttachmentStorage | None = None
 _local_attachment_processing_dispatcher = (
-    KrishAttachmentProcessingDispatcher(
-        attachment_repository=_local_attachment_repository,
-        chunk_repository=_local_ready_note_chunk_repository,
-    )
+    CeleryAttachmentProcessingDispatcher()
 )
 
 
 def get_attachment_repository() -> AttachmentRepository:
-    """Return temporary local metadata storage for endpoint development.
+    """Return the Redis-backed attachment repository, shared across the
+    backend and worker processes for Celery background processing.
 
-    Kaung's PostgreSQL adapter must replace this before staging.
+    Interim step until Kaung's PostgreSQL adapter is ready -- see
+    redis_repository.py's module docstring for why this exists.
     """
 
     # REAL DATABASE SWITCH:
@@ -339,9 +370,9 @@ def get_note_service() -> NoteService:
 
 # ---------- Personal Chat ----------
 
-# These shared local adapters deliberately keep endpoint-development state in
-# one process. PostgreSQL and Krish's RAG adapter replace them for integration.
-_local_chat_repository = InMemoryChatRepository()
+# Redis-backed so conversations and their message history survive a
+# backend restart, reusing the shared _redis_client defined with auth.
+_local_chat_repository = RedisChatRepository(_redis_client)
 _local_chat_answer_generator = LocalGroundedAnswerGenerator()
 
 
