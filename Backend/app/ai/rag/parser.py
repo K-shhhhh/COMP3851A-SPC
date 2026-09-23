@@ -30,22 +30,11 @@ UNSAFE_LABELS = {
 }
 CONFIDENCE_THRESHOLD = 0.5
 
+_client = OpenAI(
+    base_url=os.environ.get("INFERENCE_API_URL") or "https://openrouter.ai/api/v1",
+    api_key=os.environ.get("INFERENCE_API_KEY"),
+)
 VISION_MODEL = "openrouter/free"  # auto-picks an available free vision model
-
-
-def _get_inference_client() -> OpenAI:
-    """Create the external client only when image captioning is requested."""
-
-    api_key = os.environ.get("INFERENCE_API_KEY")
-    if not api_key:
-        raise RuntimeError("INFERENCE_API_KEY is required for image captioning")
-    return OpenAI(
-        base_url=(
-            os.environ.get("INFERENCE_API_URL")
-            or "https://openrouter.ai/api/v1"
-        ),
-        api_key=api_key,
-    )
 
 
 def is_image_safe(image_bytes: bytes) -> bool:
@@ -73,7 +62,7 @@ def caption_image(image_bytes: bytes, max_retries: int = 3) -> str:
     last_error = None
     for attempt in range(max_retries):
         try:
-            response = _get_inference_client().chat.completions.create(
+            response = _client.chat.completions.create(
                 model=VISION_MODEL,
                 messages=[{
                     "role": "user",
