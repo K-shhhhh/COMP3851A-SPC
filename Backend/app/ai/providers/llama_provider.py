@@ -13,6 +13,9 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv(usecwd=True))
 
 from openai import OpenAI
+from app.domains.chats.application.prompt_security import (
+    build_secure_chat_messages,
+)
 
 _client = OpenAI(
     base_url=os.environ.get("INFERENCE_API_URL") or "https://openrouter.ai/api/v1",
@@ -22,15 +25,13 @@ CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
 
 
 def generate_answer(question: str, context: str, model: str = CHAT_MODEL) -> str:
-    prompt = f"""Context:
-{context}
-
-Question: {question}
-
-Answer the question using only the context above. If the answer isn't in the context, say so."""
+    messages = build_secure_chat_messages(
+        question=question,
+        context=context,
+    )
 
     response = _client.chat.completions.create(
         model=model,
-        messages=[{"role": "user", "content": prompt}]
+        messages=messages,
     )
     return response.choices[0].message.content

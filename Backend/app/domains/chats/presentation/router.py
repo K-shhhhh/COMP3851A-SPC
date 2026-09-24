@@ -12,6 +12,7 @@ from app.domains.chats.domain.exceptions import (
     InvalidChatTitleError,
     InvalidQuestionError,
     NoProcessedNotesError,
+    PromptInjectionDetectedError,
 )
 from app.domains.chats.presentation.schemas import (
     AskQuestionRequest,
@@ -213,6 +214,17 @@ def _raise_chat_api_error(exc: Exception) -> None:
             status_code=409,
             code="NO_PROCESSED_NOTES",
             message=str(exc),
+        ) from exc
+
+    if isinstance(exc, PromptInjectionDetectedError):
+        raise ApiError(
+            status_code=422,
+            code="PROMPT_INJECTION_DETECTED",
+            message=(
+                "The question contains instruction-overriding "
+                "content that cannot be processed safely."
+            ),
+            retryable=False,
         ) from exc
 
     if isinstance(exc, (InvalidChatTitleError, InvalidQuestionError)):

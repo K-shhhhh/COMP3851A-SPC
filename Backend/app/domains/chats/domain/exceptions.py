@@ -16,6 +16,9 @@ class InvalidChatTitleError(ChatError):
 class InvalidQuestionError(ChatError):
     """Raised when a normalized question is empty or too long."""
 
+class PromptInjectionDetectedError(ChatError):
+    """Raised when a question contains an obvious prompt-injection attempt."""
+
 
 class NoProcessedNotesError(ChatError):
     """Raised when the student has no ready note chunks to search."""
