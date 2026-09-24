@@ -1,6 +1,9 @@
 """Application use cases for personal AI Assistant conversations."""
 
 from datetime import datetime, timezone
+from app.domains.chats.application.prompt_security import (
+    validate_user_question,
+)
 
 from app.domains.chats.domain.answering import ChatAnswerGenerator
 from app.domains.chats.domain.exceptions import (
@@ -220,7 +223,7 @@ class ChatService:
             raise InvalidQuestionError(
                 "Question exceeds the configured length limit."
             )
-
+        validate_user_question(normalized)
         return normalized
 
     @staticmethod
