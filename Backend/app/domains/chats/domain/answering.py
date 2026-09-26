@@ -30,8 +30,15 @@ class ChatAnswerGenerator(ABC):
         *,
         question: str,
         chunks: tuple[GroundingChunk, ...],
+        response_format: str | None = None,
     ) -> GeneratedAnswer:
-        """Return an answer grounded only in the supplied authorized chunks."""
+        """Return an answer grounded only in the supplied authorized chunks.
+
+        response_format is one of "paragraph", "bullet_points", "table", or
+        None (defaults to paragraph). Implementations that don't support
+        formatting yet should still accept and ignore it, rather than
+        omitting the parameter -- callers pass it as a keyword argument.
+        """
 
         raise NotImplementedError
 

@@ -80,6 +80,17 @@ _NEUTRALISED_SOURCE_LINE = (
 )
 
 
+_RESPONSE_FORMAT_INSTRUCTIONS: dict[str, str] = {
+    "paragraph": "Respond in flowing paragraph form.",
+    "bullet_points": "Respond using clear, concise bullet points.",
+    "table": (
+        "Respond using a markdown table where the content can naturally be "
+        "organized into rows and columns. If the content does not suit a "
+        "table, use bullet points instead."
+    ),
+}
+
+
 def _normalise_for_detection(value: str) -> str:
     """Normalise common text obfuscation before security checks."""
 
@@ -159,8 +170,16 @@ def build_secure_chat_messages(
     *,
     question: str,
     context: str,
+    response_format: str | None = None,
 ) -> list[dict[str, str]]:
-    """Build model messages with explicit instruction/data separation."""
+    """Build model messages with explicit instruction/data separation.
+
+    response_format, when supplied, is appended to the TRUSTED system
+    message only -- it is a formatting directive from the application
+    itself, not user-supplied data, so it never touches study_context or
+    student_question (the untrusted side of the boundary this function
+    exists to enforce). An unrecognised value is treated the same as None.
+    """
 
     # Defence in depth. ChatService also performs this check before
     # retrieval and model invocation.
@@ -185,6 +204,10 @@ def build_secure_chat_messages(
         "If the answer is not supported by the study_context, say that the "
         "answer is not available in the supplied study material."
     )
+
+    format_instruction = _RESPONSE_FORMAT_INSTRUCTIONS.get(response_format or "paragraph")
+    if format_instruction is not None:
+        system_message = f"{system_message} {format_instruction}"
 
     user_payload = json.dumps(
         {

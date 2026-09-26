@@ -33,6 +33,7 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         *,
         question: str,
         chunks: tuple[GroundingChunk, ...],
+        response_format: str | None = None,
     ) -> GeneratedAnswer:
         """Return an answer grounded only in the supplied authorized chunks.
 
@@ -41,6 +42,10 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         asyncio.to_thread() so it runs on a background thread instead of
         blocking the event loop -- lets FastAPI keep handling other requests
         while this one is waiting on a model response.
+
+        response_format is accepted here to match the updated
+        ChatAnswerGenerator interface, and passed straight through to
+        generate_answer -- this adapter doesn't interpret it itself.
         """
         if not chunks:
             raise ValueError("answer_question called with no chunks -- caller should check for this before invoking the adapter")
@@ -64,7 +69,9 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         context = "\n\n".join(chunk.content for chunk in top_chunks)
 
         # 5. Generate the grounded answer (off the event loop)
-        answer_text = await asyncio.to_thread(generate_answer, question, context)
+        answer_text = await asyncio.to_thread(
+            generate_answer, question, context, response_format=response_format
+        )
 
         # 6. Carry over each used chunk's citation info (.source is already a ChatSource)
         sources = tuple(chunk.source for chunk in top_chunks)

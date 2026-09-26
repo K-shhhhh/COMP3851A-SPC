@@ -145,6 +145,7 @@ class ChatService:
         chat_id: str,
         user_id: str,
         question: str,
+        response_format: str | None = None,
     ) -> ChatExchange:
         """Answer synchronously using only the student's ready note chunks.
 
@@ -194,6 +195,7 @@ class ChatService:
             answer = await self._answer_generator.answer_question(
                 question=normalized_question,
                 chunks=chunks,
+                response_format=response_format,
             )
             self._validate_sources(answer.sources, chunks)
         except Exception as exc:
