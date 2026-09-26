@@ -18,12 +18,14 @@ class LocalGroundedAnswerGenerator(ChatAnswerGenerator):
         question: str,
         chunks: tuple[GroundingChunk, ...],
         response_format: str | None = None,
+        mode: str | None = None,
     ) -> GeneratedAnswer:
         """Choose the chunk sharing the most useful words with the question.
 
-        response_format is accepted to match the updated ChatAnswerGenerator
-        interface but ignored here -- this is a deterministic demo fallback,
-        not a real model call, so there's no formatting to apply.
+        response_format and mode are accepted to match the updated
+        ChatAnswerGenerator interface but ignored here -- this is a
+        deterministic demo fallback, not a real model call, so there's no
+        formatting or mode behaviour to apply.
         """
 
         question_terms = _meaningful_terms(question)

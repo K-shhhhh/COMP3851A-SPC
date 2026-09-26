@@ -91,6 +91,44 @@ _RESPONSE_FORMAT_INSTRUCTIONS: dict[str, str] = {
 }
 
 
+_MODE_INSTRUCTIONS: dict[str, str] = {
+    "default": (
+        "You are acting as Companion. Answer the student's question "
+        "directly and clearly, grounded only in the study_context."
+    ),
+    "summarizer": (
+        "You are acting as Summarizer. Do not focus on answering a single "
+        "narrow question. Instead, produce a clear, comprehensive summary "
+        "of the parts of study_context relevant to the student's request, "
+        "covering the key points a student would need to know."
+    ),
+    "quiz": (
+        "You are acting as QuizMaster. Do not directly answer the "
+        "student's request. Instead, generate 3 to 5 clear, well-scoped "
+        "quiz questions based on study_context that test understanding of "
+        "the material relevant to the request. Each question must have a "
+        "single, unambiguous correct answer drawn directly from "
+        "study_context: avoid questions that could refer to more than one "
+        "part of the material. Match the difficulty of the questions to "
+        "the depth of study_context: keep questions simple and direct when "
+        "the context is limited, and only go deeper when the context "
+        "clearly supports it. Number the questions. Do not reveal the "
+        "answers unless the student explicitly asks for them."
+    ),
+    "facilitator": (
+        "You are acting as Facilitator, in the style of a Socratic "
+        "teacher. Under no circumstances explain the concept, describe "
+        "the mechanism, or state any fact from study_context directly in "
+        "your response, even partially, even if the student's question "
+        "asks for it plainly. Your entire response must consist only of a "
+        "guiding question, a small hint, or a prompt that encourages the "
+        "student to work out the answer themselves using study_context. "
+        "Do not summarize or restate study_context before asking your "
+        "question."
+    ),
+}
+
+
 def _normalise_for_detection(value: str) -> str:
     """Normalise common text obfuscation before security checks."""
 
@@ -171,14 +209,16 @@ def build_secure_chat_messages(
     question: str,
     context: str,
     response_format: str | None = None,
+    mode: str | None = None,
 ) -> list[dict[str, str]]:
     """Build model messages with explicit instruction/data separation.
 
-    response_format, when supplied, is appended to the TRUSTED system
-    message only -- it is a formatting directive from the application
-    itself, not user-supplied data, so it never touches study_context or
+    response_format and mode, when supplied, are appended to the TRUSTED
+    system message only -- both are directives from the application itself,
+    not user-supplied data, so neither ever touches study_context or
     student_question (the untrusted side of the boundary this function
-    exists to enforce). An unrecognised value is treated the same as None.
+    exists to enforce). An unrecognised value for either is treated the
+    same as None (falls back to the default behaviour).
     """
 
     # Defence in depth. ChatService also performs this check before
@@ -204,6 +244,10 @@ def build_secure_chat_messages(
         "If the answer is not supported by the study_context, say that the "
         "answer is not available in the supplied study material."
     )
+
+    mode_instruction = _MODE_INSTRUCTIONS.get(mode or "default")
+    if mode_instruction is not None:
+        system_message = f"{system_message} {mode_instruction}"
 
     format_instruction = _RESPONSE_FORMAT_INSTRUCTIONS.get(response_format or "paragraph")
     if format_instruction is not None:

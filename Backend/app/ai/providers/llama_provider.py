@@ -29,20 +29,21 @@ def generate_answer(
     context: str,
     model: str = CHAT_MODEL,
     response_format: str | None = None,
+    mode: str | None = None,
 ) -> str:
-    """Generate a grounded answer, optionally in a requested display format.
+    """Generate a grounded answer, optionally in a requested display format
+    and AI mode (default/summarizer/quiz/facilitator).
 
-    response_format is one of "paragraph", "bullet_points", "table", or
-    None (defaults to paragraph). This is passed straight through to
-    build_secure_chat_messages, which decides how it's safely woven into
-    the TRUSTED system message -- never into the untrusted study_context
-    or student_question payload.
+    Both are passed straight through to build_secure_chat_messages, which
+    decides how they're safely woven into the TRUSTED system message --
+    never into the untrusted study_context or student_question payload.
     """
 
     messages = build_secure_chat_messages(
         question=question,
         context=context,
         response_format=response_format,
+        mode=mode,
     )
 
     response = _client.chat.completions.create(

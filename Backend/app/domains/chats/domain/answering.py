@@ -31,13 +31,21 @@ class ChatAnswerGenerator(ABC):
         question: str,
         chunks: tuple[GroundingChunk, ...],
         response_format: str | None = None,
+        mode: str | None = None,
     ) -> GeneratedAnswer:
         """Return an answer grounded only in the supplied authorized chunks.
 
         response_format is one of "paragraph", "bullet_points", "table", or
-        None (defaults to paragraph). Implementations that don't support
-        formatting yet should still accept and ignore it, rather than
-        omitting the parameter -- callers pass it as a keyword argument.
+        None (defaults to paragraph).
+
+        mode is one of "default", "summarizer", "quiz", "facilitator", or
+        None (defaults to "default"/Companion). Personal chat never needs to
+        set this explicitly; group chat's @-mention picker is the intended
+        caller for the other three.
+
+        Implementations that don't support formatting or modes yet should
+        still accept and ignore these, rather than omitting the parameters
+        -- callers pass them as keyword arguments.
         """
 
         raise NotImplementedError
