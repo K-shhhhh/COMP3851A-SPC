@@ -188,6 +188,7 @@ async def ask_question(
             chat_id=chat_id,
             user_id=current_user.id,
             question=payload.content,
+            response_format=payload.response_format,
         )
     except Exception as exc:
         _raise_chat_api_error(exc)

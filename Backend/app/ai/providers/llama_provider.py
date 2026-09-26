@@ -24,10 +24,25 @@ _client = OpenAI(
 CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
 
 
-def generate_answer(question: str, context: str, model: str = CHAT_MODEL) -> str:
+def generate_answer(
+    question: str,
+    context: str,
+    model: str = CHAT_MODEL,
+    response_format: str | None = None,
+) -> str:
+    """Generate a grounded answer, optionally in a requested display format.
+
+    response_format is one of "paragraph", "bullet_points", "table", or
+    None (defaults to paragraph). This is passed straight through to
+    build_secure_chat_messages, which decides how it's safely woven into
+    the TRUSTED system message -- never into the untrusted study_context
+    or student_question payload.
+    """
+
     messages = build_secure_chat_messages(
         question=question,
         context=context,
+        response_format=response_format,
     )
 
     response = _client.chat.completions.create(

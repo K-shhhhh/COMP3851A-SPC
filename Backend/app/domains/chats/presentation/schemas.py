@@ -31,6 +31,10 @@ class AskQuestionRequest(BaseModel):
     """One personal-chat question submitted by the authenticated student."""
 
     content: str = Field(min_length=1, max_length=4000)
+    response_format: Literal["paragraph", "bullet_points", "table"] | None = Field(
+        default=None,
+        description="Requested display format for the assistant's answer.",
+    )
 
 
 class ChatResponse(BaseModel):
