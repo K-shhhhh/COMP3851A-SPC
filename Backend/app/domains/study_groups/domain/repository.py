@@ -1,42 +1,171 @@
-# Study Groups repository contract used by the application service.
-# The database developer implements these operations; abstract methods provide no storage.
-from abc import ABC, abstractmethod
+"""Persistence contract for Study Group use cases.
 
-from app.domains.study_groups.domain.models import StudyGroup
+The application layer depends on this interface instead of depending directly
+on PostgreSQL or an in-memory implementation.
+"""
+
+from abc import ABC, abstractmethod
+from datetime import datetime
+
+from app.domains.study_groups.domain.models import (
+    MyGroupsFilter,
+    StudyGroup,
+    StudyGroupMemberRole,
+    StudyGroupMembership,
+    StudyGroupSummary,
+    StudyGroupVisibility,
+)
 
 
 class StudyGroupRepository(ABC):
+    """Define storage operations required by Study Group use cases."""
 
     @abstractmethod
-    async def get_all_study_groups(self) -> list[StudyGroup]:
+    async def list_discoverable_public_groups(
+        self,
+        *,
+        user_id: str,
+        offset: int,
+        limit: int,
+        search: str | None = None,
+    ) -> tuple[list[StudyGroupSummary], int]:
+        """Return active public groups visible in Discover Public.
+
+        The result includes whether the current user has already joined each
+        group. Private and personal groups must never be returned.
+        """
+
         raise NotImplementedError
 
     @abstractmethod
-    async def get_study_group_by_id(
+    async def list_user_groups(
         self,
-        study_group_id: int,
-    ) -> StudyGroup:
+        *,
+        user_id: str,
+        group_filter: MyGroupsFilter,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[StudyGroupSummary], int]:
+        """Return active groups owned by or joined by the current user."""
+
         raise NotImplementedError
 
     @abstractmethod
-    async def create_study_group(
+    async def get_group_for_user(
         self,
+        *,
+        group_id: str,
+        user_id: str,
+    ) -> StudyGroupSummary | None:
+        """Return a group when it is visible to the current user.
+
+        Public groups are visible to authenticated students. Private groups are
+        visible only to active members.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_group(
+        self,
+        *,
+        group_id: str,
+    ) -> StudyGroup | None:
+        """Return one active public or private group without user projection."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_group(
+        self,
+        *,
         name: str,
-        description: str,
-        owner_id: int,
-    ) -> StudyGroup:
+        description: str | None,
+        visibility: StudyGroupVisibility,
+        created_by: str,
+        max_members: int,
+    ) -> StudyGroupSummary:
+        """Create a group and its initial admin membership atomically.
+
+        The `created_by` student becomes both the owner and the first admin.
+        """
+
         raise NotImplementedError
 
     @abstractmethod
-    async def update_study_group(
+    async def update_group(
         self,
-        study_group: StudyGroup,
+        *,
+        group_id: str,
+        name: str,
+        description: str | None,
+        visibility: StudyGroupVisibility,
+        max_members: int,
+        updated_at: datetime,
     ) -> StudyGroup:
+        """Update an active group after authorization has been checked."""
+
         raise NotImplementedError
 
     @abstractmethod
-    async def delete_study_group(
+    async def soft_delete_group(
         self,
-        study_group_id: int,
-    ) -> None:
+        *,
+        group_id: str,
+        deleted_at: datetime,
+    ) -> bool:
+        """Soft-delete an active group.
+
+        Return `False` if an active group with that identifier does not exist.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_membership(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+    ) -> StudyGroupMembership | None:
+        """Return the active membership between a user and group."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_membership(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+        role: StudyGroupMemberRole,
+        joined_at: datetime,
+    ) -> StudyGroupMembership:
+        """Create an active membership.
+
+        The PostgreSQL implementation must preserve the unique user/group
+        membership constraint.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def delete_membership(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+    ) -> bool:
+        """Hard-delete an active membership when a student leaves."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def count_members(
+        self,
+        *,
+        group_id: str,
+    ) -> int:
+        """Return the number of active memberships in one group."""
+
         raise NotImplementedError

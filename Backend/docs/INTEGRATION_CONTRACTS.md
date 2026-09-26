@@ -927,11 +927,29 @@ Every source included in an answer must refer to a note accessible to the authen
 
 ---
 
-# 9. Confirmed Next-Sprint Behaviour (Endpoints Pending)
+# 9. Study Group Contract
 
-This section records agreed product behaviour before study-group implementation
-begins. It is a planning contract, not a claim that these endpoints already
-exist.
+Study-group CRUD, discovery, membership, and authorization endpoints are now
+implemented. Group channels, group messages, invitations, and AI mentions
+remain separate follow-up contracts.
+
+All routes require `Authorization: Bearer <access_token>` and are prefixed by
+`/api/v1`:
+
+| Method | Route | Purpose |
+|---|---|---|
+| `GET` | `/study-groups/discover` | Active public groups, with optional search |
+| `GET` | `/study-groups/mine` | Groups owned by or joined by the student |
+| `POST` | `/study-groups` | Create a public/private group |
+| `GET` | `/study-groups/{group_id}` | Read an accessible group |
+| `PUT` | `/study-groups/{group_id}` | Replace editable group details as owner/admin |
+| `DELETE` | `/study-groups/{group_id}` | Soft-delete a group as owner/admin |
+| `POST` | `/study-groups/{group_id}/join` | Join an active public group |
+| `DELETE` | `/study-groups/{group_id}/members/me` | Leave a group as a non-admin member |
+
+`discover` accepts `page`, `page_size`, and optional `search`. `mine` accepts
+`filter=all|public|private|owned`, `page`, and `page_size`. Both list responses
+return `items`, `page`, `page_size`, and `total`.
 
 ## Study-group navigation
 

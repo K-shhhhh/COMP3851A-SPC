@@ -354,16 +354,22 @@ def get_chat_service(
 
 # ---------- Study Groups ----------
 
-def get_study_group_repository() -> StudyGroupRepository:
-    """Construct the configured study-group repository."""
+def get_study_group_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> StudyGroupRepository:
+    """Return PostgreSQL study-group persistence for this request."""
 
-    return PostgreSQLStudyGroupRepository()
+    return PostgreSQLStudyGroupRepository(session)
 
 
-def get_study_group_service() -> StudyGroupService:
+def get_study_group_service(
+    repository: StudyGroupRepository = Depends(
+        get_study_group_repository
+    ),
+) -> StudyGroupService:
     """Construct the study-group application service."""
 
-    return StudyGroupService(get_study_group_repository())
+    return StudyGroupService(repository)
 
 
 # ---------- Knowledge Graph ----------

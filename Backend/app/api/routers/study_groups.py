@@ -1,3 +1,5 @@
-# Compatibility import: the actual route implementation lives in domains/*/presentation/router.py.
-# Add domain endpoint behavior there rather than duplicating it in this wrapper.
+"""Expose the Study Group domain router through the API package."""
+
 from app.domains.study_groups.presentation.router import router
+
+__all__ = ["router"]
