@@ -1,4 +1,4 @@
-# SPC API Integration Contract Version 1.3
+# SPC API Integration Contract Version 1.4
 
 ## 1. Status and scope
 
@@ -461,6 +461,12 @@ Response: `201 Created`
 
 The backend derives chat ownership from the access token.
 
+When `title` is omitted or `null`, the chat initially uses `New chat` (or a
+database-generated numbered variation when required for uniqueness). After the
+first student question is persisted, the backend derives a concise title from
+that question exactly once. A title supplied during creation or changed later
+through the rename endpoint is never overwritten automatically.
+
 ## List personal chats
 
 ```http
@@ -631,6 +637,13 @@ Response: `201 Created`
 ```json
 {
   "chat_id": "83a960b4-91d1-410a-b8f8-d838f956992c",
+  "chat": {
+    "id": "83a960b4-91d1-410a-b8f8-d838f956992c",
+    "title": "What is clean architecture",
+    "type": "personal",
+    "created_at": "2026-09-08T11:00:00Z",
+    "updated_at": "2026-09-08T11:05:00Z"
+  },
   "user_message": {
     "id": 1,
     "role": "user",
@@ -660,6 +673,10 @@ Response: `201 Created`
 For the current demonstration, this operation is synchronous: the HTTP
 response contains both the persisted student message and the completed AI
 answer. The frontend must not wait for a WebSocket event after this request.
+The `chat` object contains the latest metadata, including the title derived
+from the first question. The frontend should merge this object into its chat
+sidebar state immediately instead of guessing the title or making a second
+request.
 
 Rules:
 
@@ -670,6 +687,10 @@ Rules:
 - Retrieval must be restricted to the authenticated student’s ready notes.
 - The frontend does not submit `note_ids` for normal personal-chat questions.
 - The frontend does not submit `user_id` or `owner_id`.
+- Automatic title generation runs only for the first question in a chat that
+  still has a backend placeholder title.
+- Later questions never change the title. `PATCH /chats/{chat_id}` remains the
+  manual rename mechanism.
 
 Errors:
 
@@ -903,5 +924,66 @@ The RAG service must not search:
 - Deleted notes
 
 Every source included in an answer must refer to a note accessible to the authenticated student.
+
+---
+
+# 9. Confirmed Next-Sprint Behaviour (Endpoints Pending)
+
+This section records agreed product behaviour before study-group implementation
+begins. It is a planning contract, not a claim that these endpoints already
+exist.
+
+## Study-group navigation
+
+The frontend presents two distinct views:
+
+1. **Discover Public** shows every active public group in the system. A group
+   that the student has not joined exposes `Join`; a joined group exposes
+   `Joined` or `Open`. Private groups must never appear in discovery.
+2. **My Groups** shows every active public or private group that the current
+   student owns or has joined. It supports `All`, `Public`, `Private`, and
+   `Owned` filters.
+
+The backend must derive membership and ownership from the access token. The
+frontend must not submit a user identifier to scope either list.
+
+## Group visibility and membership
+
+- Any authenticated student may join an active public group.
+- Private groups are visible only to members and are joined through an
+  invitation or an authorized owner/admin action.
+- Leaving a group removes its active membership.
+- Deleted groups, channels, messages, and accounts are excluded according to
+  the shared soft-deletion rules.
+
+## Channel naming
+
+Public- and private-group channels are named explicitly by the group owner or
+an authorized admin at creation time. There is no automatic or AI-suggested
+channel title. Personal AI chat title generation is separate and must not be
+reused for group channels.
+
+## Group AI mentions
+
+Ordinary group messages do not call an AI model. The composer mention menu will
+contain both human members and these explicit companion modes:
+
+- `@Companion` — general/default assistant
+- `@QuizMaster` — quiz and practice-question mode
+- `@Summarizer` — channel or selected-content summary mode
+- `@Facilitator` — discussion-guidance mode
+
+A human mention creates normal mention/notification behaviour only. An AI
+mention is parsed into an explicit backend AI mode; authorization, persistence,
+retrieval scope, and the selected AI adapter are enforced server-side. Exact
+request and response schemas will be added when the group-chat endpoints are
+implemented.
+
+## Knowledge graph sequence
+
+Knowledge-graph and mind-map visualization begins only after study-group CRUD,
+membership, channels, messages, and companion-mode contracts are stable. Graph
+queries must respect the same user/group/channel authorization boundary as the
+source notes and chunks.
 
 ---

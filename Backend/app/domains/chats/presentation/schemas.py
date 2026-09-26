@@ -142,6 +142,7 @@ class ChatExchangeResponse(BaseModel):
     """Completed synchronous question and grounded answer."""
 
     chat_id: str
+    chat: ChatResponse
     user_message: ChatMessageResponse
     assistant_message: ChatMessageResponse
 
@@ -156,6 +157,7 @@ class ChatExchangeResponse(BaseModel):
 
         return cls(
             chat_id=chat_id,
+            chat=ChatResponse.from_chat(exchange.chat),
             user_message=ChatMessageResponse.from_message(
                 exchange.user_message
             ),
@@ -163,4 +165,3 @@ class ChatExchangeResponse(BaseModel):
                 exchange.assistant_message
             ),
         )
-

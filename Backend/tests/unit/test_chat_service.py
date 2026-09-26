@@ -73,7 +73,7 @@ async def test_question_requires_ready_note_chunks() -> None:
 
 
 async def test_question_persists_grounded_exchange() -> None:
-    """Persist the user question and completed cited answer."""
+    """Persist the grounded exchange and title it from the first question."""
 
     service, _, chunks = make_service()
     chat = await service.create_chat(user_id="user-1", title=None)
@@ -96,8 +96,50 @@ async def test_question_persists_grounded_exchange() -> None:
 
     assert exchange.user_message.content == "What is indexing?"
     assert exchange.assistant_message.sources[0].chunk_id == 7
+    assert exchange.chat.title == "What is indexing"
     assert total == 2
     assert history == [exchange.user_message, exchange.assistant_message]
+
+
+async def test_only_placeholder_chat_uses_first_question_as_title() -> None:
+    """Preserve manual titles and never retitle after the first question."""
+
+    service, _, chunks = make_service()
+    await chunks.replace_user_chunks(
+        user_id="user-1",
+        chunks=(sample_chunk(),),
+    )
+
+    manual_chat = await service.create_chat(
+        user_id="user-1",
+        title="My revision session",
+    )
+    manual_exchange = await service.ask_question(
+        chat_id=manual_chat.chat_id,
+        user_id="user-1",
+        question="What is indexing?",
+    )
+    assert manual_exchange.chat.title == "My revision session"
+
+    automatic_chat = await service.create_chat(user_id="user-1", title=None)
+    first_exchange = await service.ask_question(
+        chat_id=automatic_chat.chat_id,
+        user_id="user-1",
+        question=(
+            "Explain how database indexes improve retrieval performance "
+            "for large tables?"
+        ),
+    )
+    second_exchange = await service.ask_question(
+        chat_id=automatic_chat.chat_id,
+        user_id="user-1",
+        question="When should I avoid an index?",
+    )
+
+    assert first_exchange.chat.title == (
+        "Explain how database indexes improve retrieval performance"
+    )
+    assert second_exchange.chat.title == first_exchange.chat.title
 
 
 async def test_cross_user_chat_access_is_hidden() -> None:
@@ -145,4 +187,3 @@ async def test_answer_cannot_cite_an_unauthorized_chunk() -> None:
             user_id="user-1",
             question="What is indexing?",
         )
-

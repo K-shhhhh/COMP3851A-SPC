@@ -159,6 +159,7 @@ async def test_personal_chat_crud_and_synchronous_answer(
         json={"content": "What is an index?"},
     )
     assert answered.status_code == 201
+    assert answered.json()["chat"]["title"] == "What is an index"
     assert answered.json()["assistant_message"]["sources"][0]["chunk_id"] == 5
 
     history = client.get(
@@ -236,4 +237,3 @@ def test_whitespace_question_uses_shared_validation_error(chat_client) -> None:
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
-

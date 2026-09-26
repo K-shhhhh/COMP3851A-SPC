@@ -100,6 +100,6 @@ class ChatMessage:
 class ChatExchange:
     """Completed synchronous question-and-answer result."""
 
+    chat: PersonalChat
     user_message: ChatMessage
     assistant_message: ChatMessage
-

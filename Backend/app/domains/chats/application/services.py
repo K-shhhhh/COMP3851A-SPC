@@ -1,5 +1,6 @@
 """Application use cases for personal AI Assistant conversations."""
 
+import re
 from datetime import datetime, timezone
 from app.domains.chats.application.prompt_security import (
     validate_user_question,
@@ -152,7 +153,7 @@ class ChatService:
         generation across the already authorized chunks supplied here.
         """
 
-        await self.get_chat(chat_id=chat_id, user_id=user_id)
+        chat = await self.get_chat(chat_id=chat_id, user_id=user_id)
         normalized_question = self._normalize_question(question)
 
         # The repository is the security boundary: it must exclude other
@@ -171,6 +172,23 @@ class ChatService:
             role=ChatMessageRole.USER,
             content=normalized_question,
         )
+
+        # A personal conversation begins with a placeholder name. Replace that
+        # placeholder from the first persisted question only; a manual title is
+        # never overwritten by later questions.
+        _, message_count = await self._repository.list_messages(
+            chat_id=chat_id,
+            offset=0,
+            limit=1,
+        )
+        if message_count == 1 and self._is_placeholder_title(chat.title):
+            renamed_chat = await self._repository.rename_owned_chat(
+                chat_id=chat_id,
+                owner_id=user_id,
+                title=self._derive_title(normalized_question),
+            )
+            if renamed_chat is not None:
+                chat = renamed_chat
 
         try:
             answer = await self._answer_generator.answer_question(
@@ -191,9 +209,32 @@ class ChatService:
         )
 
         return ChatExchange(
+            chat=chat,
             user_message=user_message,
             assistant_message=assistant_message,
         )
+
+    @staticmethod
+    def _is_placeholder_title(title: str) -> bool:
+        """Recognize generated default names, including database suffixes."""
+
+        return re.fullmatch(r"New chat(?: \(\d+\))?", title) is not None
+
+    @staticmethod
+    def _derive_title(question: str) -> str:
+        """Create a concise stable title from the first normalized question."""
+
+        selected_words: list[str] = []
+        for word in question.split()[:8]:
+            candidate = " ".join((*selected_words, word))
+            if len(candidate) > 60:
+                if not selected_words:
+                    selected_words.append(word[:60])
+                break
+            selected_words.append(word)
+
+        title = " ".join(selected_words).strip(" \t\r\n.,:;!?-–—")
+        return title or "New chat"
 
     @staticmethod
     def _normalize_title(title: str | None, *, allow_default: bool) -> str:
@@ -245,4 +286,3 @@ class ChatService:
             raise ValueError(
                 "The answer adapter returned an unauthorized source."
             )
-

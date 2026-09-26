@@ -120,7 +120,7 @@ def test_register_upload_and_ask_question_works_locally(demo_client: TestClient)
     chat_response = demo_client.post(
         "/api/v1/chats",
         headers=authorization,
-        json={"title": "Bioethanol questions"},
+        json={"title": None},
     )
     assert chat_response.status_code == 201
     chat_id = chat_response.json()["id"]
@@ -131,6 +131,8 @@ def test_register_upload_and_ask_question_works_locally(demo_client: TestClient)
         json={"content": "What is bioethanol?"},
     )
     assert answer_response.status_code == 201
-    answer = answer_response.json()["assistant_message"]
+    answer_payload = answer_response.json()
+    assert answer_payload["chat"]["title"] == "What is bioethanol"
+    answer = answer_payload["assistant_message"]
     assert "renewable liquid fuel" in answer["content"]
     assert answer["sources"][0]["note_id"] == uploaded_note["id"]
