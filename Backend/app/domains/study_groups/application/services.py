@@ -10,13 +10,18 @@ from app.domains.study_groups.domain.exceptions import (
     InvalidStudyGroupError,
     PrivateStudyGroupJoinError,
     StudyGroupAlreadyMemberError,
+    StudyGroupChannelNameConflictError,
+    StudyGroupChannelNotFoundError,
     StudyGroupFullError,
     StudyGroupMembershipNotFoundError,
     StudyGroupNotFoundError,
     StudyGroupPermissionDeniedError,
+    StudyGroupTargetUserNotFoundError,
 )
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
+    StudyGroupChannel,
+    StudyGroupMember,
     StudyGroupMemberRole,
     StudyGroupMembership,
     StudyGroupSummary,
@@ -91,6 +96,245 @@ class StudyGroupService:
             raise StudyGroupNotFoundError("Study group not found.")
 
         return group
+
+    async def list_members(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[StudyGroupMember], int]:
+        """List members only for a student who belongs to the group."""
+
+        self._validate_pagination(page=page, page_size=page_size)
+        group = await self._repository.get_group_for_user(
+            group_id=group_id,
+            user_id=user_id,
+        )
+        if group is None:
+            raise StudyGroupNotFoundError("Study group not found.")
+        if not group.is_member:
+            raise StudyGroupPermissionDeniedError(
+                "You must be a group member to view its members."
+            )
+
+        return await self._repository.list_members(
+            group_id=group_id,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+        )
+
+    async def add_member_by_email(
+        self,
+        *,
+        group_id: str,
+        requester_user_id: str,
+        email: str,
+    ) -> StudyGroupMembership:
+        """Allow an owner/admin to add an active student by email."""
+
+        group = await self._get_manageable_group(
+            group_id=group_id,
+            user_id=requester_user_id,
+        )
+        target_user_id = (
+            await self._repository.find_active_user_id_by_email(
+                email=email.strip().casefold()
+            )
+        )
+        if target_user_id is None:
+            raise StudyGroupTargetUserNotFoundError(
+                "No active student account was found for that email."
+            )
+
+        existing = await self._repository.get_membership(
+            group_id=group_id,
+            user_id=target_user_id,
+        )
+        if existing is not None:
+            raise StudyGroupAlreadyMemberError(
+                "That student is already a member of this study group."
+            )
+        if group.member_count >= group.group.max_members:
+            raise StudyGroupFullError(
+                "This study group has reached its member limit."
+            )
+
+        return await self._repository.create_membership(
+            group_id=group_id,
+            user_id=target_user_id,
+            role=StudyGroupMemberRole.MEMBER,
+            joined_at=datetime.now(timezone.utc),
+        )
+
+    async def remove_member(
+        self,
+        *,
+        group_id: str,
+        requester_user_id: str,
+        target_user_id: str,
+    ) -> None:
+        """Allow an owner/admin to remove an ordinary group member."""
+
+        group = await self._get_manageable_group(
+            group_id=group_id,
+            user_id=requester_user_id,
+        )
+        membership = await self._repository.get_membership(
+            group_id=group_id,
+            user_id=target_user_id,
+        )
+        if membership is None:
+            raise StudyGroupMembershipNotFoundError(
+                "That student is not a member of this study group."
+            )
+        if (
+            target_user_id == group.group.created_by
+            or target_user_id == group.group.current_admin_id
+            or membership.role == StudyGroupMemberRole.ADMIN
+        ):
+            raise StudyGroupPermissionDeniedError(
+                "A group owner or administrator cannot be removed."
+            )
+
+        deleted = await self._repository.delete_membership(
+            group_id=group_id,
+            user_id=target_user_id,
+        )
+        if not deleted:
+            raise StudyGroupMembershipNotFoundError(
+                "That student is not a member of this study group."
+            )
+
+    async def list_channels(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[StudyGroupChannel], int]:
+        """List channels for an active member of the group."""
+
+        self._validate_pagination(page=page, page_size=page_size)
+        await self._get_member_group(group_id=group_id, user_id=user_id)
+        return await self._repository.list_channels(
+            group_id=group_id,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+        )
+
+    async def get_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        user_id: str,
+    ) -> StudyGroupChannel:
+        """Return a channel only to an active group member."""
+
+        await self._get_member_group(group_id=group_id, user_id=user_id)
+        channel = await self._repository.get_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+        )
+        if channel is None:
+            raise StudyGroupChannelNotFoundError(
+                "Study group channel not found."
+            )
+        return channel
+
+    async def create_channel(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+        name: str,
+        description: str | None,
+    ) -> StudyGroupChannel:
+        """Create an admin-named channel as a group owner/admin."""
+
+        await self._get_manageable_group(group_id=group_id, user_id=user_id)
+        normalized_name = self._normalize_channel_name(name)
+        normalized_description = self._normalize_channel_description(
+            description
+        )
+        if await self._repository.channel_name_exists(
+            group_id=group_id,
+            normalized_name=normalized_name,
+        ):
+            raise StudyGroupChannelNameConflictError(
+                "An active channel with that name already exists."
+            )
+        now = datetime.now(timezone.utc)
+        return await self._repository.create_channel(
+            group_id=group_id,
+            name=normalized_name,
+            description=normalized_description,
+            created_by=user_id,
+            created_at=now,
+        )
+
+    async def update_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        user_id: str,
+        name: str,
+        description: str | None,
+    ) -> StudyGroupChannel:
+        """Update a channel as a group owner/admin."""
+
+        await self._get_manageable_group(group_id=group_id, user_id=user_id)
+        existing = await self._repository.get_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+        )
+        if existing is None:
+            raise StudyGroupChannelNotFoundError(
+                "Study group channel not found."
+            )
+        normalized_name = self._normalize_channel_name(name)
+        normalized_description = self._normalize_channel_description(
+            description
+        )
+        if await self._repository.channel_name_exists(
+            group_id=group_id,
+            normalized_name=normalized_name,
+            exclude_channel_id=channel_id,
+        ):
+            raise StudyGroupChannelNameConflictError(
+                "An active channel with that name already exists."
+            )
+        return await self._repository.update_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            name=normalized_name,
+            description=normalized_description,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    async def delete_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        user_id: str,
+    ) -> None:
+        """Soft-delete a channel as a group owner/admin."""
+
+        await self._get_manageable_group(group_id=group_id, user_id=user_id)
+        deleted = await self._repository.soft_delete_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            deleted_at=datetime.now(timezone.utc),
+        )
+        if not deleted:
+            raise StudyGroupChannelNotFoundError(
+                "Study group channel not found."
+            )
 
     async def create_group(
         self,
@@ -308,6 +552,26 @@ class StudyGroupService:
 
         return group
 
+    async def _get_member_group(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+    ) -> StudyGroupSummary:
+        """Return a group only when the student is an active member."""
+
+        group = await self._repository.get_group_for_user(
+            group_id=group_id,
+            user_id=user_id,
+        )
+        if group is None:
+            raise StudyGroupNotFoundError("Study group not found.")
+        if not group.is_member:
+            raise StudyGroupPermissionDeniedError(
+                "You must join the group before accessing its channels."
+            )
+        return group
+
     @staticmethod
     def _normalize_name(name: str) -> str:
         """Normalize and validate a group display name."""
@@ -345,6 +609,38 @@ class StudyGroupService:
                 "Study group description must not exceed 1000 characters."
             )
 
+        return normalized
+
+    @staticmethod
+    def _normalize_channel_name(name: str) -> str:
+        """Normalize an administrator-supplied channel name."""
+
+        normalized = " ".join(name.split())
+        if not normalized:
+            raise InvalidStudyGroupError(
+                "Channel name must not be empty."
+            )
+        if len(normalized) > 100:
+            raise InvalidStudyGroupError(
+                "Channel name must not exceed 100 characters."
+            )
+        return normalized
+
+    @staticmethod
+    def _normalize_channel_description(
+        description: str | None,
+    ) -> str | None:
+        """Normalize an optional channel description."""
+
+        if description is None:
+            return None
+        normalized = description.strip()
+        if not normalized:
+            return None
+        if len(normalized) > 1000:
+            raise InvalidStudyGroupError(
+                "Channel description must not exceed 1000 characters."
+            )
         return normalized
 
     @staticmethod

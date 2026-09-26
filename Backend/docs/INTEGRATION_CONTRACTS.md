@@ -929,9 +929,12 @@ Every source included in an answer must refer to a note accessible to the authen
 
 # 9. Study Group Contract
 
-Study-group CRUD, discovery, membership, and authorization endpoints are now
-implemented. Group channels, group messages, invitations, and AI mentions
-remain separate follow-up contracts.
+Study-group CRUD, discovery, membership, channel CRUD, and authorization
+endpoints are now implemented against shared process-local memory. Group
+messages, invitations, and AI mentions remain separate follow-up contracts.
+The database developer must complete the repository methods before this module
+is switched back to PostgreSQL. Restarting the backend currently clears Study
+Group data.
 
 All routes require `Authorization: Bearer <access_token>` and are prefixed by
 `/api/v1`:
@@ -945,7 +948,15 @@ All routes require `Authorization: Bearer <access_token>` and are prefixed by
 | `PUT` | `/study-groups/{group_id}` | Replace editable group details as owner/admin |
 | `DELETE` | `/study-groups/{group_id}` | Soft-delete a group as owner/admin |
 | `POST` | `/study-groups/{group_id}/join` | Join an active public group |
+| `GET` | `/study-groups/{group_id}/members` | List members as a group member |
+| `POST` | `/study-groups/{group_id}/members` | Add a student by email as owner/admin |
+| `DELETE` | `/study-groups/{group_id}/members/{user_id}` | Remove an ordinary member as owner/admin |
 | `DELETE` | `/study-groups/{group_id}/members/me` | Leave a group as a non-admin member |
+| `GET` | `/study-groups/{group_id}/channels` | List active channels as a member |
+| `POST` | `/study-groups/{group_id}/channels` | Create an admin-named channel as owner/admin |
+| `GET` | `/study-groups/{group_id}/channels/{channel_id}` | Read a channel as a member |
+| `PUT` | `/study-groups/{group_id}/channels/{channel_id}` | Replace channel details as owner/admin |
+| `DELETE` | `/study-groups/{group_id}/channels/{channel_id}` | Soft-delete a channel as owner/admin |
 
 `discover` accepts `page`, `page_size`, and optional `search`. `mine` accepts
 `filter=all|public|private|owned`, `page`, and `page_size`. Both list responses
@@ -968,8 +979,11 @@ frontend must not submit a user identifier to scope either list.
 ## Group visibility and membership
 
 - Any authenticated student may join an active public group.
-- Private groups are visible only to members and are joined through an
-  invitation or an authorized owner/admin action.
+- Private groups are visible only to members. For this sprint, an owner/admin
+  adds an active student directly by email; a separate invitation workflow is
+  deferred.
+- Every member may list the group's members. Only an owner/admin may add or
+  remove members, and an owner/admin membership cannot be removed.
 - Leaving a group removes its active membership.
 - Deleted groups, channels, messages, and accounts are excluded according to
   the shared soft-deletion rules.
@@ -980,6 +994,10 @@ Public- and private-group channels are named explicitly by the group owner or
 an authorized admin at creation time. There is no automatic or AI-suggested
 channel title. Personal AI chat title generation is separate and must not be
 reused for group channels.
+
+Only active group members may list or read channels. Only the owner or an
+administrator may create, update, or delete them. Active channel names are
+unique within the same group using a case-insensitive comparison.
 
 ## Group AI mentions
 

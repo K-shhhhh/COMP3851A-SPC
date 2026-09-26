@@ -4,13 +4,21 @@
 
 The backend now supports Study Group discovery, the authenticated student's
 groups, public/private group creation, details, updates, soft deletion, public
-joining, and leaving. The current frontend still uses local component state and
+joining, owner/admin-managed membership, member listing, leaving, and complete
+channel CRUD. The
+current frontend still uses local component state and
 `Frontend/src/services/groupService.js` is only a placeholder, so frontend API
 integration is still required.
 
-Group channels, group messages, private invitations, member administration,
-and AI companion mentions are **not** included in this endpoint slice. Do not
-invent frontend calls for those features until their contracts are added.
+Group messages, invitation links, and AI companion mentions are **not**
+included in this endpoint slice. Do not invent frontend calls for those
+features until their contracts are added.
+
+This sprint uses one shared in-memory Study Group repository. It preserves data
+between requests in one backend process, but restarting the backend clears all
+groups, memberships, and channels. PostgreSQL persistence will be enabled only
+after the database developer completes every method in the domain repository
+contract.
 
 ## Authentication
 
@@ -30,7 +38,15 @@ access token.
 | `PUT` | `/study-groups/{id}` | Owner/admin edit form |
 | `DELETE` | `/study-groups/{id}` | Owner/admin delete action |
 | `POST` | `/study-groups/{id}/join` | Join a public group |
+| `GET` | `/study-groups/{id}/members?page=1&page_size=20` | List members as a group member |
+| `POST` | `/study-groups/{id}/members` | Add an active student by email as owner/admin |
+| `DELETE` | `/study-groups/{id}/members/{userId}` | Remove an ordinary member as owner/admin |
 | `DELETE` | `/study-groups/{id}/members/me` | Leave as a normal member |
+| `GET` | `/study-groups/{id}/channels?page=1&page_size=20` | List channels as a member |
+| `POST` | `/study-groups/{id}/channels` | Create an admin-named channel as owner/admin |
+| `GET` | `/study-groups/{id}/channels/{channelId}` | Read one channel as a member |
+| `PUT` | `/study-groups/{id}/channels/{channelId}` | Rename/update a channel as owner/admin |
+| `DELETE` | `/study-groups/{id}/channels/{channelId}` | Soft-delete a channel as owner/admin |
 
 ## Request bodies
 
@@ -49,6 +65,16 @@ field rather than only the changed value.
 `visibility` is `public` or `private`. Names are 1–100 characters,
 descriptions are optional and at most 1000 characters, and `max_members` must
 be greater than zero.
+
+Channel create and update use an administrator-entered name and optional
+description. There is no AI-generated title for group channels.
+
+```json
+{
+  "name": "Exam Preparation",
+  "description": "Questions and revision for the final exam."
+}
+```
 
 ## Group response
 
@@ -86,7 +112,15 @@ Implement one exported function for each route:
 - `updateStudyGroup(groupId, payload)`
 - `deleteStudyGroup(groupId)`
 - `joinStudyGroup(groupId)`
+- `getStudyGroupMembers(groupId, { page, pageSize })`
+- `addStudyGroupMember(groupId, email)`
+- `removeStudyGroupMember(groupId, userId)`
 - `leaveStudyGroup(groupId)`
+- `getStudyGroupChannels(groupId, { page, pageSize })`
+- `createStudyGroupChannel(groupId, payload)`
+- `getStudyGroupChannel(groupId, channelId)`
+- `updateStudyGroupChannel(groupId, channelId, payload)`
+- `deleteStudyGroupChannel(groupId, channelId)`
 
 Every function should call the shared API client and return parsed backend data.
 Do not duplicate token storage, base URL logic, or error parsing in this file.
@@ -104,8 +138,11 @@ Do not duplicate token storage, base URL logic, or error parsing in this file.
    update the cached item using the returned group response).
 4. Show loading, empty, and error states. Disable mutation buttons while a
    request is running to prevent accidental duplicate operations.
-5. Keep the existing channel/message mock UI isolated from this service until
-   the channel/message endpoints are delivered.
+5. Replace channel mock data with the channel functions above. Keep message
+   mock data isolated until group-message endpoints are delivered.
+6. In the member-management panel, allow every member to view the list, but
+   show Add/Remove controls only when `can_manage` is true. Add members using
+   an email address; never ask the administrator to enter a UUID.
 
 ## Expected errors
 
@@ -117,9 +154,12 @@ The shared API client should expose these backend codes to the UI:
 | `403` | `STUDY_GROUP_PERMISSION_DENIED` | Explain that owner/admin access is required |
 | `403` | `PRIVATE_GROUP_INVITATION_REQUIRED` | Explain that private groups require an invitation |
 | `404` | `STUDY_GROUP_NOT_FOUND` | Remove stale item or return to the list |
+| `404` | `STUDY_GROUP_TARGET_USER_NOT_FOUND` | Explain that no active student uses that email |
+| `404` | `STUDY_GROUP_CHANNEL_NOT_FOUND` | Remove the stale channel or return to the group |
 | `409` | `ALREADY_GROUP_MEMBER` | Refresh and show Open/Joined |
 | `409` | `NOT_GROUP_MEMBER` | Refresh My Groups |
 | `409` | `STUDY_GROUP_FULL` | Disable Join and show the group is full |
+| `409` | `STUDY_GROUP_CHANNEL_NAME_CONFLICT` | Ask the admin to choose another channel name |
 | `422` | `VALIDATION_ERROR` | Display validation feedback near the form |
 
 ## Acceptance checklist
@@ -131,4 +171,7 @@ The shared API client should expose these backend codes to the UI:
 - Non-admin members cannot edit or delete groups.
 - A normal member can leave; an owner/admin must transfer administration or
   delete the group instead.
-- Refreshing the browser keeps the same database-backed group state.
+- Refreshing the browser keeps state while the same backend process is running;
+  restarting the backend clears this sprint's in-memory Study Group data.
+- Members can list/open channels, while only owners/admins see channel
+  create/edit/delete controls.

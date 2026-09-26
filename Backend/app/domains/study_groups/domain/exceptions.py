@@ -6,7 +6,8 @@ will translate them into the shared API error response.
 
 class StudyGroupError(Exception):
     """Base exception for expected Study Group failures."""
-    
+
+
 class StudyGroupNotFoundError(StudyGroupError):
     """Raised when a group is missing or inaccessible to the student."""
     
@@ -27,3 +28,15 @@ class StudyGroupFullError(StudyGroupError):
     
 class InvalidStudyGroupError(StudyGroupError):
     """Raised when group input violates application rules."""
+
+
+class StudyGroupTargetUserNotFoundError(StudyGroupError):
+    """Raised when the requested student account cannot be added."""
+
+
+class StudyGroupChannelNotFoundError(StudyGroupError):
+    """Raised when a channel is missing or inaccessible to the student."""
+
+
+class StudyGroupChannelNameConflictError(StudyGroupError):
+    """Raised when an active group already has the requested channel name."""

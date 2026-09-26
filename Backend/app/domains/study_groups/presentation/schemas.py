@@ -6,10 +6,12 @@ responses. They do not perform authorization or database operations.
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from app.domains.study_groups.domain.models import (
+    StudyGroupChannel,
     StudyGroupMemberRole,
+    StudyGroupMember,
     StudyGroupMembership,
     StudyGroupSummary,
     StudyGroupVisibility,
@@ -53,6 +55,26 @@ class UpdateStudyGroupRequest(BaseModel):
     )
     visibility: StudyGroupVisibility
     max_members: int = Field(gt=0)
+
+
+class AddStudyGroupMemberRequest(BaseModel):
+    """Student account an owner/admin wants to add to a group."""
+
+    email: EmailStr
+
+
+class CreateStudyGroupChannelRequest(BaseModel):
+    """Administrator-supplied information for a new channel."""
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class UpdateStudyGroupChannelRequest(BaseModel):
+    """Complete replacement of editable channel information."""
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=1000)
 
 
 class StudyGroupResponse(BaseModel):
@@ -127,6 +149,44 @@ class MyGroupsResponse(StudyGroupListResponse):
     """Response for the authenticated student's My Groups page."""
 
 
+class StudyGroupMemberResponse(BaseModel):
+    """Safe public profile and membership information."""
+
+    membership_id: int
+    group_id: str
+    user_id: str
+    full_name: str
+    email: EmailStr
+    role: StudyGroupMemberRole
+    joined_at: datetime
+
+    @classmethod
+    def from_member(
+        cls,
+        member: StudyGroupMember,
+    ) -> "StudyGroupMemberResponse":
+        """Map a member projection into the HTTP response."""
+
+        return cls(
+            membership_id=member.membership_id,
+            group_id=member.group_id,
+            user_id=member.user_id,
+            full_name=member.full_name,
+            email=member.email,
+            role=member.role,
+            joined_at=member.joined_at,
+        )
+
+
+class StudyGroupMemberListResponse(BaseModel):
+    """Paginated member collection."""
+
+    items: list[StudyGroupMemberResponse]
+    page: int
+    page_size: int
+    total: int
+
+
 class StudyGroupMembershipResponse(BaseModel):
     """Public representation of one active membership."""
 
@@ -150,3 +210,41 @@ class StudyGroupMembershipResponse(BaseModel):
             role=membership.role,
             joined_at=membership.joined_at,
         )
+
+
+class StudyGroupChannelResponse(BaseModel):
+    """Public representation of one active study-group channel."""
+
+    id: str
+    group_id: str
+    name: str
+    description: str | None
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_channel(
+        cls,
+        channel: StudyGroupChannel,
+    ) -> "StudyGroupChannelResponse":
+        """Map a domain channel into the HTTP response."""
+
+        return cls(
+            id=channel.channel_id,
+            group_id=channel.group_id,
+            name=channel.name,
+            description=channel.description,
+            created_by=channel.created_by,
+            created_at=channel.created_at,
+            updated_at=channel.updated_at,
+        )
+
+
+class StudyGroupChannelListResponse(BaseModel):
+    """Paginated active-channel collection."""
+
+    items: list[StudyGroupChannelResponse]
+    page: int
+    page_size: int
+    total: int

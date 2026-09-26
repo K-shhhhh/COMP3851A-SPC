@@ -80,7 +80,9 @@ from app.domains.chats.infrastructure.rag_answering import (
 
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.domain.repository import StudyGroupRepository
-from app.domains.study_groups.infrastructure.repository import PostgreSQLStudyGroupRepository
+from app.domains.study_groups.infrastructure.memory_repository import (
+    InMemoryStudyGroupRepository,
+)
 
 from app.domains.knowledge_graph.application.services import KnowledgeGraphService
 from app.domains.knowledge_graph.domain.repository import KnowledgeGraphRepository
@@ -354,12 +356,15 @@ def get_chat_service(
 
 # ---------- Study Groups ----------
 
-def get_study_group_repository(
-    session: AsyncSession = Depends(get_db_session),
-) -> StudyGroupRepository:
-    """Return PostgreSQL study-group persistence for this request."""
+# The shared instance preserves groups, memberships, and channels between HTTP
+# requests during local testing. Data resets whenever the backend restarts.
+_local_study_group_repository = InMemoryStudyGroupRepository()
 
-    return PostgreSQLStudyGroupRepository(session)
+def get_study_group_repository(
+) -> StudyGroupRepository:
+    """Return local persistence until the database adapter is completed."""
+
+    return _local_study_group_repository
 
 
 def get_study_group_service(

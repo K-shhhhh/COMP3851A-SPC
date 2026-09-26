@@ -10,6 +10,8 @@ from datetime import datetime
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
     StudyGroup,
+    StudyGroupChannel,
+    StudyGroupMember,
     StudyGroupMemberRole,
     StudyGroupMembership,
     StudyGroupSummary,
@@ -72,6 +74,38 @@ class StudyGroupRepository(ABC):
         group_id: str,
     ) -> StudyGroup | None:
         """Return one active public or private group without user projection."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def find_active_user_id_by_email(
+        self,
+        *,
+        email: str,
+    ) -> str | None:
+        """Find an active student account using a normalized email address.
+
+        This allows an owner or administrator to add a member using an email
+        address instead of requiring the frontend to know the student's UUID.
+
+        The implementation must exclude deactivated and soft-deleted users.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list_members(
+        self,
+        *,
+        group_id: str,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[StudyGroupMember], int]:
+        """Return a paginated list of members belonging to one active group.
+
+        The returned projection contains only safe public profile information
+        together with the membership role and joining time.
+        """
 
         raise NotImplementedError
 
@@ -167,5 +201,80 @@ class StudyGroupRepository(ABC):
         group_id: str,
     ) -> int:
         """Return the number of active memberships in one group."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list_channels(
+        self,
+        *,
+        group_id: str,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[StudyGroupChannel], int]:
+        """Return active channels belonging to one active study group."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+    ) -> StudyGroupChannel | None:
+        """Return one active channel belonging to the specified group."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def channel_name_exists(
+        self,
+        *,
+        group_id: str,
+        normalized_name: str,
+        exclude_channel_id: str | None = None,
+    ) -> bool:
+        """Check active channel-name uniqueness within one group."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_channel(
+        self,
+        *,
+        group_id: str,
+        name: str,
+        description: str | None,
+        created_by: str,
+        created_at: datetime,
+    ) -> StudyGroupChannel:
+        """Create a named channel after application authorization."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        name: str,
+        description: str | None,
+        updated_at: datetime,
+    ) -> StudyGroupChannel:
+        """Replace editable fields on an active group channel."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def soft_delete_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        deleted_at: datetime,
+    ) -> bool:
+        """Soft-delete a channel and report whether it existed."""
 
         raise NotImplementedError

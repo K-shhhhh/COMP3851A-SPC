@@ -17,20 +17,31 @@ from app.domains.study_groups.domain.exceptions import (
     InvalidStudyGroupError,
     PrivateStudyGroupJoinError,
     StudyGroupAlreadyMemberError,
+    StudyGroupChannelNameConflictError,
+    StudyGroupChannelNotFoundError,
     StudyGroupFullError,
     StudyGroupMembershipNotFoundError,
     StudyGroupNotFoundError,
     StudyGroupPermissionDeniedError,
+    StudyGroupTargetUserNotFoundError,
 )
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
 )
 from app.domains.study_groups.presentation.schemas import (
+    AddStudyGroupMemberRequest,
+    CreateStudyGroupChannelRequest,
     CreateStudyGroupRequest,
     DiscoverPublicResponse,
     MyGroupsResponse,
+    StudyGroupMemberListResponse,
+    StudyGroupChannelListResponse,
+    StudyGroupChannelResponse,
+    StudyGroupMembershipResponse,
+    StudyGroupMemberResponse,
     StudyGroupResponse,
     UpdateStudyGroupRequest,
+    UpdateStudyGroupChannelRequest,
 )
 
 
@@ -165,6 +176,255 @@ async def get_study_group(
     return StudyGroupResponse.from_summary(group)
 
 
+@router.get(
+    "/{group_id}/members",
+    response_model=StudyGroupMemberListResponse,
+)
+async def list_group_members(
+    group_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMemberListResponse:
+    """List group members for an authenticated member."""
+
+    try:
+        members, total = await service.list_members(
+            group_id=str(group_id),
+            user_id=current_user.id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupMemberListResponse(
+        items=[
+            StudyGroupMemberResponse.from_member(member)
+            for member in members
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
+
+
+@router.post(
+    "/{group_id}/members",
+    response_model=StudyGroupMembershipResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_group_member(
+    group_id: UUID,
+    payload: AddStudyGroupMemberRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMembershipResponse:
+    """Add an active student by email as the owner/admin."""
+
+    try:
+        membership = await service.add_member_by_email(
+            group_id=str(group_id),
+            requester_user_id=current_user.id,
+            email=str(payload.email),
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupMembershipResponse.from_membership(membership)
+
+
+@router.delete(
+    "/{group_id}/members/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def leave_study_group(
+    group_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> Response:
+    """Remove the current student's membership from a group."""
+
+    try:
+        await service.leave_group(
+            group_id=str(group_id),
+            user_id=current_user.id,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/{group_id}/members/{target_user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_group_member(
+    group_id: UUID,
+    target_user_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> Response:
+    """Remove an ordinary member as the group owner/admin."""
+
+    try:
+        await service.remove_member(
+            group_id=str(group_id),
+            requester_user_id=current_user.id,
+            target_user_id=str(target_user_id),
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{group_id}/channels",
+    response_model=StudyGroupChannelListResponse,
+)
+async def list_group_channels(
+    group_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupChannelListResponse:
+    """List active channels for a group member."""
+
+    try:
+        channels, total = await service.list_channels(
+            group_id=str(group_id),
+            user_id=current_user.id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupChannelListResponse(
+        items=[
+            StudyGroupChannelResponse.from_channel(channel)
+            for channel in channels
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
+
+
+@router.post(
+    "/{group_id}/channels",
+    response_model=StudyGroupChannelResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_group_channel(
+    group_id: UUID,
+    payload: CreateStudyGroupChannelRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupChannelResponse:
+    """Create an admin-named channel as the group owner/admin."""
+
+    try:
+        channel = await service.create_channel(
+            group_id=str(group_id),
+            user_id=current_user.id,
+            name=payload.name,
+            description=payload.description,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupChannelResponse.from_channel(channel)
+
+
+@router.get(
+    "/{group_id}/channels/{channel_id}",
+    response_model=StudyGroupChannelResponse,
+)
+async def get_group_channel(
+    group_id: UUID,
+    channel_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupChannelResponse:
+    """Return one active channel to a group member."""
+
+    try:
+        channel = await service.get_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupChannelResponse.from_channel(channel)
+
+
+@router.put(
+    "/{group_id}/channels/{channel_id}",
+    response_model=StudyGroupChannelResponse,
+)
+async def update_group_channel(
+    group_id: UUID,
+    channel_id: UUID,
+    payload: UpdateStudyGroupChannelRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupChannelResponse:
+    """Update a channel as the group owner/admin."""
+
+    try:
+        channel = await service.update_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+            name=payload.name,
+            description=payload.description,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupChannelResponse.from_channel(channel)
+
+
+@router.delete(
+    "/{group_id}/channels/{channel_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_group_channel(
+    group_id: UUID,
+    channel_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> Response:
+    """Soft-delete a channel as the group owner/admin."""
+
+    try:
+        await service.delete_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.put(
     "/{group_id}",
     response_model=StudyGroupResponse,
@@ -240,31 +500,15 @@ async def join_public_group(
     return StudyGroupResponse.from_summary(group)
 
 
-@router.delete(
-    "/{group_id}/members/me",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def leave_study_group(
-    group_id: UUID,
-    current_user: User = Depends(get_current_user),
-    service: StudyGroupService = Depends(get_study_group_service),
-) -> Response:
-    """Remove the current student's membership from a group."""
-
-    try:
-        await service.leave_group(
-            group_id=str(group_id),
-            user_id=current_user.id,
-        )
-    except Exception as exc:
-        _raise_study_group_api_error(exc)
-        raise
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
 def _raise_study_group_api_error(exc: Exception) -> None:
     """Translate expected domain failures into the shared API contract."""
+
+    if isinstance(exc, StudyGroupChannelNotFoundError):
+        raise ApiError(
+            status_code=404,
+            code="STUDY_GROUP_CHANNEL_NOT_FOUND",
+            message="The requested study group channel was not found.",
+        ) from exc
 
     if isinstance(exc, StudyGroupNotFoundError):
         raise ApiError(
@@ -277,6 +521,13 @@ def _raise_study_group_api_error(exc: Exception) -> None:
         raise ApiError(
             status_code=403,
             code="STUDY_GROUP_PERMISSION_DENIED",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, StudyGroupTargetUserNotFoundError):
+        raise ApiError(
+            status_code=404,
+            code="STUDY_GROUP_TARGET_USER_NOT_FOUND",
             message=str(exc),
         ) from exc
 
@@ -305,6 +556,13 @@ def _raise_study_group_api_error(exc: Exception) -> None:
         raise ApiError(
             status_code=409,
             code="STUDY_GROUP_FULL",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, StudyGroupChannelNameConflictError):
+        raise ApiError(
+            status_code=409,
+            code="STUDY_GROUP_CHANNEL_NAME_CONFLICT",
             message=str(exc),
         ) from exc
 
