@@ -2,26 +2,43 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from app.api.dependencies import (
+    get_auth_service,
     get_current_user,
     get_study_group_service,
 )
 from app.api.error_handlers import ApiError
+from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.models import User
 from app.domains.study_groups.application.services import (
     StudyGroupService,
 )
 from app.domains.study_groups.domain.exceptions import (
+    InvalidStudyGroupMessageError,
     InvalidStudyGroupError,
     PrivateStudyGroupJoinError,
     StudyGroupAlreadyMemberError,
+    StudyGroupAiUnavailableError,
+    StudyGroupAnswerGenerationError,
     StudyGroupChannelNameConflictError,
     StudyGroupChannelNotFoundError,
     StudyGroupFullError,
     StudyGroupMembershipNotFoundError,
+    StudyGroupMentionedUserNotMemberError,
+    StudyGroupMessageNotFoundError,
+    StudyGroupMessagePermissionDeniedError,
     StudyGroupNotFoundError,
+    StudyGroupNoReadyChunksError,
     StudyGroupPermissionDeniedError,
     StudyGroupTargetUserNotFoundError,
 )
@@ -31,10 +48,13 @@ from app.domains.study_groups.domain.models import (
 from app.domains.study_groups.presentation.schemas import (
     AddStudyGroupMemberRequest,
     CreateStudyGroupChannelRequest,
+    CreateStudyGroupMessageRequest,
     CreateStudyGroupRequest,
     DiscoverPublicResponse,
     MyGroupsResponse,
     StudyGroupMemberListResponse,
+    StudyGroupMessageListResponse,
+    StudyGroupMessageResponse,
     StudyGroupChannelListResponse,
     StudyGroupChannelResponse,
     StudyGroupMembershipResponse,
@@ -42,12 +62,21 @@ from app.domains.study_groups.presentation.schemas import (
     StudyGroupResponse,
     UpdateStudyGroupRequest,
     UpdateStudyGroupChannelRequest,
+    UpdateStudyGroupMessageRequest,
+)
+from app.domains.study_groups.presentation.realtime import (
+    study_group_connections,
 )
 
 
 router = APIRouter(
     prefix="/study-groups",
     tags=["Study Groups"],
+)
+
+websocket_router = APIRouter(
+    prefix="/ws/study-groups",
+    tags=["Study Group WebSocket"],
 )
 
 
@@ -425,6 +454,192 @@ async def delete_group_channel(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get(
+    "/{group_id}/channels/{channel_id}/messages",
+    response_model=StudyGroupMessageListResponse,
+)
+async def list_group_messages(
+    group_id: UUID,
+    channel_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMessageListResponse:
+    """Return oldest-first message history to an active group member."""
+
+    try:
+        messages, total = await service.list_messages(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupMessageListResponse(
+        items=[
+            StudyGroupMessageResponse.from_message(message)
+            for message in messages
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
+
+
+@router.post(
+    "/{group_id}/channels/{channel_id}/messages",
+    response_model=StudyGroupMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_group_message(
+    group_id: UUID,
+    channel_id: UUID,
+    payload: CreateStudyGroupMessageRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMessageResponse:
+    """Create a normal text message as an active group member."""
+
+    try:
+        message = await service.create_message(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+            content=payload.content,
+            mentioned_user_ids=[
+                str(user_id) for user_id in payload.mentioned_user_ids
+            ],
+            ai_mode=payload.ai_mode,
+            response_format=payload.response_format,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    response = StudyGroupMessageResponse.from_message(message)
+    await study_group_connections.broadcast(
+        group_id=str(group_id),
+        channel_id=str(channel_id),
+        event={
+            "type": "study_group.message.created",
+            "data": response.model_dump(mode="json"),
+        },
+    )
+    return response
+
+
+@router.get(
+    "/{group_id}/channels/{channel_id}/messages/{message_id}",
+    response_model=StudyGroupMessageResponse,
+)
+async def get_group_message(
+    group_id: UUID,
+    channel_id: UUID,
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMessageResponse:
+    """Return one active message to an active group member."""
+
+    try:
+        message = await service.get_message(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            message_id=message_id,
+            user_id=current_user.id,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupMessageResponse.from_message(message)
+
+
+@router.put(
+    "/{group_id}/channels/{channel_id}/messages/{message_id}",
+    response_model=StudyGroupMessageResponse,
+)
+async def update_group_message(
+    group_id: UUID,
+    channel_id: UUID,
+    message_id: int,
+    payload: UpdateStudyGroupMessageRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMessageResponse:
+    """Replace message text when the requester is its author."""
+
+    try:
+        message = await service.update_message(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            message_id=message_id,
+            user_id=current_user.id,
+            content=payload.content,
+            mentioned_user_ids=[
+                str(user_id) for user_id in payload.mentioned_user_ids
+            ],
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    response = StudyGroupMessageResponse.from_message(message)
+    await study_group_connections.broadcast(
+        group_id=str(group_id),
+        channel_id=str(channel_id),
+        event={
+            "type": "study_group.message.updated",
+            "data": response.model_dump(mode="json"),
+        },
+    )
+    return response
+
+
+@router.delete(
+    "/{group_id}/channels/{channel_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_group_message(
+    group_id: UUID,
+    channel_id: UUID,
+    message_id: int,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> Response:
+    """Soft-delete a message when the requester is its author."""
+
+    try:
+        await service.delete_message(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            message_id=message_id,
+            user_id=current_user.id,
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    await study_group_connections.broadcast(
+        group_id=str(group_id),
+        channel_id=str(channel_id),
+        event={
+            "type": "study_group.message.deleted",
+            "data": {
+                "group_id": str(group_id),
+                "channel_id": str(channel_id),
+                "message_id": message_id,
+            },
+        },
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.put(
     "/{group_id}",
     response_model=StudyGroupResponse,
@@ -500,8 +715,139 @@ async def join_public_group(
     return StudyGroupResponse.from_summary(group)
 
 
+@websocket_router.websocket(
+    "/{group_id}/channels/{channel_id}",
+)
+async def study_group_channel_websocket(
+    websocket: WebSocket,
+    group_id: UUID,
+    channel_id: UUID,
+    ticket: str = Query(min_length=1),
+    auth_service: AuthService = Depends(get_auth_service),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> None:
+    """Deliver committed channel events to an authenticated group member."""
+
+    user_id = await auth_service.consume_websocket_ticket(ticket)
+    if user_id is None:
+        await websocket.close(
+            code=4401,
+            reason="Invalid or expired WebSocket ticket.",
+        )
+        return
+
+    try:
+        await service.get_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=user_id,
+        )
+    except Exception:
+        await websocket.close(
+            code=4403,
+            reason="Study Group channel access denied.",
+        )
+        return
+
+    await study_group_connections.connect(
+        websocket=websocket,
+        group_id=str(group_id),
+        channel_id=str(channel_id),
+        user_id=user_id,
+    )
+    await websocket.send_json(
+        {
+            "type": "study_group.connection.ready",
+            "data": {
+                "group_id": str(group_id),
+                "channel_id": str(channel_id),
+                "user_id": user_id,
+            },
+        }
+    )
+
+    try:
+        while True:
+            try:
+                payload = await websocket.receive_json()
+            except ValueError:
+                await websocket.send_json(
+                    {
+                        "type": "study_group.error",
+                        "data": {"code": "INVALID_JSON"},
+                    }
+                )
+                continue
+
+            if not isinstance(payload, dict) or payload.get("type") != "ping":
+                await websocket.send_json(
+                    {
+                        "type": "study_group.error",
+                        "data": {"code": "UNSUPPORTED_EVENT"},
+                    }
+                )
+                continue
+
+            await websocket.send_json(
+                {
+                    "type": "pong",
+                    "data": {},
+                }
+            )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await study_group_connections.disconnect(
+            websocket=websocket,
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+        )
+
+
 def _raise_study_group_api_error(exc: Exception) -> None:
     """Translate expected domain failures into the shared API contract."""
+
+    if isinstance(exc, StudyGroupNoReadyChunksError):
+        raise ApiError(
+            status_code=409,
+            code="STUDY_GROUP_NO_READY_CHUNKS",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, StudyGroupAiUnavailableError):
+        raise ApiError(
+            status_code=503,
+            code="STUDY_GROUP_AI_UNAVAILABLE",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, StudyGroupAnswerGenerationError):
+        raise ApiError(
+            status_code=502,
+            code="STUDY_GROUP_ANSWER_GENERATION_FAILED",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, StudyGroupMentionedUserNotMemberError):
+        raise ApiError(
+            status_code=422,
+            code="STUDY_GROUP_MENTIONED_USER_NOT_MEMBER",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, StudyGroupMessageNotFoundError):
+        raise ApiError(
+            status_code=404,
+            code="STUDY_GROUP_MESSAGE_NOT_FOUND",
+            message="The requested group message was not found.",
+        ) from exc
+
+    if isinstance(exc, StudyGroupMessagePermissionDeniedError):
+        raise ApiError(
+            status_code=403,
+            code="STUDY_GROUP_MESSAGE_PERMISSION_DENIED",
+            message=str(exc),
+        ) from exc
 
     if isinstance(exc, StudyGroupChannelNotFoundError):
         raise ApiError(
@@ -567,6 +913,13 @@ def _raise_study_group_api_error(exc: Exception) -> None:
         ) from exc
 
     if isinstance(exc, InvalidStudyGroupError):
+        raise ApiError(
+            status_code=422,
+            code="VALIDATION_ERROR",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, InvalidStudyGroupMessageError):
         raise ApiError(
             status_code=422,
             code="VALIDATION_ERROR",

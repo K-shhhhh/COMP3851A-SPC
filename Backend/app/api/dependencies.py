@@ -80,8 +80,14 @@ from app.domains.chats.infrastructure.rag_answering import (
 
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.domain.repository import StudyGroupRepository
+from app.domains.study_groups.domain.retrieval import (
+    StudyGroupReadyChunkRepository,
+)
 from app.domains.study_groups.infrastructure.memory_repository import (
     InMemoryStudyGroupRepository,
+)
+from app.domains.study_groups.infrastructure.memory_retrieval import (
+    InMemoryStudyGroupReadyChunkRepository,
 )
 
 from app.domains.knowledge_graph.application.services import KnowledgeGraphService
@@ -359,6 +365,9 @@ def get_chat_service(
 # The shared instance preserves groups, memberships, and channels between HTTP
 # requests during local testing. Data resets whenever the backend restarts.
 _local_study_group_repository = InMemoryStudyGroupRepository()
+_local_study_group_chunk_repository = (
+    InMemoryStudyGroupReadyChunkRepository()
+)
 
 def get_study_group_repository(
 ) -> StudyGroupRepository:
@@ -367,14 +376,31 @@ def get_study_group_repository(
     return _local_study_group_repository
 
 
+def get_study_group_chunk_repository(
+) -> StudyGroupReadyChunkRepository:
+    """Return channel-scoped chunks until PostgreSQL retrieval is completed."""
+
+    return _local_study_group_chunk_repository
+
+
 def get_study_group_service(
     repository: StudyGroupRepository = Depends(
         get_study_group_repository
     ),
+    chunk_repository: StudyGroupReadyChunkRepository = Depends(
+        get_study_group_chunk_repository
+    ),
+    answer_generator: ChatAnswerGenerator = Depends(
+        get_chat_answer_generator
+    ),
 ) -> StudyGroupService:
     """Construct the study-group application service."""
 
-    return StudyGroupService(repository)
+    return StudyGroupService(
+        repository,
+        chunk_repository=chunk_repository,
+        answer_generator=answer_generator,
+    )
 
 
 # ---------- Knowledge Graph ----------

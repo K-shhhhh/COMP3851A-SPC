@@ -6,21 +6,33 @@ without depending on FastAPI or SQLAlchemy.
 
 from datetime import datetime, timezone
 
+from app.domains.chats.domain.answering import ChatAnswerGenerator
+from app.domains.chats.domain.models import ChatSource
+from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.study_groups.domain.exceptions import (
+    InvalidStudyGroupMessageError,
     InvalidStudyGroupError,
     PrivateStudyGroupJoinError,
     StudyGroupAlreadyMemberError,
+    StudyGroupAiUnavailableError,
+    StudyGroupAnswerGenerationError,
     StudyGroupChannelNameConflictError,
     StudyGroupChannelNotFoundError,
     StudyGroupFullError,
     StudyGroupMembershipNotFoundError,
+    StudyGroupMentionedUserNotMemberError,
+    StudyGroupMessageNotFoundError,
+    StudyGroupMessagePermissionDeniedError,
     StudyGroupNotFoundError,
     StudyGroupPermissionDeniedError,
     StudyGroupTargetUserNotFoundError,
+    StudyGroupNoReadyChunksError,
 )
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
+    StudyGroupAiMode,
     StudyGroupChannel,
+    StudyGroupMessage,
     StudyGroupMember,
     StudyGroupMemberRole,
     StudyGroupMembership,
@@ -30,15 +42,25 @@ from app.domains.study_groups.domain.models import (
 from app.domains.study_groups.domain.repository import (
     StudyGroupRepository,
 )
+from app.domains.study_groups.domain.retrieval import (
+    StudyGroupReadyChunkRepository,
+)
 
 
 class StudyGroupService:
     """Coordinate Study Group business rules and persistence."""
 
-    def __init__(self, repository: StudyGroupRepository) -> None:
+    def __init__(
+        self,
+        repository: StudyGroupRepository,
+        chunk_repository: StudyGroupReadyChunkRepository | None = None,
+        answer_generator: ChatAnswerGenerator | None = None,
+    ) -> None:
         """Initialize the service with replaceable persistence."""
 
         self._repository = repository
+        self._chunk_repository = chunk_repository
+        self._answer_generator = answer_generator
 
     async def discover_public_groups(
         self,
@@ -336,6 +358,229 @@ class StudyGroupService:
                 "Study group channel not found."
             )
 
+    async def list_messages(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        user_id: str,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[StudyGroupMessage], int]:
+        """List active messages for a member of the owning group."""
+
+        self._validate_pagination(page=page, page_size=page_size)
+        await self._get_member_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            user_id=user_id,
+        )
+        return await self._repository.list_messages(
+            group_id=group_id,
+            channel_id=channel_id,
+            offset=(page - 1) * page_size,
+            limit=page_size,
+        )
+
+    async def get_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        user_id: str,
+    ) -> StudyGroupMessage:
+        """Return one active message to a member of the owning group."""
+
+        await self._get_member_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            user_id=user_id,
+        )
+        message = await self._repository.get_message(
+            group_id=group_id,
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+        if message is None:
+            raise StudyGroupMessageNotFoundError(
+                "Study group message not found."
+            )
+        return message
+
+    async def create_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        user_id: str,
+        content: str,
+        mentioned_user_ids: list[str] | None = None,
+        ai_mode: StudyGroupAiMode | None = None,
+        response_format: str | None = None,
+    ) -> StudyGroupMessage:
+        """Create a member message and optionally generate a companion reply."""
+
+        await self._get_member_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            user_id=user_id,
+        )
+        normalized_content = self._normalize_message_content(content)
+        normalized_mentions = await self._normalize_mentioned_user_ids(
+            group_id=group_id,
+            mentioned_user_ids=mentioned_user_ids,
+        )
+
+        chunks: tuple[GroundingChunk, ...] = ()
+        if ai_mode is not None:
+            if (
+                self._chunk_repository is None
+                or self._answer_generator is None
+            ):
+                raise StudyGroupAiUnavailableError(
+                    "Group companion services are not configured."
+                )
+            chunks = (
+                await self._chunk_repository.list_ready_chunks_for_channel(
+                    group_id=group_id,
+                    channel_id=channel_id,
+                )
+            )
+            if not chunks:
+                raise StudyGroupNoReadyChunksError(
+                    "Upload and process at least one attachment in this "
+                    "channel before mentioning a companion."
+                )
+        elif response_format is not None:
+            raise InvalidStudyGroupMessageError(
+                "response_format requires an AI companion mode."
+            )
+
+        message = await self._repository.create_message(
+            group_id=group_id,
+            channel_id=channel_id,
+            author_id=user_id,
+            content=normalized_content,
+            mentioned_user_ids=normalized_mentions,
+            ai_mode=ai_mode,
+            sent_at=datetime.now(timezone.utc),
+        )
+
+        if ai_mode is None:
+            return message
+
+        try:
+            answer = await self._answer_generator.answer_question(
+                question=normalized_content,
+                chunks=chunks,
+                response_format=response_format,
+                mode=ai_mode.value,
+            )
+            self._validate_ai_sources(answer.sources, chunks)
+            return await self._repository.save_ai_response(
+                group_id=group_id,
+                channel_id=channel_id,
+                message_id=message.message_id,
+                mode=ai_mode,
+                content=answer.content.strip(),
+                sources=answer.sources,
+                generated_at=datetime.now(timezone.utc),
+            )
+        except Exception as exc:
+            raise StudyGroupAnswerGenerationError(
+                "The selected group companion could not generate a response."
+            ) from exc
+
+    async def update_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        user_id: str,
+        content: str,
+        mentioned_user_ids: list[str] | None = None,
+    ) -> StudyGroupMessage:
+        """Edit a normal message only when the requester is its author."""
+
+        await self._get_member_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            user_id=user_id,
+        )
+        message = await self._repository.get_message(
+            group_id=group_id,
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+        if message is None:
+            raise StudyGroupMessageNotFoundError(
+                "Study group message not found."
+            )
+        if message.author_id != user_id:
+            raise StudyGroupMessagePermissionDeniedError(
+                "You can only edit your own messages."
+            )
+        if message.ai_mode_used is not None:
+            raise StudyGroupMessagePermissionDeniedError(
+                "Messages that invoked an AI companion cannot be edited."
+            )
+
+        normalized_content = self._normalize_message_content(content)
+        normalized_mentions = await self._normalize_mentioned_user_ids(
+            group_id=group_id,
+            mentioned_user_ids=mentioned_user_ids,
+        )
+        return await self._repository.update_message(
+            group_id=group_id,
+            channel_id=channel_id,
+            message_id=message_id,
+            content=normalized_content,
+            mentioned_user_ids=normalized_mentions,
+            edited_at=datetime.now(timezone.utc),
+        )
+
+    async def delete_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        user_id: str,
+    ) -> None:
+        """Soft-delete a normal message only when requester is its author."""
+
+        await self._get_member_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+            user_id=user_id,
+        )
+        message = await self._repository.get_message(
+            group_id=group_id,
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+        if message is None:
+            raise StudyGroupMessageNotFoundError(
+                "Study group message not found."
+            )
+        if message.author_id != user_id:
+            raise StudyGroupMessagePermissionDeniedError(
+                "You can only delete your own messages."
+            )
+
+        deleted = await self._repository.soft_delete_message(
+            group_id=group_id,
+            channel_id=channel_id,
+            message_id=message_id,
+            deleted_at=datetime.now(timezone.utc),
+        )
+        if not deleted:
+            raise StudyGroupMessageNotFoundError(
+                "Study group message not found."
+            )
+
     async def create_group(
         self,
         *,
@@ -568,9 +813,29 @@ class StudyGroupService:
             raise StudyGroupNotFoundError("Study group not found.")
         if not group.is_member:
             raise StudyGroupPermissionDeniedError(
-                "You must join the group before accessing its channels."
+                "You must join the group before accessing its content."
             )
         return group
+
+    async def _get_member_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        user_id: str,
+    ) -> StudyGroupChannel:
+        """Return a channel only to an active member of its owning group."""
+
+        await self._get_member_group(group_id=group_id, user_id=user_id)
+        channel = await self._repository.get_channel(
+            group_id=group_id,
+            channel_id=channel_id,
+        )
+        if channel is None:
+            raise StudyGroupChannelNotFoundError(
+                "Study group channel not found."
+            )
+        return channel
 
     @staticmethod
     def _normalize_name(name: str) -> str:
@@ -642,6 +907,77 @@ class StudyGroupService:
                 "Channel description must not exceed 1000 characters."
             )
         return normalized
+
+    @staticmethod
+    def _normalize_message_content(content: str) -> str:
+        """Normalize surrounding whitespace and validate message content."""
+
+        normalized = content.strip()
+        if not normalized:
+            raise InvalidStudyGroupMessageError(
+                "Message content must not be empty."
+            )
+        if len(normalized) > 4000:
+            raise InvalidStudyGroupMessageError(
+                "Message content must not exceed 4000 characters."
+            )
+        return normalized
+
+    async def _normalize_mentioned_user_ids(
+        self,
+        *,
+        group_id: str,
+        mentioned_user_ids: list[str] | None,
+    ) -> tuple[str, ...]:
+        """Validate and normalize structured human mentions.
+
+        The frontend supplies stable user identifiers selected from the group
+        member list. Raw display names inside message text are not trusted for
+        authorization or notification delivery.
+        """
+
+        unique_ids: list[str] = []
+        seen: set[str] = set()
+        for raw_user_id in mentioned_user_ids or []:
+            user_id = raw_user_id.strip()
+            if not user_id:
+                raise InvalidStudyGroupMessageError(
+                    "Mentioned user identifiers must not be empty."
+                )
+            if user_id not in seen:
+                seen.add(user_id)
+                unique_ids.append(user_id)
+
+        if len(unique_ids) > 20:
+            raise InvalidStudyGroupMessageError(
+                "A message must not mention more than 20 users."
+            )
+
+        for mentioned_user_id in unique_ids:
+            membership = await self._repository.get_membership(
+                group_id=group_id,
+                user_id=mentioned_user_id,
+            )
+            if membership is None:
+                raise StudyGroupMentionedUserNotMemberError(
+                    "Every mentioned user must be an active member of the "
+                    "same study group."
+                )
+
+        return tuple(unique_ids)
+
+    @staticmethod
+    def _validate_ai_sources(
+        sources: tuple[ChatSource, ...],
+        chunks: tuple[GroundingChunk, ...],
+    ) -> None:
+        """Reject citations outside the authorized group-channel chunks."""
+
+        allowed_sources = {chunk.source for chunk in chunks}
+        if any(source not in allowed_sources for source in sources):
+            raise ValueError(
+                "AI response cited a source outside the authorized channel."
+            )
 
     @staticmethod
     def _normalize_search(search: str | None) -> str | None:

@@ -5,11 +5,17 @@ responses. They do not perform authorization or database operations.
 """
 
 from datetime import datetime
+from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.domains.chats.domain.models import ChatSource
 from app.domains.study_groups.domain.models import (
+    StudyGroupAiMode,
+    StudyGroupAiResponse,
     StudyGroupChannel,
+    StudyGroupMessage,
     StudyGroupMemberRole,
     StudyGroupMember,
     StudyGroupMembership,
@@ -75,6 +81,32 @@ class UpdateStudyGroupChannelRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=1000)
+
+
+class CreateStudyGroupMessageRequest(BaseModel):
+    """Text and structured human mentions supplied for a channel message."""
+
+    content: str = Field(min_length=1, max_length=4000)
+    mentioned_user_ids: list[UUID] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    ai_mode: StudyGroupAiMode | None = None
+    response_format: Literal[
+        "paragraph",
+        "bullet_points",
+        "table",
+    ] | None = None
+
+
+class UpdateStudyGroupMessageRequest(BaseModel):
+    """Replacement text and mentions supplied when an author edits."""
+
+    content: str = Field(min_length=1, max_length=4000)
+    mentioned_user_ids: list[UUID] = Field(
+        default_factory=list,
+        max_length=20,
+    )
 
 
 class StudyGroupResponse(BaseModel):
@@ -245,6 +277,107 @@ class StudyGroupChannelListResponse(BaseModel):
     """Paginated active-channel collection."""
 
     items: list[StudyGroupChannelResponse]
+    page: int
+    page_size: int
+    total: int
+
+
+class StudyGroupMessageSourceResponse(BaseModel):
+    """Citation for a companion answer grounded in a channel attachment."""
+
+    note_id: int
+    note_title: str
+    chunk_id: int
+    page: int | None
+
+    @classmethod
+    def from_source(
+        cls,
+        source: ChatSource,
+    ) -> "StudyGroupMessageSourceResponse":
+        """Map one authorized source into the public response shape."""
+
+        return cls(
+            note_id=source.note_id,
+            note_title=source.note_title,
+            chunk_id=source.chunk_id,
+            page=source.page,
+        )
+
+
+class StudyGroupCompanionResponse(BaseModel):
+    """Generated companion answer linked to one student message."""
+
+    id: int
+    mode: StudyGroupAiMode
+    content: str
+    sources: list[StudyGroupMessageSourceResponse]
+    generated_at: datetime
+
+    @classmethod
+    def from_response(
+        cls,
+        response: StudyGroupAiResponse,
+    ) -> "StudyGroupCompanionResponse":
+        """Map a persisted companion response into the API contract."""
+
+        return cls(
+            id=response.response_id,
+            mode=response.mode,
+            content=response.content,
+            sources=[
+                StudyGroupMessageSourceResponse.from_source(source)
+                for source in response.sources
+            ],
+            generated_at=response.generated_at,
+        )
+
+
+class StudyGroupMessageResponse(BaseModel):
+    """Public representation of one active normal channel message."""
+
+    id: int
+    group_id: str
+    channel_id: str
+    author_id: str
+    content: str
+    mentioned_user_ids: list[str]
+    ai_mode_used: StudyGroupAiMode | None
+    ai_response: StudyGroupCompanionResponse | None
+    sent_at: datetime
+    edited_at: datetime | None
+
+    @classmethod
+    def from_message(
+        cls,
+        message: StudyGroupMessage,
+    ) -> "StudyGroupMessageResponse":
+        """Map a domain message into the HTTP response."""
+
+        return cls(
+            id=message.message_id,
+            group_id=message.group_id,
+            channel_id=message.channel_id,
+            author_id=message.author_id,
+            content=message.content,
+            mentioned_user_ids=list(message.mentioned_user_ids),
+            ai_mode_used=message.ai_mode_used,
+            ai_response=(
+                StudyGroupCompanionResponse.from_response(
+                    message.ai_response
+                )
+                if message.ai_response is not None
+                else None
+            ),
+            sent_at=message.sent_at,
+            edited_at=message.edited_at,
+        )
+
+
+class StudyGroupMessageListResponse(BaseModel):
+    """Paginated oldest-first collection of active channel messages."""
+
+    items: list[StudyGroupMessageResponse]
     page: int
     page_size: int
     total: int

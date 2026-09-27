@@ -2,23 +2,62 @@
 
 import pytest
 
+from app.domains.chats.domain.answering import (
+    ChatAnswerGenerator,
+    GeneratedAnswer,
+)
+from app.domains.chats.domain.models import ChatSource
+from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.domain.exceptions import (
     PrivateStudyGroupJoinError,
     StudyGroupAlreadyMemberError,
     StudyGroupChannelNameConflictError,
     StudyGroupChannelNotFoundError,
+    StudyGroupMentionedUserNotMemberError,
+    StudyGroupMessageNotFoundError,
+    StudyGroupMessagePermissionDeniedError,
     StudyGroupNotFoundError,
     StudyGroupPermissionDeniedError,
     StudyGroupTargetUserNotFoundError,
+    StudyGroupNoReadyChunksError,
 )
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
+    StudyGroupAiMode,
     StudyGroupVisibility,
 )
 from app.domains.study_groups.infrastructure.memory_repository import (
     InMemoryStudyGroupRepository,
 )
+from app.domains.study_groups.infrastructure.memory_retrieval import (
+    InMemoryStudyGroupReadyChunkRepository,
+)
+
+
+class RecordingAnswerGenerator(ChatAnswerGenerator):
+    """Record AI options while returning one authorized test citation."""
+
+    def __init__(self) -> None:
+        self.mode: str | None = None
+        self.response_format: str | None = None
+
+    async def answer_question(
+        self,
+        *,
+        question: str,
+        chunks: tuple[GroundingChunk, ...],
+        response_format: str | None = None,
+        mode: str | None = None,
+    ) -> GeneratedAnswer:
+        """Return a deterministic response and retain supplied options."""
+
+        self.mode = mode
+        self.response_format = response_format
+        return GeneratedAnswer(
+            content=f"{mode} response to {question}",
+            sources=(chunks[0].source,),
+        )
 
 
 @pytest.fixture
@@ -344,6 +383,291 @@ async def test_nonmember_cannot_read_public_group_channels(service) -> None:
     with pytest.raises(StudyGroupPermissionDeniedError):
         await service.list_channels(
             group_id=group.group.group_id,
+            user_id=outsider,
+            page=1,
+            page_size=20,
+        )
+
+
+@pytest.mark.asyncio
+async def test_normal_message_lifecycle_and_author_permissions(service) -> None:
+    """Cover member history and author-only editing/deletion."""
+
+    owner = "11111111-1111-1111-1111-111111111111"
+    author = "22222222-2222-2222-2222-222222222222"
+    group = await service.create_group(
+        user_id=owner,
+        name="Message group",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    group_id = group.group.group_id
+    await service.join_public_group(group_id=group_id, user_id=author)
+    channel = await service.create_channel(
+        group_id=group_id,
+        user_id=owner,
+        name="General",
+        description=None,
+    )
+
+    created = await service.create_message(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        user_id=author,
+        content="  Hello study group  ",
+    )
+    assert created.content == "Hello study group"
+    assert created.mentioned_user_ids == ()
+
+    history, total = await service.list_messages(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        user_id=owner,
+        page=1,
+        page_size=20,
+    )
+    assert total == 1
+    assert history[0].message_id == created.message_id
+
+    with pytest.raises(StudyGroupMessagePermissionDeniedError):
+        await service.update_message(
+            group_id=group_id,
+            channel_id=channel.channel_id,
+            message_id=created.message_id,
+            user_id=owner,
+            content="Owner cannot rewrite this",
+        )
+
+    updated = await service.update_message(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        message_id=created.message_id,
+        user_id=author,
+        content="Updated message",
+    )
+    assert updated.content == "Updated message"
+    assert updated.edited_at is not None
+
+    await service.delete_message(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        message_id=created.message_id,
+        user_id=author,
+    )
+    with pytest.raises(StudyGroupMessageNotFoundError):
+        await service.get_message(
+            group_id=group_id,
+            channel_id=channel.channel_id,
+            message_id=created.message_id,
+            user_id=owner,
+        )
+
+
+@pytest.mark.asyncio
+async def test_message_mentions_require_active_group_members(service) -> None:
+    """Store unique member mentions and reject users outside the group."""
+
+    owner = "11111111-1111-1111-1111-111111111111"
+    author = "22222222-2222-2222-2222-222222222222"
+    outsider = "33333333-3333-3333-3333-333333333333"
+    group = await service.create_group(
+        user_id=owner,
+        name="Mention group",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    group_id = group.group.group_id
+    await service.join_public_group(group_id=group_id, user_id=author)
+    channel = await service.create_channel(
+        group_id=group_id,
+        user_id=owner,
+        name="Mentions",
+        description=None,
+    )
+
+    created = await service.create_message(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        user_id=author,
+        content="Can you review this?",
+        mentioned_user_ids=[owner, owner],
+    )
+    assert created.mentioned_user_ids == (owner,)
+
+    with pytest.raises(StudyGroupMentionedUserNotMemberError):
+        await service.create_message(
+            group_id=group_id,
+            channel_id=channel.channel_id,
+            user_id=author,
+            content="This mention is not allowed",
+            mentioned_user_ids=[outsider],
+        )
+
+    updated = await service.update_message(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        message_id=created.message_id,
+        user_id=author,
+        content="No mention now",
+        mentioned_user_ids=[],
+    )
+    assert updated.mentioned_user_ids == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ai_mode", list(StudyGroupAiMode))
+async def test_ai_mode_generates_and_persists_scoped_companion_response(
+    ai_mode: StudyGroupAiMode,
+) -> None:
+    """Pass an explicit mode to the generator using only channel chunks."""
+
+    repository = InMemoryStudyGroupRepository()
+    chunk_repository = InMemoryStudyGroupReadyChunkRepository()
+    answer_generator = RecordingAnswerGenerator()
+    service = StudyGroupService(
+        repository,
+        chunk_repository=chunk_repository,
+        answer_generator=answer_generator,
+    )
+    owner = "11111111-1111-1111-1111-111111111111"
+    group = await service.create_group(
+        user_id=owner,
+        name="AI mode group",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    group_id = group.group.group_id
+    channel = await service.create_channel(
+        group_id=group_id,
+        user_id=owner,
+        name="AI discussion",
+        description=None,
+    )
+    source = ChatSource(
+        note_id=1,
+        note_title="Channel note",
+        chunk_id=1,
+        page=1,
+    )
+    await chunk_repository.replace_channel_chunks(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        chunks=(
+            GroundingChunk(
+                content="Backpropagation computes gradients.",
+                source=source,
+            ),
+        ),
+    )
+
+    message = await service.create_message(
+        group_id=group_id,
+        channel_id=channel.channel_id,
+        user_id=owner,
+        content="Summarize backpropagation",
+        ai_mode=ai_mode,
+        response_format="bullet_points",
+    )
+
+    assert answer_generator.mode == ai_mode.value
+    assert answer_generator.response_format == "bullet_points"
+    assert message.ai_mode_used == ai_mode
+    assert message.ai_response is not None
+    assert message.ai_response.mode == ai_mode
+    assert message.ai_response.sources == (source,)
+
+    with pytest.raises(StudyGroupMessagePermissionDeniedError):
+        await service.update_message(
+            group_id=group_id,
+            channel_id=channel.channel_id,
+            message_id=message.message_id,
+            user_id=owner,
+            content="Rewrite the AI question",
+        )
+
+
+@pytest.mark.asyncio
+async def test_ai_mode_requires_ready_chunks_in_same_channel() -> None:
+    """Reject companion invocation when the exact channel has no context."""
+
+    repository = InMemoryStudyGroupRepository()
+    service = StudyGroupService(
+        repository,
+        chunk_repository=InMemoryStudyGroupReadyChunkRepository(),
+        answer_generator=RecordingAnswerGenerator(),
+    )
+    owner = "11111111-1111-1111-1111-111111111111"
+    group = await service.create_group(
+        user_id=owner,
+        name="No chunks group",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    channel = await service.create_channel(
+        group_id=group.group.group_id,
+        user_id=owner,
+        name="Empty channel",
+        description=None,
+    )
+
+    with pytest.raises(StudyGroupNoReadyChunksError):
+        await service.create_message(
+            group_id=group.group.group_id,
+            channel_id=channel.channel_id,
+            user_id=owner,
+            content="Create a quiz",
+            ai_mode=StudyGroupAiMode.QUIZ,
+        )
+
+
+@pytest.mark.asyncio
+async def test_message_scope_rejects_wrong_channel_and_nonmember(service) -> None:
+    """Prevent cross-channel reads and public-group nonmember access."""
+
+    owner = "11111111-1111-1111-1111-111111111111"
+    outsider = "33333333-3333-3333-3333-333333333333"
+    group = await service.create_group(
+        user_id=owner,
+        name="Scoped messages",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    group_id = group.group.group_id
+    first_channel = await service.create_channel(
+        group_id=group_id,
+        user_id=owner,
+        name="First",
+        description=None,
+    )
+    second_channel = await service.create_channel(
+        group_id=group_id,
+        user_id=owner,
+        name="Second",
+        description=None,
+    )
+    message = await service.create_message(
+        group_id=group_id,
+        channel_id=first_channel.channel_id,
+        user_id=owner,
+        content="Channel-scoped message",
+    )
+
+    with pytest.raises(StudyGroupMessageNotFoundError):
+        await service.get_message(
+            group_id=group_id,
+            channel_id=second_channel.channel_id,
+            message_id=message.message_id,
+            user_id=owner,
+        )
+    with pytest.raises(StudyGroupPermissionDeniedError):
+        await service.list_messages(
+            group_id=group_id,
+            channel_id=first_channel.channel_id,
             user_id=outsider,
             page=1,
             page_size=20,

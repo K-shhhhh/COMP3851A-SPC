@@ -33,7 +33,9 @@ TEST_DATABASE_URL = os.getenv(
 # developer implements every new abstract method; unit/security coverage uses
 # the complete in-memory adapter in the meantime.
 pytestmark = pytest.mark.skip(
-    reason="PostgreSQL Study Group membership/channel adapter is pending."
+    reason=(
+        "PostgreSQL Study Group membership/channel/message adapter is pending."
+    )
 )
 
 

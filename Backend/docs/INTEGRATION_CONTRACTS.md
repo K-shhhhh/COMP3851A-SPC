@@ -929,9 +929,10 @@ Every source included in an answer must refer to a note accessible to the authen
 
 # 9. Study Group Contract
 
-Study-group CRUD, discovery, membership, channel CRUD, and authorization
-endpoints are now implemented against shared process-local memory. Group
-messages, invitations, and AI mentions remain separate follow-up contracts.
+Study-group CRUD, discovery, membership, channel CRUD, normal message CRUD, and
+authorization endpoints are now implemented against shared process-local
+memory. Human mentions, invitations, AI companion invocation, and WebSocket
+delivery remain separate follow-up contracts.
 The database developer must complete the repository methods before this module
 is switched back to PostgreSQL. Restarting the backend currently clears Study
 Group data.
@@ -957,6 +958,11 @@ All routes require `Authorization: Bearer <access_token>` and are prefixed by
 | `GET` | `/study-groups/{group_id}/channels/{channel_id}` | Read a channel as a member |
 | `PUT` | `/study-groups/{group_id}/channels/{channel_id}` | Replace channel details as owner/admin |
 | `DELETE` | `/study-groups/{group_id}/channels/{channel_id}` | Soft-delete a channel as owner/admin |
+| `GET` | `/study-groups/{group_id}/channels/{channel_id}/messages` | List active messages as a member |
+| `POST` | `/study-groups/{group_id}/channels/{channel_id}/messages` | Send a normal message as a member |
+| `GET` | `/study-groups/{group_id}/channels/{channel_id}/messages/{message_id}` | Read one active message as a member |
+| `PUT` | `/study-groups/{group_id}/channels/{channel_id}/messages/{message_id}` | Edit the author's message |
+| `DELETE` | `/study-groups/{group_id}/channels/{channel_id}/messages/{message_id}` | Soft-delete the author's message |
 
 `discover` accepts `page`, `page_size`, and optional `search`. `mine` accepts
 `filter=all|public|private|owned`, `page`, and `page_size`. Both list responses
@@ -999,6 +1005,29 @@ Only active group members may list or read channels. Only the owner or an
 administrator may create, update, or delete them. Active channel names are
 unique within the same group using a case-insensitive comparison.
 
+## Normal group messages
+
+Normal messages contain `content` and optional structured human mentions. A
+create or update request uses this shape:
+
+```json
+{
+  "content": "@Alex, can you review this section?",
+  "mentioned_user_ids": ["22222222-2222-2222-2222-222222222222"]
+}
+```
+
+The visible `@name` text is presentation content; `mentioned_user_ids` is the
+authoritative mention data. The backend removes duplicate identifiers and
+rejects a mentioned user who is not an active member of the same group. A
+message response returns the same field as an array of user UUID strings.
+
+Active group members may read and send messages in an active channel. Only the
+original author may edit or soft-delete a message; being a group owner/admin
+does not permit rewriting another student's content. Every operation is scoped
+by group, channel, and message identifiers. History is paginated oldest-first
+and excludes soft-deleted messages.
+
 ## Group AI mentions
 
 Ordinary group messages do not call an AI model. The composer mention menu will
@@ -1010,10 +1039,89 @@ contain both human members and these explicit companion modes:
 - `@Facilitator` — discussion-guidance mode
 
 A human mention creates normal mention/notification behaviour only. An AI
-mention is parsed into an explicit backend AI mode; authorization, persistence,
-retrieval scope, and the selected AI adapter are enforced server-side. Exact
-request and response schemas will be added when the group-chat endpoints are
-implemented.
+mention is sent as an explicit backend mode; visible `@` text is not parsed as
+authority. Example:
+
+```json
+{
+  "content": "Summarize the uploaded chapter",
+  "mentioned_user_ids": [],
+  "ai_mode": "summarizer",
+  "response_format": "bullet_points"
+}
+```
+
+Omit `ai_mode` for an ordinary human message. Supported values are `default`,
+`summarizer`, `quiz`, and `facilitator`. `response_format` is optional and may
+be `paragraph`, `bullet_points`, or `table`; it requires an AI mode.
+
+The synchronous response contains the persisted student message plus:
+
+```json
+{
+  "ai_mode_used": "summarizer",
+  "ai_response": {
+    "id": 1,
+    "mode": "summarizer",
+    "content": "...",
+    "sources": [],
+    "generated_at": "2026-09-27T00:00:00Z"
+  }
+}
+```
+
+The backend verifies membership before retrieval and supplies only ready chunks
+from the exact group and channel to the answer generator. It never supplies a
+student's private My Notes chunks to a group companion. AI-invoking messages
+cannot be edited because the persisted answer would no longer match the
+question; they may still be soft-deleted by their author.
+
+## Study Group WebSocket delivery
+
+Create a fresh ticket through `POST /api/v1/auth/websocket-ticket`, then open:
+
+```text
+ws://localhost:8080/api/v1/ws/study-groups/{group_id}/channels/{channel_id}?ticket=<ticket>
+```
+
+The ticket is short-lived and single-use. The backend consumes it and verifies
+that its user is an active member of the requested group before accepting the
+socket. Invalid tickets close with `4401`; inaccessible channels close with
+`4403`. JWT access tokens must never be placed in WebSocket URLs.
+
+Message writes remain on the HTTP endpoints. After persistence succeeds, every
+socket connected to that exact group/channel receives one of:
+
+```json
+{
+  "type": "study_group.message.created",
+  "data": { "id": 1, "content": "..." }
+}
+```
+
+```json
+{
+  "type": "study_group.message.updated",
+  "data": { "id": 1, "content": "..." }
+}
+```
+
+```json
+{
+  "type": "study_group.message.deleted",
+  "data": {
+    "group_id": "...",
+    "channel_id": "...",
+    "message_id": 1
+  }
+}
+```
+
+The current connection manager is process-local for the single-backend local
+deployment. Multi-process staging must publish the same event envelope through
+Redis pub/sub so every backend instance can reach its own connected sockets.
+Nginx must proxy this path with WebSocket upgrade headers and suitable idle
+timeouts.
 
 ## Knowledge graph sequence
 

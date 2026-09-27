@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.api.dependencies import get_auth_service, get_study_group_service
 from app.domains.auth.application.services import AuthService
@@ -17,9 +18,17 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.chats.domain.models import ChatSource
+from app.domains.chats.domain.retrieval import GroundingChunk
+from app.domains.chats.infrastructure.memory_answering import (
+    LocalGroundedAnswerGenerator,
+)
 from app.domains.study_groups.application.services import StudyGroupService
 from app.domains.study_groups.infrastructure.memory_repository import (
     InMemoryStudyGroupRepository,
+)
+from app.domains.study_groups.infrastructure.memory_retrieval import (
+    InMemoryStudyGroupReadyChunkRepository,
 )
 from app.main import app
 
@@ -30,6 +39,14 @@ class MemberManagementContext:
 
     client: TestClient
     repository: InMemoryStudyGroupRepository
+
+
+@dataclass
+class GroupAiContext:
+    """HTTP client and seedable channel chunks for companion API tests."""
+
+    client: TestClient
+    chunk_repository: InMemoryStudyGroupReadyChunkRepository
 
 
 @pytest.fixture
@@ -67,6 +84,33 @@ def member_management_context() -> Iterator[MemberManagementContext]:
 
     with TestClient(app) as client:
         yield MemberManagementContext(client=client, repository=repository)
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def group_ai_context() -> Iterator[GroupAiContext]:
+    """Provide isolated Study Group AI adapters without external model I/O."""
+
+    auth_service = AuthService(
+        repository=InMemoryAuthRepository(),
+        ticket_store=InMemoryWebSocketTicketStore(),
+        revocation_store=InMemoryAccessTokenRevocationStore(),
+    )
+    chunk_repository = InMemoryStudyGroupReadyChunkRepository()
+    group_service = StudyGroupService(
+        InMemoryStudyGroupRepository(),
+        chunk_repository=chunk_repository,
+        answer_generator=LocalGroundedAnswerGenerator(),
+    )
+    app.dependency_overrides[get_auth_service] = lambda: auth_service
+    app.dependency_overrides[get_study_group_service] = lambda: group_service
+
+    with TestClient(app) as client:
+        yield GroupAiContext(
+            client=client,
+            chunk_repository=chunk_repository,
+        )
 
     app.dependency_overrides.clear()
 
@@ -317,6 +361,302 @@ def test_group_channel_api_lifecycle_and_permissions(
         f"/api/v1/study-groups/{group_id}/channels/{channel_id}",
         headers=headers(member_token),
     ).status_code == 404
+
+
+def test_normal_group_message_api_lifecycle_and_isolation(
+    study_group_client,
+) -> None:
+    """Verify member messaging, author permissions, and channel isolation."""
+
+    owner_token, owner_id = register_login_and_get_id(
+        study_group_client, "message-owner@example.com"
+    )
+    author_token, author_id = register_login_and_get_id(
+        study_group_client, "message-author@example.com"
+    )
+    outsider_token, outsider_id = register_login_and_get_id(
+        study_group_client, "message-outsider@example.com"
+    )
+    group = study_group_client.post(
+        "/api/v1/study-groups",
+        headers=headers(owner_token),
+        json={
+            "name": "Message API group",
+            "description": None,
+            "visibility": "public",
+            "max_members": 5,
+        },
+    ).json()
+    group_id = group["id"]
+    assert study_group_client.post(
+        f"/api/v1/study-groups/{group_id}/join",
+        headers=headers(author_token),
+    ).status_code == 201
+
+    first_channel = study_group_client.post(
+        f"/api/v1/study-groups/{group_id}/channels",
+        headers=headers(owner_token),
+        json={"name": "General", "description": None},
+    ).json()
+    second_channel = study_group_client.post(
+        f"/api/v1/study-groups/{group_id}/channels",
+        headers=headers(owner_token),
+        json={"name": "Revision", "description": None},
+    ).json()
+
+    created = study_group_client.post(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages",
+        headers=headers(author_token),
+        json={
+            "content": "  Hello from the group  ",
+            "mentioned_user_ids": [owner_id, owner_id],
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["content"] == "Hello from the group"
+    assert created.json()["mentioned_user_ids"] == [owner_id]
+    message_id = created.json()["id"]
+
+    invalid_mention = study_group_client.post(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages",
+        headers=headers(author_token),
+        json={
+            "content": "Outsider mention",
+            "mentioned_user_ids": [outsider_id],
+        },
+    )
+    assert invalid_mention.status_code == 422
+    assert invalid_mention.json()["error"]["code"] == (
+        "STUDY_GROUP_MENTIONED_USER_NOT_MEMBER"
+    )
+
+    history = study_group_client.get(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages",
+        headers=headers(owner_token),
+    )
+    assert history.status_code == 200
+    assert history.json()["total"] == 1
+
+    assert study_group_client.get(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages",
+        headers=headers(outsider_token),
+    ).status_code == 403
+
+    cross_channel = study_group_client.get(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{second_channel['id']}/messages/{message_id}",
+        headers=headers(owner_token),
+    )
+    assert cross_channel.status_code == 404
+
+    forbidden_edit = study_group_client.put(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages/{message_id}",
+        headers=headers(owner_token),
+        json={"content": "Owner rewrite"},
+    )
+    assert forbidden_edit.status_code == 403
+    assert forbidden_edit.json()["error"]["code"] == (
+        "STUDY_GROUP_MESSAGE_PERMISSION_DENIED"
+    )
+
+    updated = study_group_client.put(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages/{message_id}",
+        headers=headers(author_token),
+        json={
+            "content": "Updated by the author",
+            "mentioned_user_ids": [owner_id],
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["edited_at"] is not None
+    assert updated.json()["mentioned_user_ids"] == [owner_id]
+
+    deleted = study_group_client.delete(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages/{message_id}",
+        headers=headers(author_token),
+    )
+    assert deleted.status_code == 204
+    assert study_group_client.get(
+        f"/api/v1/study-groups/{group_id}/channels/"
+        f"{first_channel['id']}/messages/{message_id}",
+        headers=headers(owner_token),
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_group_ai_mode_returns_grounded_companion_response(
+    group_ai_context,
+) -> None:
+    """Verify explicit AI mode input and exact-channel ready-chunk scoping."""
+
+    client = group_ai_context.client
+    token = register_and_login(client, "group-ai-owner@example.com")
+    group = client.post(
+        "/api/v1/study-groups",
+        headers=headers(token),
+        json={
+            "name": "Companion API group",
+            "description": None,
+            "visibility": "public",
+            "max_members": 5,
+        },
+    ).json()
+    channel = client.post(
+        f"/api/v1/study-groups/{group['id']}/channels",
+        headers=headers(token),
+        json={"name": "Companion channel", "description": None},
+    ).json()
+    endpoint = (
+        f"/api/v1/study-groups/{group['id']}/channels/"
+        f"{channel['id']}/messages"
+    )
+
+    no_chunks = client.post(
+        endpoint,
+        headers=headers(token),
+        json={"content": "Create a quiz", "ai_mode": "quiz"},
+    )
+    assert no_chunks.status_code == 409
+    assert no_chunks.json()["error"]["code"] == (
+        "STUDY_GROUP_NO_READY_CHUNKS"
+    )
+
+    await group_ai_context.chunk_repository.replace_channel_chunks(
+        group_id=group["id"],
+        channel_id=channel["id"],
+        chunks=(
+            GroundingChunk(
+                content="Gradient descent updates parameters iteratively.",
+                source=ChatSource(
+                    note_id=1,
+                    note_title="Channel lecture",
+                    chunk_id=1,
+                    page=2,
+                ),
+            ),
+        ),
+    )
+    created = client.post(
+        endpoint,
+        headers=headers(token),
+        json={
+            "content": "Summarize gradient descent",
+            "ai_mode": "summarizer",
+            "response_format": "bullet_points",
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["ai_mode_used"] == "summarizer"
+    assert body["ai_response"]["mode"] == "summarizer"
+    assert body["ai_response"]["sources"][0]["note_id"] == 1
+
+
+def test_group_websocket_authentication_scope_and_message_delivery(
+    study_group_client,
+) -> None:
+    """Deliver committed events only through a member's single-use ticket."""
+
+    owner_token = register_and_login(
+        study_group_client, "socket-owner@example.com"
+    )
+    member_token = register_and_login(
+        study_group_client, "socket-member@example.com"
+    )
+    outsider_token = register_and_login(
+        study_group_client, "socket-outsider@example.com"
+    )
+    group = study_group_client.post(
+        "/api/v1/study-groups",
+        headers=headers(owner_token),
+        json={
+            "name": "Socket group",
+            "description": None,
+            "visibility": "public",
+            "max_members": 5,
+        },
+    ).json()
+    assert study_group_client.post(
+        f"/api/v1/study-groups/{group['id']}/join",
+        headers=headers(member_token),
+    ).status_code == 201
+    channel = study_group_client.post(
+        f"/api/v1/study-groups/{group['id']}/channels",
+        headers=headers(owner_token),
+        json={"name": "Live channel", "description": None},
+    ).json()
+    socket_path = (
+        f"/api/v1/ws/study-groups/{group['id']}/channels/{channel['id']}"
+    )
+
+    ticket_response = study_group_client.post(
+        "/api/v1/auth/websocket-ticket",
+        headers=headers(owner_token),
+    )
+    ticket = ticket_response.json()["ticket"]
+    with study_group_client.websocket_connect(
+        f"{socket_path}?ticket={ticket}"
+    ) as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "study_group.connection.ready"
+
+        created = study_group_client.post(
+            f"/api/v1/study-groups/{group['id']}/channels/"
+            f"{channel['id']}/messages",
+            headers=headers(member_token),
+            json={"content": "Live message"},
+        )
+        assert created.status_code == 201
+        event = websocket.receive_json()
+        assert event["type"] == "study_group.message.created"
+        assert event["data"]["id"] == created.json()["id"]
+
+        updated = study_group_client.put(
+            f"/api/v1/study-groups/{group['id']}/channels/"
+            f"{channel['id']}/messages/{created.json()['id']}",
+            headers=headers(member_token),
+            json={"content": "Updated live message"},
+        )
+        assert updated.status_code == 200
+        update_event = websocket.receive_json()
+        assert update_event["type"] == "study_group.message.updated"
+
+        deleted = study_group_client.delete(
+            f"/api/v1/study-groups/{group['id']}/channels/"
+            f"{channel['id']}/messages/{created.json()['id']}",
+            headers=headers(member_token),
+        )
+        assert deleted.status_code == 204
+        delete_event = websocket.receive_json()
+        assert delete_event["type"] == "study_group.message.deleted"
+
+        websocket.send_json({"type": "ping"})
+        assert websocket.receive_json()["type"] == "pong"
+
+    with pytest.raises(WebSocketDisconnect) as reused:
+        with study_group_client.websocket_connect(
+            f"{socket_path}?ticket={ticket}"
+        ):
+            pass
+    assert reused.value.code == 4401
+
+    outsider_ticket = study_group_client.post(
+        "/api/v1/auth/websocket-ticket",
+        headers=headers(outsider_token),
+    ).json()["ticket"]
+    with pytest.raises(WebSocketDisconnect) as forbidden:
+        with study_group_client.websocket_connect(
+            f"{socket_path}?ticket={outsider_ticket}"
+        ):
+            pass
+    assert forbidden.value.code == 4403
 
 
 @pytest.mark.asyncio

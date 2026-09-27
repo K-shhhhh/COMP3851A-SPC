@@ -37,6 +37,33 @@ class StudyGroupTargetUserNotFoundError(StudyGroupError):
 class StudyGroupChannelNotFoundError(StudyGroupError):
     """Raised when a channel is missing or inaccessible to the student."""
 
-
 class StudyGroupChannelNameConflictError(StudyGroupError):
     """Raised when an active group already has the requested channel name."""
+
+
+class StudyGroupMessageNotFoundError(StudyGroupError):
+    """Raised when a message is missing or inaccessible to the student."""
+
+
+class StudyGroupMessagePermissionDeniedError(StudyGroupError):
+    """Raised when a student cannot modify another student's message."""
+
+
+class InvalidStudyGroupMessageError(StudyGroupError):
+    """Raised when message content violates application rules."""
+
+
+class StudyGroupMentionedUserNotMemberError(StudyGroupError):
+    """Raised when a message mentions a user outside the owning group."""
+
+
+class StudyGroupNoReadyChunksError(StudyGroupError):
+    """Raised when a group channel has no processed attachments for AI."""
+
+
+class StudyGroupAnswerGenerationError(StudyGroupError):
+    """Raised when the selected companion cannot generate an answer."""
+
+
+class StudyGroupAiUnavailableError(StudyGroupError):
+    """Raised when required group AI adapters are not configured."""

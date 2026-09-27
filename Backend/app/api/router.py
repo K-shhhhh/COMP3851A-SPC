@@ -6,7 +6,10 @@ from app.api.routers.auth import router as auth_router
 from app.api.routers.users import router as users_router
 from app.api.routers.notes import router as notes_router
 from app.api.routers.chats import router as chats_router
-from app.api.routers.study_groups import router as study_groups_router
+from app.api.routers.study_groups import (
+    router as study_groups_router,
+    websocket_router as study_groups_websocket_router,
+)
 from app.api.routers.knowledge_graph import router as knowledge_graph_router
 from app.api.routers.notifications import router as notifications_router
 from app.api.routers.analytics import router as analytics_router
@@ -36,6 +39,7 @@ api_router.include_router(users_router)
 api_router.include_router(notes_router)
 api_router.include_router(chats_router)
 api_router.include_router(study_groups_router)
+api_router.include_router(study_groups_websocket_router)
 api_router.include_router(knowledge_graph_router)
 api_router.include_router(notifications_router)
 api_router.include_router(analytics_router)

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from app.domains.chats.domain.models import ChatSource
+
 
 class StudyGroupVisibility(StrEnum):
     """Visibility options supported by collaborative study groups."""
@@ -30,6 +32,15 @@ class MyGroupsFilter(StrEnum):
     PUBLIC = "public"
     PRIVATE = "private"
     OWNED = "owned"
+
+
+class StudyGroupAiMode(StrEnum):
+    """Explicit companion modes selectable from the group-chat @ menu."""
+
+    DEFAULT = "default"
+    SUMMARIZER = "summarizer"
+    QUIZ = "quiz"
+    FACILITATOR = "facilitator"
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,3 +190,108 @@ class StudyGroupChannel:
             raise ValueError("channel name must not exceed 100 characters")
         if not self.created_by.strip():
             raise ValueError("created_by must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class StudyGroupAiResponse:
+    """One persisted companion response linked to a student message."""
+
+    response_id: int
+    mode: StudyGroupAiMode
+    content: str
+    generated_at: datetime
+    sources: tuple[ChatSource, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Validate provider-neutral companion response data."""
+
+        if self.response_id <= 0:
+            raise ValueError("response_id must be greater than zero")
+        if not self.content.strip():
+            raise ValueError("AI response content must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class StudyGroupMessage:
+    """One student-authored message inside a Study Group channel.
+
+    The model contains no FastAPI, Pydantic, SQLAlchemy, PostgreSQL, or
+    WebSocket behavior. It represents the business data shared by every
+    persistence implementation.
+
+    `group_id` is included even though the database message row references a
+    channel. Keeping both identifiers in the domain model makes the
+    authorization boundary explicit and helps prevent cross-group access.
+    """
+
+    message_id: int
+    group_id: str
+    channel_id: str
+    author_id: str
+    content: str
+    sent_at: datetime
+    mentioned_user_ids: tuple[str, ...] = ()
+    ai_mode_used: StudyGroupAiMode | None = None
+    ai_response: StudyGroupAiResponse | None = None
+    edited_at: datetime | None = None
+    deleted_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        """Validate message invariants shared by every adapter."""
+
+        if self.message_id <= 0:
+            raise ValueError(
+                "message_id must be greater than zero"
+            )
+
+        if not self.group_id.strip():
+            raise ValueError(
+                "group_id must not be empty"
+            )
+
+        if not self.channel_id.strip():
+            raise ValueError(
+                "channel_id must not be empty"
+            )
+
+        if not self.author_id.strip():
+            raise ValueError(
+                "author_id must not be empty"
+            )
+
+        if not self.content.strip():
+            raise ValueError(
+                "message content must not be empty"
+            )
+
+        if len(self.content) > 4000:
+            raise ValueError(
+                "message content must not exceed 4000 characters"
+            )
+
+        if len(self.mentioned_user_ids) > 20:
+            raise ValueError(
+                "a message must not mention more than 20 users"
+            )
+
+        if len(set(self.mentioned_user_ids)) != len(
+            self.mentioned_user_ids
+        ):
+            raise ValueError(
+                "mentioned_user_ids must not contain duplicates"
+            )
+
+        if any(not user_id.strip() for user_id in self.mentioned_user_ids):
+            raise ValueError(
+                "mentioned user identifiers must not be empty"
+            )
+
+        if self.ai_response is not None:
+            if self.ai_mode_used is None:
+                raise ValueError(
+                    "an AI response requires an AI mode"
+                )
+            if self.ai_response.mode != self.ai_mode_used:
+                raise ValueError(
+                    "AI response mode must match the message AI mode"
+                )

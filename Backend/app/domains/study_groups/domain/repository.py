@@ -7,10 +7,13 @@ on PostgreSQL or an in-memory implementation.
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from app.domains.chats.domain.models import ChatSource
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
     StudyGroup,
+    StudyGroupAiMode,
     StudyGroupChannel,
+    StudyGroupMessage,
     StudyGroupMember,
     StudyGroupMemberRole,
     StudyGroupMembership,
@@ -276,5 +279,115 @@ class StudyGroupRepository(ABC):
         deleted_at: datetime,
     ) -> bool:
         """Soft-delete a channel and report whether it existed."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list_messages(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[StudyGroupMessage], int]:
+        """Return active messages belonging to one group channel.
+
+        Implementations must:
+
+        - Match both `group_id` and `channel_id`.
+        - Exclude soft-deleted messages.
+        - Return messages in oldest-first order.
+        - Apply offset/limit pagination.
+        - Return the total number of active matching messages.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+    ) -> StudyGroupMessage | None:
+        """Return one active message from the specified group channel.
+
+        Return `None` when the message does not exist, has been deleted, belongs
+        to another channel, or belongs to another group.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        author_id: str,
+        content: str,
+        mentioned_user_ids: tuple[str, ...],
+        ai_mode: StudyGroupAiMode | None,
+        sent_at: datetime,
+    ) -> StudyGroupMessage:
+        """Persist and return one normal student-authored channel message.
+
+        The application layer must verify group membership and channel access
+        before calling this method.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def save_ai_response(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        mode: StudyGroupAiMode,
+        content: str,
+        sources: tuple[ChatSource, ...],
+        generated_at: datetime,
+    ) -> StudyGroupMessage:
+        """Persist a generated companion response and return its message."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        content: str,
+        mentioned_user_ids: tuple[str, ...],
+        edited_at: datetime,
+    ) -> StudyGroupMessage:
+        """Update the content of an active message.
+
+        The application layer must verify that the requester is the message
+        author before calling this method.
+        """
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def soft_delete_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        deleted_at: datetime,
+    ) -> bool:
+        """Soft-delete an active message.
+
+        Return `True` when the message was found and deleted. Return `False`
+        when no active message matched all three identifiers.
+        """
 
         raise NotImplementedError

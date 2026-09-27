@@ -4,15 +4,16 @@
 
 The backend now supports Study Group discovery, the authenticated student's
 groups, public/private group creation, details, updates, soft deletion, public
-joining, owner/admin-managed membership, member listing, leaving, and complete
-channel CRUD. The
+joining, owner/admin-managed membership, member listing, leaving, complete
+channel CRUD, structured human mentions, AI companion modes, normal
+channel-message CRUD, and authenticated WebSocket delivery. The
 current frontend still uses local component state and
 `Frontend/src/services/groupService.js` is only a placeholder, so frontend API
 integration is still required.
 
-Group messages, invitation links, and AI companion mentions are **not**
-included in this endpoint slice. Do not invent frontend calls for those
-features until their contracts are added.
+Invitation links are not included in this endpoint slice. Message creation and
+AI generation remain HTTP operations; WebSocket is used only to deliver
+committed create/update/delete events to connected channel members.
 
 This sprint uses one shared in-memory Study Group repository. It preserves data
 between requests in one backend process, but restarting the backend clears all
@@ -47,6 +48,11 @@ access token.
 | `GET` | `/study-groups/{id}/channels/{channelId}` | Read one channel as a member |
 | `PUT` | `/study-groups/{id}/channels/{channelId}` | Rename/update a channel as owner/admin |
 | `DELETE` | `/study-groups/{id}/channels/{channelId}` | Soft-delete a channel as owner/admin |
+| `GET` | `/study-groups/{id}/channels/{channelId}/messages?page=1&page_size=50` | List active messages as a member |
+| `POST` | `/study-groups/{id}/channels/{channelId}/messages` | Send a normal message as a member |
+| `GET` | `/study-groups/{id}/channels/{channelId}/messages/{messageId}` | Read one active message as a member |
+| `PUT` | `/study-groups/{id}/channels/{channelId}/messages/{messageId}` | Edit the author's own message |
+| `DELETE` | `/study-groups/{id}/channels/{channelId}/messages/{messageId}` | Soft-delete the author's own message |
 
 ## Request bodies
 
@@ -75,6 +81,25 @@ description. There is no AI-generated title for group channels.
   "description": "Questions and revision for the final exam."
 }
 ```
+
+Message creation accepts structured human mentions and an optional companion
+selection:
+
+```json
+{
+  "content": "@Alex, summarize the Week 8 example.",
+  "mentioned_user_ids": ["member-user-uuid"],
+  "ai_mode": "summarizer",
+  "response_format": "bullet_points"
+}
+```
+
+Content is trimmed by the backend, must not be empty, and must not exceed
+4,000 characters. Omit `ai_mode` and `response_format` for an ordinary message.
+Supported modes are `default`, `summarizer`, `quiz`, and `facilitator`.
+Supported response formats are `paragraph`, `bullet_points`, and `table`.
+Message update replaces `content` and `mentioned_user_ids`; AI-invoking
+messages cannot be edited because their answer would no longer match.
 
 ## Group response
 
@@ -121,6 +146,12 @@ Implement one exported function for each route:
 - `getStudyGroupChannel(groupId, channelId)`
 - `updateStudyGroupChannel(groupId, channelId, payload)`
 - `deleteStudyGroupChannel(groupId, channelId)`
+- `getGroupMessages(groupId, channelId, { page, pageSize })`
+- `createGroupMessage(groupId, channelId, payload)` where `payload` contains
+  `content`, `mentionedUserIds`, `aiMode`, and `responseFormat`
+- `getGroupMessage(groupId, channelId, messageId)`
+- `updateGroupMessage(groupId, channelId, messageId, content, mentionedUserIds)`
+- `deleteGroupMessage(groupId, channelId, messageId)`
 
 Every function should call the shared API client and return parsed backend data.
 Do not duplicate token storage, base URL logic, or error parsing in this file.
@@ -138,11 +169,36 @@ Do not duplicate token storage, base URL logic, or error parsing in this file.
    update the cached item using the returned group response).
 4. Show loading, empty, and error states. Disable mutation buttons while a
    request is running to prevent accidental duplicate operations.
-5. Replace channel mock data with the channel functions above. Keep message
-   mock data isolated until group-message endpoints are delivered.
+5. Replace channel and ordinary-message mock data with the functions above.
+   Populate the human `@` menu from the group member-list endpoint. Send the
+   selected members' UUIDs in `mentioned_user_ids`; do not send display names
+   as identifiers. For a companion selection, send `ai_mode` as `default`,
+   `summarizer`, `quiz`, or `facilitator`. Omit `ai_mode` for a normal message.
+   Render the returned `ai_response` directly for the synchronous version.
 6. In the member-management panel, allow every member to view the list, but
    show Add/Remove controls only when `can_manage` is true. Add members using
    an email address; never ask the administrator to enter a UUID.
+
+## WebSocket delivery
+
+1. Immediately before connecting, call authenticated
+   `POST /auth/websocket-ticket`.
+2. Open:
+   `ws://localhost:8080/api/v1/ws/study-groups/{groupId}/channels/{channelId}?ticket={ticket}`.
+3. Never put the JWT access token in the WebSocket URL.
+4. A ticket is single-use. Request a new ticket for every reconnect.
+5. Continue sending mutations through HTTP. Apply these socket events:
+   - `study_group.message.created`
+   - `study_group.message.updated`
+   - `study_group.message.deleted`
+6. The sender receives both its HTTP response and its broadcast event. Deduplicate
+   messages using the returned message `id`.
+7. Send `{ "type": "ping" }` when a heartbeat is needed; the server replies
+   with `{ "type": "pong", "data": {} }`.
+
+The first server event is `study_group.connection.ready`. Close code `4401`
+means the ticket is invalid/expired/already used. Close code `4403` means the
+ticket owner is not an active member of that group channel.
 
 ## Expected errors
 
@@ -156,10 +212,16 @@ The shared API client should expose these backend codes to the UI:
 | `404` | `STUDY_GROUP_NOT_FOUND` | Remove stale item or return to the list |
 | `404` | `STUDY_GROUP_TARGET_USER_NOT_FOUND` | Explain that no active student uses that email |
 | `404` | `STUDY_GROUP_CHANNEL_NOT_FOUND` | Remove the stale channel or return to the group |
+| `404` | `STUDY_GROUP_MESSAGE_NOT_FOUND` | Remove the stale message from local state |
 | `409` | `ALREADY_GROUP_MEMBER` | Refresh and show Open/Joined |
 | `409` | `NOT_GROUP_MEMBER` | Refresh My Groups |
 | `409` | `STUDY_GROUP_FULL` | Disable Join and show the group is full |
 | `409` | `STUDY_GROUP_CHANNEL_NAME_CONFLICT` | Ask the admin to choose another channel name |
+| `403` | `STUDY_GROUP_MESSAGE_PERMISSION_DENIED` | Only show edit/delete for the message author |
+| `422` | `STUDY_GROUP_MENTIONED_USER_NOT_MEMBER` | Refresh members and remove the invalid mention |
+| `409` | `STUDY_GROUP_NO_READY_CHUNKS` | Ask the user to upload and process a channel attachment |
+| `502` | `STUDY_GROUP_ANSWER_GENERATION_FAILED` | Keep the question and offer Retry |
+| `503` | `STUDY_GROUP_AI_UNAVAILABLE` | Show that companion service is temporarily unavailable |
 | `422` | `VALIDATION_ERROR` | Display validation feedback near the form |
 
 ## Acceptance checklist
@@ -175,3 +237,10 @@ The shared API client should expose these backend codes to the UI:
   restarting the backend clears this sprint's in-memory Study Group data.
 - Members can list/open channels, while only owners/admins see channel
   create/edit/delete controls.
+- Active members can read and send normal messages. Only the message author
+  sees edit/delete controls; group ownership does not grant authorship.
+- Message history is returned oldest-first and excludes soft-deleted messages.
+- Duplicate human mentions are stored once, and users outside the group cannot
+  be mentioned.
+- Channel members receive committed message create/update/delete events without
+  receiving events from another group or channel.

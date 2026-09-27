@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from itertools import count
 from uuid import uuid4
 
+from app.domains.chats.domain.models import ChatSource
 from app.domains.study_groups.domain.exceptions import (
     InvalidStudyGroupError,
     StudyGroupAlreadyMemberError,
@@ -14,7 +15,10 @@ from app.domains.study_groups.domain.exceptions import (
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
     StudyGroup,
+    StudyGroupAiMode,
+    StudyGroupAiResponse,
     StudyGroupChannel,
+    StudyGroupMessage,
     StudyGroupMember,
     StudyGroupMemberRole,
     StudyGroupMembership,
@@ -58,7 +62,12 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
         # Channels use UUID identifiers and are soft-deleted like groups.
         self._channels: dict[str, StudyGroupChannel] = {}
 
+        # Messages use integer identifiers matching the PostgreSQL table.
+        self._messages: dict[int, StudyGroupMessage] = {}
+
         self._membership_ids = count(start=1)
+        self._message_ids = count(start=1)
+        self._ai_response_ids = count(start=1)
         self._lock = asyncio.Lock()
 
     async def seed_user(
@@ -648,6 +657,200 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
             )
             return True
 
+    async def list_messages(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[StudyGroupMessage], int]:
+        """Return active messages belonging to one active group channel."""
+
+        self._validate_pagination(offset=offset, limit=limit)
+        async with self._lock:
+            if self._active_group(group_id) is None:
+                return [], 0
+            if self._active_channel(
+                group_id=group_id,
+                channel_id=channel_id,
+            ) is None:
+                return [], 0
+
+            messages = [
+                message
+                for message in self._messages.values()
+                if (
+                    message.group_id == group_id
+                    and message.channel_id == channel_id
+                    and message.deleted_at is None
+                )
+            ]
+            messages.sort(
+                key=lambda message: (
+                    message.sent_at,
+                    message.message_id,
+                )
+            )
+            return messages[offset : offset + limit], len(messages)
+
+    async def get_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+    ) -> StudyGroupMessage | None:
+        """Return one active message from its owning group and channel."""
+
+        async with self._lock:
+            if self._active_group(group_id) is None:
+                return None
+            if self._active_channel(
+                group_id=group_id,
+                channel_id=channel_id,
+            ) is None:
+                return None
+
+            message = self._messages.get(message_id)
+            if (
+                message is None
+                or message.group_id != group_id
+                or message.channel_id != channel_id
+                or message.deleted_at is not None
+            ):
+                return None
+            return message
+
+    async def create_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        author_id: str,
+        content: str,
+        mentioned_user_ids: tuple[str, ...],
+        ai_mode: StudyGroupAiMode | None,
+        sent_at: datetime,
+    ) -> StudyGroupMessage:
+        """Create a normal student-authored message in an active channel."""
+
+        async with self._lock:
+            if self._active_group(group_id) is None:
+                raise LookupError("Study group not found.")
+            if self._active_channel(
+                group_id=group_id,
+                channel_id=channel_id,
+            ) is None:
+                raise LookupError("Study group channel not found.")
+
+            message = StudyGroupMessage(
+                message_id=next(self._message_ids),
+                group_id=group_id,
+                channel_id=channel_id,
+                author_id=author_id,
+                content=content,
+                sent_at=sent_at,
+                mentioned_user_ids=mentioned_user_ids,
+                ai_mode_used=ai_mode,
+            )
+            self._messages[message.message_id] = message
+            return message
+
+    async def save_ai_response(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        mode: StudyGroupAiMode,
+        content: str,
+        sources: tuple[ChatSource, ...],
+        generated_at: datetime,
+    ) -> StudyGroupMessage:
+        """Attach one generated companion response to an active message."""
+
+        async with self._lock:
+            message = self._messages.get(message_id)
+            if (
+                message is None
+                or message.group_id != group_id
+                or message.channel_id != channel_id
+                or message.deleted_at is not None
+                or message.ai_mode_used != mode
+            ):
+                raise LookupError("Study group message not found.")
+
+            updated = replace(
+                message,
+                ai_response=StudyGroupAiResponse(
+                    response_id=next(self._ai_response_ids),
+                    mode=mode,
+                    content=content,
+                    sources=tuple(sources),
+                    generated_at=generated_at,
+                ),
+            )
+            self._messages[message_id] = updated
+            return updated
+
+    async def update_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        content: str,
+        mentioned_user_ids: tuple[str, ...],
+        edited_at: datetime,
+    ) -> StudyGroupMessage:
+        """Replace the content of an active message."""
+
+        async with self._lock:
+            message = self._messages.get(message_id)
+            if (
+                message is None
+                or message.group_id != group_id
+                or message.channel_id != channel_id
+                or message.deleted_at is not None
+            ):
+                raise LookupError("Study group message not found.")
+
+            updated = replace(
+                message,
+                content=content,
+                mentioned_user_ids=mentioned_user_ids,
+                edited_at=edited_at,
+            )
+            self._messages[message_id] = updated
+            return updated
+
+    async def soft_delete_message(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        message_id: int,
+        deleted_at: datetime,
+    ) -> bool:
+        """Soft-delete an active message without removing its record."""
+
+        async with self._lock:
+            message = self._messages.get(message_id)
+            if (
+                message is None
+                or message.group_id != group_id
+                or message.channel_id != channel_id
+                or message.deleted_at is not None
+            ):
+                return False
+
+            self._messages[message_id] = replace(
+                message,
+                deleted_at=deleted_at,
+            )
+            return True
+
     def _to_summary(
         self,
         *,
@@ -690,6 +893,23 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
             return None
 
         return group
+
+    def _active_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+    ) -> StudyGroupChannel | None:
+        """Return a non-deleted channel only from its owning group."""
+
+        channel = self._channels.get(channel_id)
+        if (
+            channel is None
+            or channel.group_id != group_id
+            or channel.deleted_at is not None
+        ):
+            return None
+        return channel
 
     def _count_members_unlocked(
         self,

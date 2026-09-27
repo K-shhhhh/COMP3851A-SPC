@@ -158,6 +158,14 @@ class AuthService:
             expires_in=expires_in,
         )
 
+    async def consume_websocket_ticket(
+        self,
+        ticket: str,
+    ) -> str | None:
+        """Consume a single-use ticket and return its authenticated user ID."""
+
+        return await self.ticket_store.consume(ticket)
+
     async def logout(
         self,
         token_id: str,
