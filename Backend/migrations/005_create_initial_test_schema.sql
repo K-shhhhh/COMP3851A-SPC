@@ -6,10 +6,13 @@ Existing tables:	users, groups, memberships, channels, messages, message_mention
 (15 in total)   	ai_responses, ai_response_sources, ai_response_feedbacks,
                 	user_activity_logs
                 
-New table: messages, message_mentions
+New table:  message_mentions
+
+Updated tables: users, groups, messages, channels, messages, attachments, chunks
 
 Changes: 	A new juntion table called Message_Mentions is added to allow mentioning multiple users in a message. Unlike other tables, it uses composite keys as identifier.
             Removed default value and not null constraint from "ai_mode_used" attribute in Messages table.
+            Added/Updates indexes in users, groups, messages, channels, messages, attachments, chunks, ai_responses, ai_response_sources
 					
 Notes:	Deletion rules may be implemented as required in future updates.
 		Besides, future updates should focus more on constraints and indexes of the tables related to knowledge graph, AI responses and activity logs.
@@ -327,5 +330,3 @@ create index if not exists ix_ai_response_sources_response on ai_response_source
 create index if not exists ix_ai_response_sources_chunk on ai_response_sources (chunk_id);
 create index if not exists ix_ai_response_sources_node on ai_response_sources (node_id);
 create index if not exists ix_ai_response_sources_edge on ai_response_sources (edge_id);
-
-
