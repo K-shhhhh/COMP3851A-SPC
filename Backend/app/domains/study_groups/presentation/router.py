@@ -5,8 +5,11 @@ from uuid import UUID
 from fastapi import (
     APIRouter,
     Depends,
+    File,
+    Form,
     Query,
     Response,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -15,11 +18,28 @@ from fastapi import (
 from app.api.dependencies import (
     get_auth_service,
     get_current_user,
+    get_note_service,
     get_study_group_service,
 )
 from app.api.error_handlers import ApiError
+from app.core.config import settings
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.models import User
+from app.domains.notes.application.services import NoteService
+from app.domains.notes.domain.exceptions import (
+    AttachmentNotFoundError,
+    AttachmentStorageError,
+    EmptyFileError,
+    FileTooLargeError,
+    InvalidPdfError,
+    ProcessingDispatchError,
+    UnsafeFilenameError,
+    UnsupportedFileTypeError,
+)
+from app.domains.notes.presentation.schemas import (
+    NoteResponse,
+    NoteStatusResponse,
+)
 from app.domains.study_groups.application.services import (
     StudyGroupService,
 )
@@ -399,6 +419,80 @@ async def get_group_channel(
         raise
 
     return StudyGroupChannelResponse.from_channel(channel)
+
+
+@router.post(
+    "/{group_id}/channels/{channel_id}/attachments",
+    response_model=NoteResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_group_channel_attachment(
+    group_id: UUID,
+    channel_id: UUID,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None, max_length=150),
+    current_user: User = Depends(get_current_user),
+    group_service: StudyGroupService = Depends(get_study_group_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> NoteResponse:
+    """Upload a PDF to a Study Group channel as an active member."""
+
+    try:
+        # This lookup verifies that the group/channel exists and that the
+        # authenticated student is an active group member.
+        await group_service.get_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+        )
+        data = await file.read(settings.MAX_NOTE_UPLOAD_SIZE_BYTES + 1)
+        attachment = await note_service.upload_channel_attachment(
+            user_id=current_user.id,
+            channel_id=str(channel_id),
+            original_filename=file.filename,
+            content_type=file.content_type,
+            data=data,
+            title=title,
+        )
+    except Exception as exc:
+        _raise_group_attachment_api_error(exc)
+        raise
+    finally:
+        await file.close()
+
+    return NoteResponse.from_attachment(attachment)
+
+
+@router.get(
+    "/{group_id}/channels/{channel_id}/attachments/{attachment_id}/status",
+    response_model=NoteStatusResponse,
+)
+async def get_group_channel_attachment_status(
+    group_id: UUID,
+    channel_id: UUID,
+    attachment_id: int,
+    current_user: User = Depends(get_current_user),
+    group_service: StudyGroupService = Depends(get_study_group_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> NoteStatusResponse:
+    """Return processing status for an accessible channel attachment."""
+
+    try:
+        await group_service.get_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+        )
+        attachment = await note_service.get_channel_attachment(
+            attachment_id=attachment_id,
+            user_id=current_user.id,
+            channel_id=str(channel_id),
+        )
+    except Exception as exc:
+        _raise_group_attachment_api_error(exc)
+        raise
+
+    return NoteStatusResponse.from_attachment(attachment)
 
 
 @router.put(
@@ -924,4 +1018,61 @@ def _raise_study_group_api_error(exc: Exception) -> None:
             status_code=422,
             code="VALIDATION_ERROR",
             message=str(exc),
+        ) from exc
+
+
+def _raise_group_attachment_api_error(exc: Exception) -> None:
+    """Translate Study Group attachment failures to the shared API shape."""
+
+    # Preserve group/channel authorization and not-found errors.
+    if isinstance(
+        exc,
+        (StudyGroupChannelNotFoundError, StudyGroupPermissionDeniedError),
+    ):
+        _raise_study_group_api_error(exc)
+
+    if isinstance(exc, AttachmentNotFoundError):
+        raise ApiError(
+            status_code=404,
+            code="STUDY_GROUP_ATTACHMENT_NOT_FOUND",
+            message="The requested channel attachment was not found.",
+        ) from exc
+
+    if isinstance(exc, FileTooLargeError):
+        raise ApiError(
+            status_code=413,
+            code="FILE_TOO_LARGE",
+            message=str(exc),
+            details={"maximum_size_bytes": exc.maximum_size_bytes},
+        ) from exc
+
+    if isinstance(exc, UnsupportedFileTypeError):
+        raise ApiError(
+            status_code=415,
+            code="UNSUPPORTED_FILE_TYPE",
+            message=str(exc),
+        ) from exc
+
+    validation_errors = (EmptyFileError, InvalidPdfError, UnsafeFilenameError)
+    if isinstance(exc, validation_errors):
+        raise ApiError(
+            status_code=422,
+            code="INVALID_CHANNEL_ATTACHMENT",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, AttachmentStorageError):
+        raise ApiError(
+            status_code=503,
+            code="FILE_STORAGE_UNAVAILABLE",
+            message="Private file storage is temporarily unavailable.",
+            retryable=True,
+        ) from exc
+
+    if isinstance(exc, ProcessingDispatchError):
+        raise ApiError(
+            status_code=503,
+            code="PROCESSING_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
         ) from exc

@@ -62,50 +62,62 @@ class NoteService:
         entries only. Message attachments belong to the chat API.
         """
 
-        self._validate_pdf(content_type=content_type, data=data)
-        safe_filename = self._sanitize_filename(original_filename)
-        safe_title = self._normalize_title(title, safe_filename)
-
-        object_path = await self._storage.store_pdf(data)
-
-        try:
-            attachment = await self._repository.create_attachment(
-                uploaded_by=user_id,
-                title=safe_title,
-                file_name=safe_filename,
-                file_type="application/pdf",
-                file_size_bytes=len(data),
-                object_path=object_path,
-                channel_id=None,
-                message_id=None,
-            )
-        except Exception:
-            await self._storage.delete_pdf(object_path)
-            raise
-
-        try:
-            await self._processing_dispatcher.dispatch(
-                attachment_id=attachment.attachment_id,
-                object_path=attachment.object_path,
-            )
-        except Exception as exc:
-            await self._repository.update_processing_status(
-                attachment_id=attachment.attachment_id,
-                processing_status=NoteProcessingStatus.FAILED,
-                processing_progress=0,
-                processing_error="Document processing could not be started.",
-            )
-            raise ProcessingDispatchError(
-                "Document processing could not be started."
-            ) from exc
-
-        # A normal Celery dispatcher returns while the attachment is queued.
-        # The temporary demo dispatcher completes synchronously, so reload the
-        # record to return its actual ready/failed state when available.
-        current_attachment = await self._repository.get_attachment_by_id(
-            attachment.attachment_id
+        return await self._upload_pdf(
+            user_id=user_id,
+            original_filename=original_filename,
+            content_type=content_type,
+            data=data,
+            title=title,
+            channel_id=None,
         )
-        return current_attachment or attachment
+
+    async def upload_channel_attachment(
+        self,
+        *,
+        user_id: str,
+        channel_id: str,
+        original_filename: str | None,
+        content_type: str | None,
+        data: bytes,
+        title: str | None = None,
+    ) -> NoteAttachment:
+        """Create and process a PDF scoped to an authorized chat channel.
+
+        Channel membership is checked by the Study Group service before this
+        use case is called. The attachment remains outside My Notes because it
+        stores a non-null ``channel_id``.
+        """
+
+        if not channel_id.strip():
+            raise ValueError("channel_id must not be empty")
+
+        return await self._upload_pdf(
+            user_id=user_id,
+            original_filename=original_filename,
+            content_type=content_type,
+            data=data,
+            title=title,
+            channel_id=channel_id,
+        )
+
+    async def get_channel_attachment(
+        self,
+        *,
+        attachment_id: int,
+        user_id: str,
+        channel_id: str,
+    ) -> NoteAttachment:
+        """Return an authorized attachment only from the requested channel."""
+
+        attachment = await self._repository.get_owned_attachment(
+            attachment_id=attachment_id,
+            user_id=user_id,
+        )
+
+        if attachment is None or attachment.channel_id != channel_id:
+            raise AttachmentNotFoundError("Channel attachment not found.")
+
+        return attachment
 
     async def list_notes(
         self,
@@ -166,6 +178,59 @@ class NoteService:
             raise AttachmentNotFoundError("Note not found.")
 
         await self._storage.delete_pdf(attachment.object_path)
+
+    async def _upload_pdf(
+        self,
+        *,
+        user_id: str,
+        original_filename: str | None,
+        content_type: str | None,
+        data: bytes,
+        title: str | None,
+        channel_id: str | None,
+    ) -> NoteAttachment:
+        """Validate, store, persist, and dispatch one PDF upload."""
+
+        self._validate_pdf(content_type=content_type, data=data)
+        safe_filename = self._sanitize_filename(original_filename)
+        safe_title = self._normalize_title(title, safe_filename)
+        object_path = await self._storage.store_pdf(data)
+
+        try:
+            attachment = await self._repository.create_attachment(
+                uploaded_by=user_id,
+                title=safe_title,
+                file_name=safe_filename,
+                file_type="application/pdf",
+                file_size_bytes=len(data),
+                object_path=object_path,
+                channel_id=channel_id,
+                message_id=None,
+            )
+        except Exception:
+            await self._storage.delete_pdf(object_path)
+            raise
+
+        try:
+            await self._processing_dispatcher.dispatch(
+                attachment_id=attachment.attachment_id,
+                object_path=attachment.object_path,
+            )
+        except Exception as exc:
+            await self._repository.update_processing_status(
+                attachment_id=attachment.attachment_id,
+                processing_status=NoteProcessingStatus.FAILED,
+                processing_progress=0,
+                processing_error="Document processing could not be started.",
+            )
+            raise ProcessingDispatchError(
+                "Document processing could not be started."
+            ) from exc
+
+        current_attachment = await self._repository.get_attachment_by_id(
+            attachment.attachment_id
+        )
+        return current_attachment or attachment
 
     def _validate_pdf(
         self,

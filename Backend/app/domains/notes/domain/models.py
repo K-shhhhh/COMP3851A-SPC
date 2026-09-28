@@ -24,8 +24,8 @@ class NoteAttachment:
 
     An attachment with no ``channel_id`` belongs to the uploader's Notes
     Library and appears in My Notes. An attachment with a ``channel_id``
-    belongs to a personal conversation or study-group channel and must also
-    reference the message through which it was uploaded.
+    belongs to a personal conversation or study-group channel. A channel upload
+    may optionally reference the message through which it was uploaded.
 
     The group identifier is intentionally not stored on this model. For a
     message attachment, the group can be derived through:
@@ -114,10 +114,9 @@ class NoteAttachment:
                 "a Notes Library attachment cannot have a message_id"
             )
 
-        if self.channel_id is not None and self.message_id is None:
-            raise ValueError(
-                "a channel attachment requires a message_id"
-            )
+        # A direct channel upload is valid before it is associated with a chat
+        # message. A message reference, however, is meaningless without its
+        # parent channel and is rejected above.
 
     def _validate_processing_state(self) -> None:
         """Ensure processing status, progress, and errors are consistent."""

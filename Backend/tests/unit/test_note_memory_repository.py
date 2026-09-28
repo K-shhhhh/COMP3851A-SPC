@@ -62,6 +62,20 @@ async def test_my_notes_excludes_message_attachments() -> None:
     assert items[0].channel_id is None
 
 
+async def test_direct_channel_attachment_does_not_require_message() -> None:
+    repository = InMemoryAttachmentRepository()
+
+    attachment = await create_attachment(
+        repository,
+        channel_id="channel-1",
+        message_id=None,
+    )
+
+    assert attachment.channel_id == "channel-1"
+    assert attachment.message_id is None
+    assert attachment.appears_in_my_notes is False
+
+
 async def test_owned_lookup_prevents_cross_user_access() -> None:
     repository = InMemoryAttachmentRepository()
     attachment = await create_attachment(repository, user_id="user-1")

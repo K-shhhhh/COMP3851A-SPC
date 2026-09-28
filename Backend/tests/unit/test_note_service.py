@@ -76,6 +76,52 @@ async def test_upload_defaults_title_to_filename(tmp_path: Path) -> None:
     assert attachment.title == "software architecture"
 
 
+async def test_channel_upload_is_scoped_outside_my_notes(
+    tmp_path: Path,
+) -> None:
+    """A direct group-channel upload may exist without a message id."""
+
+    service, _, dispatcher = make_service(tmp_path)
+
+    attachment = await service.upload_channel_attachment(
+        user_id="user-1",
+        channel_id="channel-1",
+        original_filename="shared lecture.pdf",
+        content_type="application/pdf",
+        data=b"%PDF-1.7\nshared lecture",
+        title="Shared lecture",
+    )
+
+    assert attachment.channel_id == "channel-1"
+    assert attachment.message_id is None
+    assert attachment.appears_in_my_notes is False
+    assert dispatcher.requests == (
+        (attachment.attachment_id, attachment.object_path),
+    )
+
+    items, total = await service.list_notes(
+        user_id="user-1",
+        page=1,
+        page_size=20,
+    )
+    assert items == []
+    assert total == 0
+
+    loaded = await service.get_channel_attachment(
+        attachment_id=attachment.attachment_id,
+        user_id="user-1",
+        channel_id="channel-1",
+    )
+    assert loaded == attachment
+
+    with pytest.raises(AttachmentNotFoundError):
+        await service.get_channel_attachment(
+            attachment_id=attachment.attachment_id,
+            user_id="user-1",
+            channel_id="channel-2",
+        )
+
+
 @pytest.mark.parametrize(
     ("content_type", "data", "error_type"),
     [

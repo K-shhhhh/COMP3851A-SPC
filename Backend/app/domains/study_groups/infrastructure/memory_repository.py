@@ -29,7 +29,6 @@ from app.domains.study_groups.domain.repository import (
     StudyGroupRepository,
 )
 
-
 @dataclass(frozen=True, slots=True)
 class _MemoryUserProfile:
     """Minimal user information required by membership tests."""
@@ -39,7 +38,6 @@ class _MemoryUserProfile:
     email: str
     is_active: bool
     is_deleted: bool
-
 
 class InMemoryStudyGroupRepository(StudyGroupRepository):
     """Store Study Groups and memberships inside one backend process."""
@@ -59,10 +57,9 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
         # be tested without connecting to PostgreSQL.
         self._users: dict[str, _MemoryUserProfile] = {}
 
-        # Channels use UUID identifiers and are soft-deleted like groups.
+        # Channels and messages remain in memory for isolated endpoint tests
+        # until the PostgreSQL adapter implements the full repository contract.
         self._channels: dict[str, StudyGroupChannel] = {}
-
-        # Messages use integer identifiers matching the PostgreSQL table.
         self._messages: dict[int, StudyGroupMessage] = {}
 
         self._membership_ids = count(start=1)
@@ -79,13 +76,20 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
         is_active: bool = True,
         is_deleted: bool = False,
     ) -> None:
-        """Add a minimal profile for isolated repository/service tests."""
+        """Add a minimal user profile for isolated repository tests.
+
+        This helper is not part of the repository interface. Production code
+        obtains user information from PostgreSQL.
+        """
 
         normalized_email = email.strip().casefold()
+
         if not user_id.strip():
             raise ValueError("user_id must not be empty")
+
         if not full_name.strip():
             raise ValueError("full_name must not be empty")
+
         if not normalized_email:
             raise ValueError("email must not be empty")
 
@@ -251,72 +255,6 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
         async with self._lock:
             return self._active_group(group_id)
 
-    async def find_active_user_id_by_email(
-        self,
-        *,
-        email: str,
-    ) -> str | None:
-        """Find an active, non-deleted test user by normalized email."""
-
-        normalized_email = email.strip().casefold()
-        async with self._lock:
-            for profile in self._users.values():
-                if (
-                    profile.email == normalized_email
-                    and profile.is_active
-                    and not profile.is_deleted
-                ):
-                    return profile.user_id
-        return None
-
-    async def list_members(
-        self,
-        *,
-        group_id: str,
-        offset: int,
-        limit: int,
-    ) -> tuple[list[StudyGroupMember], int]:
-        """Return paginated members with safe public profile information."""
-
-        self._validate_pagination(offset=offset, limit=limit)
-        async with self._lock:
-            if self._active_group(group_id) is None:
-                return [], 0
-
-            memberships = [
-                membership
-                for membership in self._memberships.values()
-                if membership.group_id == group_id
-            ]
-            memberships.sort(
-                key=lambda membership: (
-                    membership.role != StudyGroupMemberRole.ADMIN,
-                    membership.joined_at,
-                    membership.membership_id,
-                )
-            )
-
-            total = len(memberships)
-            members: list[StudyGroupMember] = []
-            for membership in memberships[offset : offset + limit]:
-                profile = self._users.get(membership.user_id)
-                if profile is None:
-                    profile = self._placeholder_user(membership.user_id)
-
-                members.append(
-                    StudyGroupMember(
-                        membership_id=membership.membership_id,
-                        group_id=membership.group_id,
-                        user_id=membership.user_id,
-                        full_name=profile.full_name,
-                        email=profile.email,
-                        role=membership.role,
-                        joined_at=membership.joined_at,
-                    )
-                )
-
-            return members, total
-
     async def create_group(
         self,
         *,
@@ -329,9 +267,6 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
         """Create a group and initial admin membership atomically."""
 
         async with self._lock:
-            if created_by not in self._users:
-                self._users[created_by] = self._placeholder_user(created_by)
-
             now = datetime.now(timezone.utc)
             group_id = str(uuid4())
 
@@ -362,6 +297,85 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                 group=group,
                 user_id=created_by,
             )
+
+    async def find_active_user_id_by_email(
+        self,
+        *,
+        email: str,
+    ) -> str | None:
+        """Find an active, non-deleted test user by normalized email."""
+
+        normalized_email = email.strip().casefold()
+
+        async with self._lock:
+            for profile in self._users.values():
+                if (
+                    profile.email == normalized_email
+                    and profile.is_active
+                    and not profile.is_deleted
+                ):
+                    return profile.user_id
+
+        return None
+
+    async def list_members(
+        self,
+        *,
+        group_id: str,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[StudyGroupMember], int]:
+        """Return paginated members with safe public profile information."""
+
+        self._validate_pagination(offset=offset, limit=limit)
+
+        async with self._lock:
+            if self._active_group(group_id) is None:
+                return [], 0
+
+            memberships = [
+                membership
+                for membership in self._memberships.values()
+                if membership.group_id == group_id
+            ]
+
+            # Administrators appear first, followed by joining time.
+            memberships.sort(
+                key=lambda membership: (
+                    membership.role != StudyGroupMemberRole.ADMIN,
+                    membership.joined_at,
+                    membership.membership_id,
+                )
+            )
+
+            total = len(memberships)
+            page = memberships[offset : offset + limit]
+            members: list[StudyGroupMember] = []
+
+            for membership in page:
+                profile = self._users.get(membership.user_id)
+
+                # Existing unit tests may create memberships directly without
+                # seeding a profile. Create a safe local placeholder so those
+                # tests continue to work.
+                if profile is None:
+                    profile = self._placeholder_user(
+                        membership.user_id
+                    )
+
+                members.append(
+                    StudyGroupMember(
+                        membership_id=membership.membership_id,
+                        group_id=membership.group_id,
+                        user_id=membership.user_id,
+                        full_name=profile.full_name,
+                        email=profile.email,
+                        role=membership.role,
+                        joined_at=membership.joined_at,
+                    )
+                )
+
+            return members, total
 
     async def update_group(
         self,
@@ -468,9 +482,6 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                 raise StudyGroupFullError(
                     "This study group has reached its member limit."
                 )
-
-            if user_id not in self._users:
-                self._users[user_id] = self._placeholder_user(user_id)
 
             membership = StudyGroupMembership(
                 membership_id=next(self._membership_ids),
@@ -851,6 +862,23 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
             )
             return True
 
+    def _active_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+    ) -> StudyGroupChannel | None:
+        """Return a non-deleted channel only from its owning group."""
+
+        channel = self._channels.get(channel_id)
+        if (
+            channel is None
+            or channel.group_id != group_id
+            or channel.deleted_at is not None
+        ):
+            return None
+        return channel
+
     def _to_summary(
         self,
         *,
@@ -894,23 +922,6 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
 
         return group
 
-    def _active_channel(
-        self,
-        *,
-        group_id: str,
-        channel_id: str,
-    ) -> StudyGroupChannel | None:
-        """Return a non-deleted channel only from its owning group."""
-
-        channel = self._channels.get(channel_id)
-        if (
-            channel is None
-            or channel.group_id != group_id
-            or channel.deleted_at is not None
-        ):
-            return None
-        return channel
-
     def _count_members_unlocked(
         self,
         group_id: str,
@@ -925,12 +936,18 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
 
     @staticmethod
     def _placeholder_user(user_id: str) -> _MemoryUserProfile:
-        """Create safe profile data for older isolated unit tests."""
+        """Return valid public profile data for an unseeded test member.
+
+        ``example.com`` is intentionally used because Pydantic's ``EmailStr``
+        accepts it, while the reserved ``.invalid`` top-level domain does not.
+        The address is only a deterministic in-memory placeholder and is never
+        used for delivery.
+        """
 
         return _MemoryUserProfile(
             user_id=user_id,
-            full_name="Test Student",
-            email=f"{user_id}@memory.invalid",
+            full_name="Study Group Member",
+            email=f"{user_id}@example.com",
             is_active=True,
             is_deleted=False,
         )

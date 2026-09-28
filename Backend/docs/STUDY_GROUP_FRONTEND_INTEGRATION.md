@@ -48,6 +48,8 @@ access token.
 | `GET` | `/study-groups/{id}/channels/{channelId}` | Read one channel as a member |
 | `PUT` | `/study-groups/{id}/channels/{channelId}` | Rename/update a channel as owner/admin |
 | `DELETE` | `/study-groups/{id}/channels/{channelId}` | Soft-delete a channel as owner/admin |
+| `POST` | `/study-groups/{id}/channels/{channelId}/attachments` | Upload a PDF to the channel as a member |
+| `GET` | `/study-groups/{id}/channels/{channelId}/attachments/{attachmentId}/status` | Poll channel-PDF processing status |
 | `GET` | `/study-groups/{id}/channels/{channelId}/messages?page=1&page_size=50` | List active messages as a member |
 | `POST` | `/study-groups/{id}/channels/{channelId}/messages` | Send a normal message as a member |
 | `GET` | `/study-groups/{id}/channels/{channelId}/messages/{messageId}` | Read one active message as a member |
@@ -178,6 +180,11 @@ Do not duplicate token storage, base URL logic, or error parsing in this file.
 6. In the member-management panel, allow every member to view the list, but
    show Add/Remove controls only when `can_manage` is true. Add members using
    an email address; never ask the administrator to enter a UUID.
+7. The channel attachment button must submit `multipart/form-data` to the
+   channel attachment route using the `file` field and optional `title` field.
+   Poll the returned attachment ID until its status is `ready` or `failed`.
+   Channel uploads do not appear in My Notes. Only enable an AI-companion send
+   after at least one channel attachment is ready.
 
 ## WebSocket delivery
 
@@ -213,6 +220,7 @@ The shared API client should expose these backend codes to the UI:
 | `404` | `STUDY_GROUP_TARGET_USER_NOT_FOUND` | Explain that no active student uses that email |
 | `404` | `STUDY_GROUP_CHANNEL_NOT_FOUND` | Remove the stale channel or return to the group |
 | `404` | `STUDY_GROUP_MESSAGE_NOT_FOUND` | Remove the stale message from local state |
+| `404` | `STUDY_GROUP_ATTACHMENT_NOT_FOUND` | Remove the stale attachment from channel state |
 | `409` | `ALREADY_GROUP_MEMBER` | Refresh and show Open/Joined |
 | `409` | `NOT_GROUP_MEMBER` | Refresh My Groups |
 | `409` | `STUDY_GROUP_FULL` | Disable Join and show the group is full |
@@ -222,6 +230,7 @@ The shared API client should expose these backend codes to the UI:
 | `409` | `STUDY_GROUP_NO_READY_CHUNKS` | Ask the user to upload and process a channel attachment |
 | `502` | `STUDY_GROUP_ANSWER_GENERATION_FAILED` | Keep the question and offer Retry |
 | `503` | `STUDY_GROUP_AI_UNAVAILABLE` | Show that companion service is temporarily unavailable |
+| `503` | `PROCESSING_UNAVAILABLE` | Keep the selected file and offer Upload again |
 | `422` | `VALIDATION_ERROR` | Display validation feedback near the form |
 
 ## Acceptance checklist
