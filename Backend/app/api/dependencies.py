@@ -83,11 +83,11 @@ from app.domains.study_groups.domain.repository import StudyGroupRepository
 from app.domains.study_groups.domain.retrieval import (
     StudyGroupReadyChunkRepository,
 )
-from app.domains.study_groups.infrastructure.memory_repository import (
-    InMemoryStudyGroupRepository,
+from app.domains.study_groups.infrastructure.repository import (
+    PostgreSQLStudyGroupRepository,
 )
-from app.domains.study_groups.infrastructure.memory_retrieval import (
-    InMemoryStudyGroupReadyChunkRepository,
+from app.domains.study_groups.infrastructure.retrieval import (
+    PostgreSQLStudyGroupReadyChunkRepository,
 )
 
 from app.domains.knowledge_graph.application.services import KnowledgeGraphService
@@ -364,25 +364,20 @@ def get_chat_service(
 
 # ---------- Study Groups ----------
 
-# The shared instance preserves groups, memberships, and channels between HTTP
-# requests during local testing. Data resets whenever the backend restarts.
-_local_study_group_repository = InMemoryStudyGroupRepository()
-_local_study_group_chunk_repository = (
-    InMemoryStudyGroupReadyChunkRepository()
-)
-
 def get_study_group_repository(
+    session: AsyncSession = Depends(get_db_session),
 ) -> StudyGroupRepository:
-    """Return local persistence until the database adapter is completed."""
+    """Return request-scoped PostgreSQL Study Group persistence."""
 
-    return _local_study_group_repository
+    return PostgreSQLStudyGroupRepository(session)
 
 
 def get_study_group_chunk_repository(
+    session: AsyncSession = Depends(get_db_session),
 ) -> StudyGroupReadyChunkRepository:
-    """Return channel-scoped chunks until PostgreSQL retrieval is completed."""
+    """Return PostgreSQL ready chunks scoped to one group channel."""
 
-    return _local_study_group_chunk_repository
+    return PostgreSQLStudyGroupReadyChunkRepository(session)
 
 
 def get_study_group_service(

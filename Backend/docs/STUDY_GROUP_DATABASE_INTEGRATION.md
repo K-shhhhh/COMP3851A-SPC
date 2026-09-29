@@ -1,11 +1,10 @@
 # Study Group Database Integration
 
-## Ownership boundary
+## Integration status
 
-The API, application service, domain models, repository contract, and in-memory
-adapter are complete. The PostgreSQL adapter remains the database developer's
-responsibility. Do not change the API/service rules to fit SQLAlchemy; implement
-the domain contract in:
+The API, application service, domain models, repository contract, in-memory
+test adapter, and PostgreSQL adapters are complete. Runtime dependency
+injection now uses the PostgreSQL implementations in:
 
 `Backend/app/domains/study_groups/infrastructure/repository.py`
 
@@ -13,7 +12,7 @@ The required method signatures are defined in:
 
 `Backend/app/domains/study_groups/domain/repository.py`
 
-## Membership methods still required
+## Membership persistence
 
 - `find_active_user_id_by_email(...)`
 - `list_members(...)`
@@ -22,7 +21,7 @@ Email lookup must be case-insensitive and must exclude deactivated or
 soft-deleted accounts. Member listing returns only safe profile fields plus the
 membership role and joining time.
 
-## Channel methods required
+## Channel persistence
 
 - `list_channels(...)`
 - `get_channel(...)`
@@ -53,19 +52,20 @@ scoped through the requested `group_id`, `channel_id`, and (when applicable)
 `group_id`, join `messages -> channels` and require the channel's `group_id` to
 match. Exclude deleted channels and messages.
 
-Normal messages use the existing database default AI mode (`default`). List
-history oldest-first with offset/limit pagination and return the total active
-count. Editing updates `message_content` and `edited_at`. Deletion sets
+Ordinary messages persist `ai_mode_used` as `NULL`; AI-invoking messages store
+their selected mode explicitly. List history oldest-first with offset/limit
+pagination and return the total active count. Editing updates
+`message_content` and `edited_at`. Deletion sets
 `deleted_at`; it must not physically delete the row. The application service
 already checks active membership and author-only modification, but repository
 queries must still prevent cross-group and cross-channel access.
 
 Human mentions are supplied to `create_message(...)` and
 `update_message(...)` as `mentioned_user_ids`. Persist them as structured
-relationships, preferably in a `message_mentions` association table with:
+relationships in the `message_mentions` association table with:
 
 - `message_id` referencing `messages.message_id`
-- `mentioned_user_id` referencing `users.user_id`
+- `user_id` referencing `users.user_id`
 - a unique constraint on `(message_id, mentioned_user_id)`
 
 Creating or updating a message and replacing its mention relationships must be
@@ -86,18 +86,15 @@ the requested `group_id` and `channel_id`, ready/non-deleted attachments,
 non-deleted chunks, and an active channel. Never use the personal-chat
 `list_ready_chunks_for_user(...)` query for a group response.
 
-## Completion and switch
+## Runtime and migrations
 
-1. Implement every missing abstract method in the PostgreSQL adapter.
-2. Add PostgreSQL integration tests for membership lookup/listing, channel
-   lifecycle, normal-message lifecycle/isolation, channel-scoped retrieval,
-   and companion-response persistence.
-3. Confirm the deployed migration contains the required `channels` fields,
-   active-name uniqueness rule, and message-mention relationship.
-4. Replace `InMemoryStudyGroupRepository` with
-   `PostgreSQLStudyGroupRepository(session)` only in
-   `Backend/app/api/dependencies.py`.
-5. Run unit, security, PostgreSQL integration, and frontend workflow tests.
+`Backend/app/api/dependencies.py` injects
+`PostgreSQLStudyGroupRepository(session)` and
+`PostgreSQLStudyGroupReadyChunkRepository(session)`. Fresh local databases load
+`005_create_initial_test_schema.sql`. Existing version-4 Docker volumes must
+apply `006_upgrade_existing_study_group_schema.sql` once to add structured
+mentions, nullable ordinary-message AI mode, and the retrieval indexes.
 
-Until all five steps pass, keep dependency injection on the shared in-memory
-adapter. This avoids partially working production persistence.
+The PostgreSQL integration suite covers membership lookup/listing, channel and
+message lifecycle/isolation, multiple mentions, channel-scoped retrieval,
+companion-response persistence, and the WebSocket persistence boundary.

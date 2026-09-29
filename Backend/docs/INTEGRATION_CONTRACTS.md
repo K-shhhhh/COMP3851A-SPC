@@ -929,13 +929,12 @@ Every source included in an answer must refer to a note accessible to the authen
 
 # 9. Study Group Contract
 
-Study-group CRUD, discovery, membership, channel CRUD, normal message CRUD, and
-authorization endpoints are now implemented against shared process-local
-memory. Human mentions, invitations, AI companion invocation, and WebSocket
-delivery remain separate follow-up contracts.
-The database developer must complete the repository methods before this module
-is switched back to PostgreSQL. Restarting the backend currently clears Study
-Group data.
+Study-group CRUD, discovery, membership, channel CRUD, message CRUD, structured
+human mentions, AI companion invocation, response persistence, channel-scoped
+retrieval, and WebSocket delivery are implemented with PostgreSQL persistence.
+The in-memory repository remains only as a test adapter. Invitation links are a
+separate follow-up; private-group membership currently uses owner/admin direct
+addition by email.
 
 All routes require `Authorization: Bearer <access_token>` and are prefixed by
 `/api/v1`:
