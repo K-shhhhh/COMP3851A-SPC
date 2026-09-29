@@ -61,6 +61,13 @@ getChatMessages(accessToken, chatId, { page, pageSize })
 sendChatMessage(accessToken, chatId, content)
 ```
 
+It must additionally export personal attachment operations:
+
+```text
+uploadChatAttachment(accessToken, chatId, file, title?)
+getChatAttachmentStatus(accessToken, chatId, attachmentId)
+```
+
 Pages should use these functions rather than calling `fetch` directly.
 
 ## Step-by-step integration
@@ -109,6 +116,20 @@ Render messages oldest first. Supported roles are `user`, `assistant`, and
 `system`. Assistant messages may contain a `sources` array.
 
 ### 4. Submit a question synchronously
+
+Before asking a question, the student may attach a PDF to the selected chat:
+
+```http
+POST /api/v1/chats/{chat_id}/attachments
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+Form fields are `file` (required PDF) and `title` (optional). Success is
+`202 Accepted`. Poll
+`GET /api/v1/chats/{chat_id}/attachments/{attachment_id}/status` until the
+status is `ready` or `failed`. Personal-chat attachments also appear in My
+Notes. The frontend must not send `show_in_library`; the backend owns it.
 
 Call:
 

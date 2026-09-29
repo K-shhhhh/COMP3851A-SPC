@@ -22,10 +22,10 @@ class NoteProcessingStatus(StrEnum):
 class NoteAttachment:
     """Represent one uploaded learning-material attachment.
 
-    An attachment with no ``channel_id`` belongs to the uploader's Notes
-    Library and appears in My Notes. An attachment with a ``channel_id``
-    belongs to a personal conversation or study-group channel. A channel upload
-    may optionally reference the message through which it was uploaded.
+    ``show_in_library`` is the explicit source-of-truth for My Notes. Direct
+    Notes uploads and personal-chat uploads set it to ``True``. Study-group
+    channel uploads set it to ``False``. A channel upload may optionally
+    reference the message through which it was uploaded.
 
     The group identifier is intentionally not stored on this model. For a
     message attachment, the group can be derived through:
@@ -44,6 +44,7 @@ class NoteAttachment:
         processing_progress: Processing percentage between zero and 100.
         uploaded_at: Time at which the attachment was created.
         updated_at: Time at which the attachment was last changed.
+        show_in_library: Whether the attachment appears in My Notes.
         channel_id: Conversation or group-channel identifier, when applicable.
         message_id: Message containing the attachment, when applicable.
         processing_error: Safe error message when processing fails.
@@ -61,6 +62,7 @@ class NoteAttachment:
     processing_progress: int
     uploaded_at: datetime
     updated_at: datetime
+    show_in_library: bool = True
     channel_id: str | None = None
     message_id: int | None = None
     processing_error: str | None = None
@@ -104,7 +106,7 @@ class NoteAttachment:
     def appears_in_my_notes(self) -> bool:
         """Return whether this attachment belongs to the Notes Library."""
 
-        return self.channel_id is None
+        return self.show_in_library
 
     def _validate_attachment_relationships(self) -> None:
         """Ensure channel and message relationships are unambiguous."""
@@ -112,6 +114,11 @@ class NoteAttachment:
         if self.channel_id is None and self.message_id is not None:
             raise ValueError(
                 "a Notes Library attachment cannot have a message_id"
+            )
+
+        if self.channel_id is None and not self.show_in_library:
+            raise ValueError(
+                "an attachment hidden from My Notes requires a channel_id"
             )
 
         # A direct channel upload is valid before it is associated with a chat

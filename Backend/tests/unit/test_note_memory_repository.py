@@ -17,6 +17,7 @@ async def create_attachment(
     user_id: str = "user-1",
     channel_id: str | None = None,
     message_id: int | None = None,
+    show_in_library: bool = True,
 ):
     """Create one queued attachment for repository tests."""
 
@@ -27,6 +28,7 @@ async def create_attachment(
         file_type="application/pdf",
         file_size_bytes=100,
         object_path="/private/test.pdf",
+        show_in_library=show_in_library,
         channel_id=channel_id,
         message_id=message_id,
     )
@@ -42,13 +44,14 @@ async def test_create_assigns_identifier_and_queued_state() -> None:
     assert attachment.processing_progress == 0
 
 
-async def test_my_notes_excludes_message_attachments() -> None:
+async def test_my_notes_uses_explicit_visibility_flag() -> None:
     repository = InMemoryAttachmentRepository()
     await create_attachment(repository)
     await create_attachment(
         repository,
         channel_id="channel-1",
         message_id=1,
+        show_in_library=False,
     )
 
     items, total = await repository.list_note_library_attachments(
@@ -59,7 +62,25 @@ async def test_my_notes_excludes_message_attachments() -> None:
 
     assert total == 1
     assert len(items) == 1
-    assert items[0].channel_id is None
+    assert items[0].show_in_library is True
+
+
+async def test_personal_chat_attachment_appears_in_my_notes() -> None:
+    repository = InMemoryAttachmentRepository()
+    attachment = await create_attachment(
+        repository,
+        channel_id="personal-chat-1",
+        show_in_library=True,
+    )
+
+    items, total = await repository.list_note_library_attachments(
+        user_id="user-1",
+        offset=0,
+        limit=20,
+    )
+
+    assert total == 1
+    assert items == [attachment]
 
 
 async def test_direct_channel_attachment_does_not_require_message() -> None:
@@ -69,6 +90,7 @@ async def test_direct_channel_attachment_does_not_require_message() -> None:
         repository,
         channel_id="channel-1",
         message_id=None,
+        show_in_library=False,
     )
 
     assert attachment.channel_id == "channel-1"

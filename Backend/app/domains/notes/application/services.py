@@ -69,6 +69,32 @@ class NoteService:
             data=data,
             title=title,
             channel_id=None,
+            show_in_library=True,
+        )
+
+    async def upload_personal_chat_attachment(
+        self,
+        *,
+        user_id: str,
+        chat_id: str,
+        original_filename: str | None,
+        content_type: str | None,
+        data: bytes,
+        title: str | None = None,
+    ) -> NoteAttachment:
+        """Upload a PDF to an owned personal chat and show it in My Notes."""
+
+        if not chat_id.strip():
+            raise ValueError("chat_id must not be empty")
+
+        return await self._upload_pdf(
+            user_id=user_id,
+            original_filename=original_filename,
+            content_type=content_type,
+            data=data,
+            title=title,
+            channel_id=chat_id,
+            show_in_library=True,
         )
 
     async def upload_channel_attachment(
@@ -84,8 +110,8 @@ class NoteService:
         """Create and process a PDF scoped to an authorized chat channel.
 
         Channel membership is checked by the Study Group service before this
-        use case is called. The attachment remains outside My Notes because it
-        stores a non-null ``channel_id``.
+        use case is called. Study-group uploads remain outside My Notes through
+        their explicit ``show_in_library=False`` value.
         """
 
         if not channel_id.strip():
@@ -98,7 +124,30 @@ class NoteService:
             data=data,
             title=title,
             channel_id=channel_id,
+            show_in_library=False,
         )
+
+    async def get_personal_chat_attachment(
+        self,
+        *,
+        attachment_id: int,
+        user_id: str,
+        chat_id: str,
+    ) -> NoteAttachment:
+        """Return an owned, library-visible attachment from one personal chat."""
+
+        attachment = await self._repository.get_owned_attachment(
+            attachment_id=attachment_id,
+            user_id=user_id,
+        )
+        if (
+            attachment is None
+            or attachment.channel_id != chat_id
+            or not attachment.show_in_library
+        ):
+            raise AttachmentNotFoundError("Personal chat attachment not found.")
+
+        return attachment
 
     async def get_channel_attachment(
         self,
@@ -188,6 +237,7 @@ class NoteService:
         data: bytes,
         title: str | None,
         channel_id: str | None,
+        show_in_library: bool,
     ) -> NoteAttachment:
         """Validate, store, persist, and dispatch one PDF upload."""
 
@@ -204,6 +254,7 @@ class NoteService:
                 file_type="application/pdf",
                 file_size_bytes=len(data),
                 object_path=object_path,
+                show_in_library=show_in_library,
                 channel_id=channel_id,
                 message_id=None,
             )

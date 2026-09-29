@@ -21,7 +21,7 @@ class PostgreSQLUserRepository(UserRepository):
     @staticmethod
     def _to_domain(user: ORMUser) -> DomainUser:
         return DomainUser(
-            id=user.user_id,
+            id=str(user.user_id),
             full_name=user.fullname,
             email=user.email,
             role=user.user_role.value,
@@ -44,7 +44,7 @@ class PostgreSQLUserRepository(UserRepository):
 
     async def get_user_by_id(
         self,
-        user_id,
+        user_id: str,
     ) -> DomainUser:
         stmt = select(ORMUser).where(
             ORMUser.user_id == user_id,

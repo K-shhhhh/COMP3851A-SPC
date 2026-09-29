@@ -38,6 +38,7 @@ class InMemoryAttachmentRepository(AttachmentRepository):
         file_type: str,
         file_size_bytes: int,
         object_path: str,
+        show_in_library: bool = True,
         channel_id: str | None = None,
         message_id: int | None = None,
     ) -> NoteAttachment:
@@ -50,6 +51,7 @@ class InMemoryAttachmentRepository(AttachmentRepository):
             file_type: Validated MIME type.
             file_size_bytes: Validated uploaded-file size.
             object_path: Private storage path returned by file storage.
+            show_in_library: Whether this upload appears in My Notes.
             channel_id: Conversation or group-channel identifier.
             message_id: Message containing the attachment.
 
@@ -73,6 +75,7 @@ class InMemoryAttachmentRepository(AttachmentRepository):
                 processing_progress=0,
                 uploaded_at=current_time,
                 updated_at=current_time,
+                show_in_library=show_in_library,
                 channel_id=channel_id,
                 message_id=message_id,
                 processing_error=None,
@@ -148,8 +151,7 @@ class InMemoryAttachmentRepository(AttachmentRepository):
     ) -> tuple[list[NoteAttachment], int]:
         """List non-deleted My Notes attachments for one student.
 
-        Message attachments are deliberately excluded, even when the same
-        student uploaded them.
+        Attachments are selected by the explicit library-visibility flag.
 
         Args:
             user_id: Authenticated Notes Library owner.
@@ -172,7 +174,7 @@ class InMemoryAttachmentRepository(AttachmentRepository):
                 attachment
                 for attachment in self._attachments.values()
                 if attachment.uploaded_by == user_id
-                and attachment.channel_id is None
+                and attachment.show_in_library
                 and attachment.deleted_at is None
                 and (
                     processing_status is None

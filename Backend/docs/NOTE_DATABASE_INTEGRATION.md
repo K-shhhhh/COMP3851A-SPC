@@ -93,18 +93,20 @@ Recommended table rules:
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT now()` |
 | `channel_id` | Nullable foreign key to `channels(channel_id)` |
 | `message_id` | Nullable foreign key to `messages(message_id)` |
+| `show_in_library` | `BOOLEAN NOT NULL DEFAULT TRUE`; explicit My Notes visibility |
 | `deleted_at` | Nullable soft-deletion timestamp |
 
 Relationship constraint:
 
 ```text
-My Notes upload:       channel_id IS NULL AND message_id IS NULL
-Message attachment:   channel_id IS NOT NULL AND message_id IS NOT NULL
+Direct My Notes upload:  channel_id IS NULL, show_in_library = TRUE
+Personal-chat upload:    channel_id IS NOT NULL, show_in_library = TRUE
+Study-group upload:      channel_id IS NOT NULL, show_in_library = FALSE
 ```
 
-Add a database check constraint so the two relationship fields are either both
-null or both present. For message attachments, also verify in repository/query
-logic that the message belongs to the given channel.
+A direct channel upload may have a null `message_id`, so do not require
+`channel_id` and `message_id` to become non-null together. If `message_id` is
+present, repository logic must verify that it belongs to `channel_id`.
 
 The group ID is not duplicated on `attachments`. It is derived through:
 
@@ -134,6 +136,9 @@ processing_error = NULL
 deleted_at = NULL
 ```
 
+Persist the caller-supplied, server-derived `show_in_library` value. The API
+never accepts this value from the browser.
+
 Return the inserted row mapped to `NoteAttachment`.
 
 ### 2. `get_attachment_by_id(attachment_id)`
@@ -144,12 +149,13 @@ an HTTP endpoint.
 
 ### 3. `get_owned_attachment(attachment_id, user_id)`
 
-For the current Notes Library endpoint, authorize only:
+Authorize the uploader's library-visible records and separately enforce
+channel membership for study-group records:
 
 ```text
 attachment_id = requested ID
 uploaded_by = authenticated user ID
-channel_id IS NULL
+show_in_library = TRUE
 deleted_at IS NULL
 ```
 
@@ -162,7 +168,7 @@ Required filter:
 
 ```text
 uploaded_by = user_id
-channel_id IS NULL
+show_in_library = TRUE
 deleted_at IS NULL
 ```
 

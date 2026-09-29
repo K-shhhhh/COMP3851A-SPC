@@ -618,6 +618,33 @@ assistant
 system
 ```
 
+## Upload a PDF to a personal chat
+
+```http
+POST /api/v1/chats/{chat_id}/attachments
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+Form fields:
+
+- `file`: required PDF
+- `title`: optional display title
+
+Response: `202 Accepted` using the standard note metadata response. The
+backend verifies that the authenticated student owns the chat and sets
+`show_in_library=true`; clients must not submit that flag. The attachment is
+therefore available to the selected personal conversation and also appears in
+My Notes.
+
+Poll processing with:
+
+```http
+GET /api/v1/chats/{chat_id}/attachments/{attachment_id}/status
+```
+
+Stop polling when the state becomes `ready` or `failed`.
+
 ## Submit a question
 
 ```http

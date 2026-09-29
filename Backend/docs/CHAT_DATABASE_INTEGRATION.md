@@ -150,8 +150,7 @@ For the current personal AI Assistant contract, the query must include only:
 
 ```text
 attachments.uploaded_by = user_id
-attachments.channel_id IS NULL
-attachments.message_id IS NULL
+attachments.show_in_library = TRUE
 attachments.processing_status = 'ready'
 attachments.deleted_at IS NULL
 ```

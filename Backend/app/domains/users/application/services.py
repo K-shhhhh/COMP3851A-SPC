@@ -19,7 +19,7 @@ class UserService:
 
     async def get_user_by_id(
         self,
-        user_id: int,
+        user_id: str,
     ):
 
         return await self.repository.get_user_by_id(user_id)

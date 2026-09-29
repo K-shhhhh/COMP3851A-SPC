@@ -1,6 +1,7 @@
 # HTTP boundary for users: parse request schemas and delegate through Depends.
 # These scaffold routes still need authentication and resource-level authorization.
 from fastapi import APIRouter, Depends
+from uuid import UUID
 
 from app.api.dependencies import get_user_service
 from app.domains.users.application.services import UserService
@@ -31,10 +32,10 @@ async def get_all_users(
     response_model=UserResponse,
 )
 async def get_user_by_id(
-    user_id: int,
+    user_id: UUID,
     service: UserService = Depends(get_user_service),
 ):
-    return await service.get_user_by_id(user_id)
+    return await service.get_user_by_id(str(user_id))
 
 
 @router.put(
@@ -42,13 +43,13 @@ async def get_user_by_id(
     response_model=UserResponse,
 )
 async def update_user(
-    user_id: int,
+    user_id: UUID,
     request: UpdateUserRequest,
     service: UserService = Depends(get_user_service),
 ):
 
     user = User(
-        id=user_id,
+        id=str(user_id),
         full_name=request.full_name,
         email=request.email,
         role=request.role,

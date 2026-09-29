@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr
 
 
 class UserResponse(BaseModel):
-    id: int
+    id: str
     full_name: str
     email: EmailStr
     role: str

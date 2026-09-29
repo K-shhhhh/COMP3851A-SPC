@@ -51,6 +51,14 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
             processing_progress=attachment.processing_progress,
             uploaded_at=attachment.uploaded_at,
             updated_at=attachment.last_updated_at or attachment.uploaded_at,
+            # The fallback keeps this branch compatible until the database
+            # migration adds the explicit column. Personal-chat uploads become
+            # fully library-visible once that migration is applied.
+            show_in_library=getattr(
+                attachment,
+                "show_in_library",
+                attachment.channel_id is None,
+            ),
             channel_id=(
                 str(attachment.channel_id)
                 if attachment.channel_id is not None
@@ -70,6 +78,7 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
         file_type: str,
         file_size_bytes: int,
         object_path: str,
+        show_in_library: bool = True,
         channel_id: str | None = None,
         message_id: int | None = None,
     ) -> NoteAttachment:

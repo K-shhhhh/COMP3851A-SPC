@@ -31,14 +31,24 @@ def make_attachment(**overrides) -> NoteAttachment:
     return NoteAttachment(**values)
 
 
-def test_attachment_without_channel_appears_in_my_notes() -> None:
+def test_library_flag_controls_my_notes_visibility() -> None:
     attachment = make_attachment()
 
     assert attachment.appears_in_my_notes is True
 
 
-def test_channel_attachment_does_not_appear_in_my_notes() -> None:
-    attachment = make_attachment(channel_id="channel-1", message_id=7)
+def test_personal_chat_attachment_can_appear_in_my_notes() -> None:
+    attachment = make_attachment(channel_id="personal-chat-1", message_id=7)
+
+    assert attachment.appears_in_my_notes is True
+
+
+def test_group_channel_attachment_does_not_appear_in_my_notes() -> None:
+    attachment = make_attachment(
+        channel_id="group-channel-1",
+        message_id=7,
+        show_in_library=False,
+    )
 
     assert attachment.appears_in_my_notes is False
 
@@ -48,9 +58,9 @@ def test_message_without_channel_is_rejected() -> None:
         make_attachment(message_id=7)
 
 
-def test_channel_without_message_is_rejected() -> None:
-    with pytest.raises(ValueError, match="requires a message_id"):
-        make_attachment(channel_id="channel-1")
+def test_hidden_attachment_without_channel_is_rejected() -> None:
+    with pytest.raises(ValueError, match="requires a channel_id"):
+        make_attachment(show_in_library=False)
 
 
 def test_ready_attachment_requires_full_progress() -> None:

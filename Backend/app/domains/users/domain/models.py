@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class User:
     """Domain entity representing a system user."""
 
-    id: int
+    id: str
     full_name: str
     email: str
     role: str

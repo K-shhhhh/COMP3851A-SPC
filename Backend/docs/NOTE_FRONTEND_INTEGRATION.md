@@ -125,9 +125,10 @@ Optional filter:
 status=queued|processing|ready|failed
 ```
 
-Only uploads made through the Notes Library endpoint appear here. Attachments
-uploaded to a personal conversation or study-group channel have a
-`channel_id` and must not appear in My Notes.
+Uploads made through the Notes Library and personal AI chat appear here.
+Study-group channel attachments do not. Visibility is controlled by the
+backend's `show_in_library` flag, not by whether `channel_id` is null and not
+by a frontend-submitted field.
 
 ### 4. Poll processing status
 

@@ -30,6 +30,7 @@ class AttachmentRepository(ABC):
         file_type: str,
         file_size_bytes: int,
         object_path: str,
+        show_in_library: bool = True,
         channel_id: str | None = None,
         message_id: int | None = None,
     ) -> NoteAttachment:
@@ -47,6 +48,7 @@ class AttachmentRepository(ABC):
             file_type: Validated MIME type.
             file_size_bytes: Validated file size.
             object_path: Private location of the stored file.
+            show_in_library: Explicit My Notes visibility flag.
             channel_id: Conversation or group-channel identifier.
             message_id: Message containing the attachment.
 
@@ -115,7 +117,7 @@ class AttachmentRepository(ABC):
         The implementation must include only records where:
 
             uploaded_by = user_id
-            channel_id IS NULL
+            show_in_library = TRUE
             deleted_at IS NULL
 
         Args:

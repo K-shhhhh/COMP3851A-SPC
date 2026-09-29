@@ -82,6 +82,7 @@ class RedisAttachmentRepository(AttachmentRepository):
         file_type: str,
         file_size_bytes: int,
         object_path: str,
+        show_in_library: bool = True,
         channel_id: str | None = None,
         message_id: int | None = None,
     ) -> NoteAttachment:
@@ -104,6 +105,7 @@ class RedisAttachmentRepository(AttachmentRepository):
             processing_progress=0,
             uploaded_at=current_time,
             updated_at=current_time,
+            show_in_library=show_in_library,
             channel_id=channel_id,
             message_id=message_id,
             processing_error=None,
@@ -112,9 +114,9 @@ class RedisAttachmentRepository(AttachmentRepository):
 
         await self._redis.set(self._attachment_key(new_id), self._serialize(attachment))
 
-        # Only Notes Library uploads (no channel_id) need to appear in
-        # list_note_library_attachments, so only those get indexed here.
-        if channel_id is None:
+        # Index every upload explicitly marked for the user's library,
+        # including attachments originating from a personal chat.
+        if show_in_library:
             await self._redis.sadd(self._user_index_key(uploaded_by), new_id)
 
         return attachment
@@ -185,7 +187,7 @@ class RedisAttachmentRepository(AttachmentRepository):
                 # Deleted, or the index is stale -- skip rather than fail.
                 continue
 
-            if attachment.channel_id is not None:
+            if not attachment.show_in_library:
                 continue
 
             if processing_status is not None and attachment.processing_status != processing_status:

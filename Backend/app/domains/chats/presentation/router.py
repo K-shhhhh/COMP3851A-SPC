@@ -1,9 +1,25 @@
 """Authenticated endpoints for personal AI Assistant conversations."""
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from uuid import UUID
 
-from app.api.dependencies import get_chat_service, get_current_user
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
+
+from app.api.dependencies import (
+    get_chat_service,
+    get_current_user,
+    get_note_service,
+)
 from app.api.error_handlers import ApiError
+from app.core.config import settings
 from app.domains.auth.domain.models import User
 from app.domains.chats.application.services import ChatService
 from app.domains.chats.domain.exceptions import (
@@ -13,6 +29,21 @@ from app.domains.chats.domain.exceptions import (
     InvalidQuestionError,
     NoProcessedNotesError,
     PromptInjectionDetectedError,
+)
+from app.domains.notes.application.services import NoteService
+from app.domains.notes.domain.exceptions import (
+    AttachmentNotFoundError,
+    AttachmentStorageError,
+    EmptyFileError,
+    FileTooLargeError,
+    InvalidPdfError,
+    ProcessingDispatchError,
+    UnsafeFilenameError,
+    UnsupportedFileTypeError,
+)
+from app.domains.notes.presentation.schemas import (
+    NoteResponse,
+    NoteStatusResponse,
 )
 from app.domains.chats.presentation.schemas import (
     AskQuestionRequest,
@@ -28,6 +59,75 @@ from app.domains.chats.presentation.schemas import (
 
 
 router = APIRouter(prefix="/chats", tags=["Personal Chat"])
+
+
+@router.post(
+    "/{chat_id}/attachments",
+    response_model=NoteResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_personal_chat_attachment(
+    chat_id: UUID,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None, max_length=150),
+    current_user: User = Depends(get_current_user),
+    chat_service: ChatService = Depends(get_chat_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> NoteResponse:
+    """Upload a library-visible PDF to an owned personal conversation."""
+
+    try:
+        # Ownership is verified before the Notes module stores any bytes.
+        await chat_service.get_chat(
+            chat_id=str(chat_id),
+            user_id=current_user.id,
+        )
+        data = await file.read(settings.MAX_NOTE_UPLOAD_SIZE_BYTES + 1)
+        attachment = await note_service.upload_personal_chat_attachment(
+            user_id=current_user.id,
+            chat_id=str(chat_id),
+            original_filename=file.filename,
+            content_type=file.content_type,
+            data=data,
+            title=title,
+        )
+    except Exception as exc:
+        _raise_chat_attachment_api_error(exc)
+        raise
+    finally:
+        await file.close()
+
+    return NoteResponse.from_attachment(attachment)
+
+
+@router.get(
+    "/{chat_id}/attachments/{attachment_id}/status",
+    response_model=NoteStatusResponse,
+)
+async def get_personal_chat_attachment_status(
+    chat_id: UUID,
+    attachment_id: int,
+    current_user: User = Depends(get_current_user),
+    chat_service: ChatService = Depends(get_chat_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> NoteStatusResponse:
+    """Return processing status for an owned personal-chat attachment."""
+
+    try:
+        await chat_service.get_chat(
+            chat_id=str(chat_id),
+            user_id=current_user.id,
+        )
+        attachment = await note_service.get_personal_chat_attachment(
+            attachment_id=attachment_id,
+            user_id=current_user.id,
+            chat_id=str(chat_id),
+        )
+    except Exception as exc:
+        _raise_chat_attachment_api_error(exc)
+        raise
+
+    return NoteStatusResponse.from_attachment(attachment)
 
 
 @router.post("", response_model=ChatResponse, status_code=status.HTTP_201_CREATED)
@@ -243,3 +343,54 @@ def _raise_chat_api_error(exc: Exception) -> None:
             retryable=True,
         ) from exc
 
+
+def _raise_chat_attachment_api_error(exc: Exception) -> None:
+    """Translate personal-chat attachment failures to the shared API shape."""
+
+    if isinstance(exc, ChatNotFoundError):
+        _raise_chat_api_error(exc)
+
+    if isinstance(exc, AttachmentNotFoundError):
+        raise ApiError(
+            status_code=404,
+            code="CHAT_ATTACHMENT_NOT_FOUND",
+            message="The requested personal-chat attachment was not found.",
+        ) from exc
+
+    if isinstance(exc, FileTooLargeError):
+        raise ApiError(
+            status_code=413,
+            code="FILE_TOO_LARGE",
+            message=str(exc),
+            details={"maximum_size_bytes": exc.maximum_size_bytes},
+        ) from exc
+
+    if isinstance(exc, UnsupportedFileTypeError):
+        raise ApiError(
+            status_code=415,
+            code="UNSUPPORTED_FILE_TYPE",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, (EmptyFileError, InvalidPdfError, UnsafeFilenameError)):
+        raise ApiError(
+            status_code=422,
+            code="INVALID_CHAT_ATTACHMENT",
+            message=str(exc),
+        ) from exc
+
+    if isinstance(exc, AttachmentStorageError):
+        raise ApiError(
+            status_code=503,
+            code="FILE_STORAGE_UNAVAILABLE",
+            message="Private file storage is temporarily unavailable.",
+            retryable=True,
+        ) from exc
+
+    if isinstance(exc, ProcessingDispatchError):
+        raise ApiError(
+            status_code=503,
+            code="PROCESSING_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        ) from exc

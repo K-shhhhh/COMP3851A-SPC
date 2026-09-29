@@ -57,6 +57,7 @@ async def test_upload_stores_metadata_and_dispatches_processing(
     assert attachment.uploaded_by == "user-1"
     assert attachment.title == "Lecture One"
     assert attachment.channel_id is None
+    assert attachment.show_in_library is True
     assert Path(attachment.object_path).exists()
     assert dispatcher.requests == (
         (attachment.attachment_id, attachment.object_path),
@@ -120,6 +121,41 @@ async def test_channel_upload_is_scoped_outside_my_notes(
             user_id="user-1",
             channel_id="channel-2",
         )
+
+
+async def test_personal_chat_upload_is_visible_in_my_notes(
+    tmp_path: Path,
+) -> None:
+    service, _, dispatcher = make_service(tmp_path)
+
+    attachment = await service.upload_personal_chat_attachment(
+        user_id="user-1",
+        chat_id="personal-chat-1",
+        original_filename="attached.pdf",
+        content_type="application/pdf",
+        data=b"%PDF-1.7\npersonal attachment",
+    )
+
+    assert attachment.channel_id == "personal-chat-1"
+    assert attachment.show_in_library is True
+    assert dispatcher.requests == (
+        (attachment.attachment_id, attachment.object_path),
+    )
+
+    items, total = await service.list_notes(
+        user_id="user-1",
+        page=1,
+        page_size=20,
+    )
+    assert total == 1
+    assert items == [attachment]
+
+    loaded = await service.get_personal_chat_attachment(
+        attachment_id=attachment.attachment_id,
+        user_id="user-1",
+        chat_id="personal-chat-1",
+    )
+    assert loaded == attachment
 
 
 @pytest.mark.parametrize(
