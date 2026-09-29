@@ -24,6 +24,7 @@ import {
 
 import AppShell from "../../components/layout/AppShell.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
+import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
 
 import {
   createChat,
@@ -1243,11 +1244,11 @@ function CompanionPage() {
 
                       <div className="assistant-message-container">
                         <div className="assistant-message">
-                          <p>
+                          <SimpleMarkdown>
                             {
                               chatMessage.content
                             }
-                          </p>
+                          </SimpleMarkdown>
 
                           {chatMessage
                             .sources
