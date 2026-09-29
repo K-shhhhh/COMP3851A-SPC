@@ -1125,9 +1125,51 @@ timeouts.
 
 ## Knowledge graph sequence
 
-Knowledge-graph and mind-map visualization begins only after study-group CRUD,
-membership, channels, messages, and companion-mode contracts are stable. Graph
-queries must respect the same user/group/channel authorization boundary as the
-source notes and chunks.
+The first Knowledge Graph release is attachment-scoped: one processed My Notes
+PDF owns one graph. It does not combine multiple notes and it does not expose
+study-group channel attachments. The authenticated owner reads a graph through:
+
+```http
+GET /api/v1/notes/{attachment_id}/knowledge-graph
+Authorization: Bearer <access-token>
+```
+
+A successful response returns the full visualization payload:
+
+```json
+{
+  "attachment_id": 42,
+  "nodes": [
+    {
+      "id": 1,
+      "attachment_id": 42,
+      "title": "Backpropagation",
+      "topic": "Machine Learning",
+      "description": "Calculates gradients through a neural network.",
+      "source_chunk_id": 105
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "attachment_id": 42,
+      "source_node_id": 1,
+      "target_node_id": 2,
+      "label": "uses"
+    }
+  ]
+}
+```
+
+The endpoint returns `404 NOTE_NOT_FOUND` for a missing, deleted, non-library,
+or other user's attachment. It returns `409 KNOWLEDGE_GRAPH_NOT_READY` while
+the PDF is unprocessed or when graph generation has not persisted a result.
+
+The generation pipeline writes through the internal repository contract
+`replace_graph_for_attachment(...)`; there is no public graph-write endpoint.
+Replacement must be atomic. Generator-supplied node IDs act as graph-local
+references while writing, and the PostgreSQL adapter maps them to persisted
+node IDs before inserting the corresponding edges. A node's nullable
+`source_chunk_id` records the chunk citation used to derive that concept.
 
 ---

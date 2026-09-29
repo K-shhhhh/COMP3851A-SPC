@@ -92,7 +92,9 @@ from app.domains.study_groups.infrastructure.memory_retrieval import (
 
 from app.domains.knowledge_graph.application.services import KnowledgeGraphService
 from app.domains.knowledge_graph.domain.repository import KnowledgeGraphRepository
-from app.domains.knowledge_graph.infrastructure.repository import PostgreSQLKnowledgeGraphRepository
+from app.domains.knowledge_graph.infrastructure.memory_repository import (
+    InMemoryKnowledgeGraphRepository,
+)
 
 from app.domains.notifications.application.services import NotificationService
 from app.domains.notifications.domain.repository import NotificationRepository
@@ -405,16 +407,29 @@ def get_study_group_service(
 
 # ---------- Knowledge Graph ----------
 
+_local_knowledge_graph_repository = InMemoryKnowledgeGraphRepository()
+
+
 def get_knowledge_graph_repository() -> KnowledgeGraphRepository:
-    """Construct the configured knowledge-graph repository."""
+    """Return local graph storage until its PostgreSQL adapter is completed."""
 
-    return PostgreSQLKnowledgeGraphRepository()
+    return _local_knowledge_graph_repository
 
 
-def get_knowledge_graph_service() -> KnowledgeGraphService:
-    """Construct the knowledge-graph application service."""
+def get_knowledge_graph_service(
+    repository: KnowledgeGraphRepository = Depends(
+        get_knowledge_graph_repository
+    ),
+    attachment_repository: AttachmentRepository = Depends(
+        get_attachment_repository
+    ),
+) -> KnowledgeGraphService:
+    """Construct attachment-authorized knowledge-graph use cases."""
 
-    return KnowledgeGraphService(get_knowledge_graph_repository())
+    return KnowledgeGraphService(
+        repository=repository,
+        attachment_repository=attachment_repository,
+    )
 
 
 # ---------- Notificatios ----------

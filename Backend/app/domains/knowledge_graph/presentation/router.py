@@ -1,54 +1,66 @@
-# HTTP boundary for knowledge graph: parse request schemas and delegate through Depends.
-# These scaffold routes still need authentication and resource-level authorization.
+"""Authenticated HTTP boundary for My Notes knowledge graphs."""
+
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_knowledge_graph_service
+from app.api.dependencies import (
+    get_current_user,
+    get_knowledge_graph_service,
+)
+from app.api.error_handlers import ApiError
+from app.domains.auth.domain.models import User
 from app.domains.knowledge_graph.application.services import (
     KnowledgeGraphService,
 )
+from app.domains.knowledge_graph.domain.exceptions import (
+    KnowledgeGraphAttachmentNotFoundError,
+    KnowledgeGraphNotReadyError,
+)
 from app.domains.knowledge_graph.presentation.schemas import (
-    KnowledgeNodeResponse,
+    KnowledgeGraphResponse,
 )
 
 router = APIRouter(
-    prefix="/knowledge-graph",
+    prefix="/notes",
     tags=["Knowledge Graph"],
 )
 
 
 @router.get(
-    "/",
-    response_model=list[KnowledgeNodeResponse],
+    "/{attachment_id}/knowledge-graph",
+    response_model=KnowledgeGraphResponse,
 )
-async def get_all_nodes(
+async def get_attachment_knowledge_graph(
+    attachment_id: int,
+    current_user: User = Depends(get_current_user),
     service: KnowledgeGraphService = Depends(
         get_knowledge_graph_service
     ),
-):
-    return await service.get_all_nodes()
+) -> KnowledgeGraphResponse:
+    """Return the graph for one processed note owned by the current user."""
 
+    try:
+        nodes, edges = await service.get_graph_for_attachment(
+            attachment_id=attachment_id,
+            user_id=current_user.id,
+        )
+    except KnowledgeGraphAttachmentNotFoundError as exc:
+        raise ApiError(
+            status_code=404,
+            code="NOTE_NOT_FOUND",
+            message="The requested note was not found.",
+        ) from exc
+    except KnowledgeGraphNotReadyError as exc:
+        raise ApiError(
+            status_code=409,
+            code="KNOWLEDGE_GRAPH_NOT_READY",
+            message="The knowledge graph is not ready yet.",
+            details={
+                "processing_status": exc.processing_status.value,
+            },
+        ) from exc
 
-@router.get(
-    "/{node_id}",
-    response_model=KnowledgeNodeResponse,
-)
-async def get_node_by_id(
-    node_id: int,
-    service: KnowledgeGraphService = Depends(
-        get_knowledge_graph_service
-    ),
-):
-    return await service.get_node_by_id(node_id)
-
-
-@router.get(
-    "/search/{keyword}",
-    response_model=list[KnowledgeNodeResponse],
-)
-async def search_nodes(
-    keyword: str,
-    service: KnowledgeGraphService = Depends(
-        get_knowledge_graph_service
-    ),
-):
-    return await service.search_nodes(keyword)
+    return KnowledgeGraphResponse.from_graph(
+        attachment_id=attachment_id,
+        nodes=nodes,
+        edges=edges,
+    )
