@@ -40,7 +40,7 @@ class PostgreSQLChatRepository(ChatRepository):
     def _parse_uuid(value: str) -> uuid.UUID | None:
         try:
             return uuid.UUID(value)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, AttributeError):
             return None
 
     @staticmethod
@@ -67,7 +67,7 @@ class PostgreSQLChatRepository(ChatRepository):
                 Message.channel_id == channel_id,
                 Message.deleted_at.is_(None),
             )
-            .order_by(Message.sent_at.desc())
+            .order_by(Message.sent_at.desc(), Message.message_id.desc())
             .limit(1)
         )
 
@@ -80,7 +80,9 @@ class PostgreSQLChatRepository(ChatRepository):
     ) -> str:
         """Return a display title that satisfies the active-name constraint."""
 
-        statement = select(Channel.channel_name).where(
+        # Callers hold the personal group lock until the write commits.
+        # Use PostgreSQL lower() on both sides, matching the unique index.
+        statement = select(Channel.channel_id).where(
             Channel.group_id == group_id,
             Channel.deleted_at.is_(None),
         )
@@ -88,56 +90,84 @@ class PostgreSQLChatRepository(ChatRepository):
             statement = statement.where(
                 Channel.channel_id != exclude_channel_id
             )
-        existing_names = set((await self.session.scalars(statement)).all())
-        if requested_name not in existing_names:
-            return requested_name
-
-        sequence = 2
-        while True:
+        candidate = requested_name
+        sequence = 1
+        while await self.session.scalar(statement.where(
+            func.lower(Channel.channel_name) == func.lower(candidate)
+        ).limit(1)) is not None:
+            sequence += 1
             suffix = f" ({sequence})"
             candidate = (
                 requested_name[: 100 - len(suffix)].rstrip() + suffix
             )
-            if candidate not in existing_names:
-                return candidate
-            sequence += 1
+        return candidate
+
+    async def _locked_personal_channel(
+        self, chat_uuid: uuid.UUID, *, owner_uuid: uuid.UUID | None = None,
+    ):
+        """Lock the active personal group before its channel for all writes."""
+
+        statement = select(Group).where(
+            Group.group_id == select(Channel.group_id).where(
+                Channel.channel_id == chat_uuid,
+                Channel.deleted_at.is_(None),
+            ).scalar_subquery(),
+            Group.group_type == GroupType.PERSONAL,
+            Group.deleted_at.is_(None),
+        )
+        if owner_uuid is not None:
+            statement = statement.where(Group.created_by == owner_uuid)
+        group = await self.session.scalar(
+            statement.with_for_update().execution_options(populate_existing=True)
+        )
+        if group is None:
+            return None
+        channel = await self.session.scalar(
+            select(Channel).where(
+                Channel.channel_id == chat_uuid,
+                Channel.group_id == group.group_id,
+                Channel.deleted_at.is_(None),
+            ).with_for_update().execution_options(populate_existing=True)
+        )
+        return (channel, group) if channel is not None else None
 
     async def create_chat(self, *, owner_id: str, title: str) -> PersonalChat:
         owner_uuid = self._parse_uuid(owner_id)
         if owner_uuid is None:
             raise ValueError("owner_id must be a valid UUID")
 
-        personal_group = await self.session.scalar(
-            select(Group).where(
-                Group.created_by == owner_uuid,
-                Group.group_type == GroupType.PERSONAL,
-                Group.deleted_at.is_(None),
-            )
-        )
-        if personal_group is None:
-            raise LookupError("personal AI Assistant group not found")
-
-        now = datetime.now(timezone.utc)
-        unique_title = await self._unique_channel_name(
-            group_id=personal_group.group_id,
-            requested_name=title,
-        )
-        channel = Channel(
-            channel_name=unique_title,
-            group_id=personal_group.group_id,
-            description="Personal AI Assistant conversation",
-            created_by=owner_uuid,
-            created_at=now,
-            last_updated_at=now,
-        )
-        self.session.add(channel)
         try:
+            personal_group = await self.session.scalar(
+                select(Group).where(
+                    Group.created_by == owner_uuid,
+                    Group.group_type == GroupType.PERSONAL,
+                    Group.deleted_at.is_(None),
+                ).with_for_update().execution_options(populate_existing=True)
+            )
+            if personal_group is None:
+                raise LookupError("personal AI Assistant group not found")
+
+            now = datetime.now(timezone.utc)
+            unique_title = await self._unique_channel_name(
+                group_id=personal_group.group_id,
+                requested_name=title,
+            )
+            channel = Channel(
+                channel_name=unique_title,
+                group_id=personal_group.group_id,
+                description="Personal AI Assistant conversation",
+                created_by=owner_uuid,
+                created_at=now,
+                last_updated_at=now,
+            )
+            self.session.add(channel)
+            await self.session.flush()
+            result = self._to_chat(channel, personal_group)
             await self.session.commit()
+            return result
         except Exception:
             await self.session.rollback()
             raise
-        await self.session.refresh(channel)
-        return self._to_chat(channel, personal_group)
 
     async def list_owned_chats(
         self,
@@ -226,21 +256,29 @@ class PostgreSQLChatRepository(ChatRepository):
         owner_id: str,
         title: str,
     ) -> PersonalChat | None:
-        owned = await self.get_owned_chat(chat_id=chat_id, owner_id=owner_id)
-        if owned is None:
+        chat_uuid, owner_uuid = self._parse_uuid(chat_id), self._parse_uuid(owner_id)
+        if chat_uuid is None or owner_uuid is None:
             return None
-
-        channel = await self.session.get(Channel, uuid.UUID(chat_id))
-        if channel is None:
-            return None
-        channel.channel_name = await self._unique_channel_name(
-            group_id=channel.group_id,
-            requested_name=title,
-            exclude_channel_id=channel.channel_id,
-        )
-        channel.last_updated_at = datetime.now(timezone.utc)
-        await self.session.commit()
-        return await self.get_owned_chat(chat_id=chat_id, owner_id=owner_id)
+        try:
+            row = await self._locked_personal_channel(chat_uuid, owner_uuid=owner_uuid)
+            if row is None:
+                await self.session.rollback()
+                return None
+            channel, group = row
+            channel.channel_name = await self._unique_channel_name(
+                group_id=channel.group_id,
+                requested_name=title,
+                exclude_channel_id=channel.channel_id,
+            )
+            channel.last_updated_at = datetime.now(timezone.utc)
+            result = self._to_chat(
+                channel, group, preview=await self._latest_preview(channel.channel_id),
+            )
+            await self.session.commit()
+            return result
+        except Exception:
+            await self.session.rollback()
+            raise
 
     async def soft_delete_owned_chat(
         self,
@@ -249,16 +287,22 @@ class PostgreSQLChatRepository(ChatRepository):
         owner_id: str,
         deleted_at: datetime,
     ) -> bool:
-        owned = await self.get_owned_chat(chat_id=chat_id, owner_id=owner_id)
-        if owned is None:
+        chat_uuid, owner_uuid = self._parse_uuid(chat_id), self._parse_uuid(owner_id)
+        if chat_uuid is None or owner_uuid is None:
             return False
-        channel = await self.session.get(Channel, uuid.UUID(chat_id))
-        if channel is None:
-            return False
-        channel.deleted_at = deleted_at
-        channel.last_updated_at = deleted_at
-        await self.session.commit()
-        return True
+        try:
+            row = await self._locked_personal_channel(chat_uuid, owner_uuid=owner_uuid)
+            if row is None:
+                await self.session.rollback()
+                return False
+            channel, _ = row
+            channel.deleted_at = deleted_at
+            channel.last_updated_at = deleted_at
+            await self.session.commit()
+            return True
+        except Exception:
+            await self.session.rollback()
+            raise
 
     async def create_message(
         self,
@@ -272,100 +316,90 @@ class PostgreSQLChatRepository(ChatRepository):
         if chat_uuid is None:
             raise ValueError("chat_id must be a valid UUID")
 
-        row = (
-            await self.session.execute(
-                select(Channel, Group)
-                .join(Group, Group.group_id == Channel.group_id)
-                .where(
-                    Channel.channel_id == chat_uuid,
-                    Channel.deleted_at.is_(None),
-                    Group.group_type == GroupType.PERSONAL,
-                    Group.deleted_at.is_(None),
-                )
-            )
-        ).first()
-        if row is None:
-            raise ValueError("cannot add a message to a missing chat")
-        channel, group = row
-        now = datetime.now(timezone.utc)
+        try:
+            row = await self._locked_personal_channel(chat_uuid)
+            if row is None:
+                raise ValueError("cannot add a message to a missing chat")
+            channel, group = row
+            now = datetime.now(timezone.utc)
 
-        if role == ChatMessageRole.USER:
-            message = Message(
-                user_id=group.created_by,
-                channel_id=channel.channel_id,
-                message_content=content,
-                ai_mode_used=AIMode.DEFAULT,
-                sent_at=now,
+            if role == ChatMessageRole.USER:
+                message = Message(
+                    user_id=group.created_by,
+                    channel_id=channel.channel_id,
+                    message_content=content,
+                    ai_mode_used=AIMode.DEFAULT,
+                    sent_at=now,
+                )
+                self.session.add(message)
+                channel.last_updated_at = now
+                await self.session.flush()
+                result = ChatMessage(
+                    message_id=message.message_id,
+                    chat_id=chat_id,
+                    role=role,
+                    content=content,
+                    status=ChatMessageStatus.COMPLETED,
+                    created_at=message.sent_at,
+                )
+                await self.session.commit()
+                return result
+
+            if role != ChatMessageRole.ASSISTANT:
+                raise ValueError("only user and assistant messages are supported")
+
+            question = await self.session.scalar(
+                select(Message)
+                .where(
+                    Message.channel_id == chat_uuid,
+                    Message.deleted_at.is_(None),
+                )
+                .order_by(Message.sent_at.desc(), Message.message_id.desc())
+                .limit(1)
             )
-            self.session.add(message)
+            if question is None:
+                raise ValueError("assistant response requires a user message")
+
+            response = AIResponse(
+                message_id=question.message_id,
+                ai_mode_used=AIMode.DEFAULT,
+                response={"content": content},
+                confidence_score=None,
+                attempt_number=1,
+                is_selected=True,
+                execution_time_ms=0,
+                token_count=0,
+                generated_at=now,
+            )
+            self.session.add(response)
+            await self.session.flush()
+            for source in sources:
+                self.session.add(
+                    AIResponseSource(
+                        response_id=response.response_id,
+                        chunk_id=source.chunk_id,
+                        node_id=None,
+                        edge_id=None,
+                        similarity_score=0.0,
+                        rerank_score=None,
+                        is_used_in_prompt=True,
+                    )
+                )
             channel.last_updated_at = now
-            await self.session.commit()
-            await self.session.refresh(message)
-            return ChatMessage(
-                message_id=message.message_id,
+            result = ChatMessage(
+                message_id=_ASSISTANT_ID_OFFSET + response.response_id,
                 chat_id=chat_id,
                 role=role,
                 content=content,
                 status=ChatMessageStatus.COMPLETED,
-                created_at=message.sent_at,
+                created_at=response.generated_at,
+                sources=sources,
             )
-
-        if role != ChatMessageRole.ASSISTANT:
-            raise ValueError("only user and assistant messages are supported")
-
-        question = await self.session.scalar(
-            select(Message)
-            .where(
-                Message.channel_id == chat_uuid,
-                Message.deleted_at.is_(None),
-            )
-            .order_by(Message.sent_at.desc())
-            .limit(1)
-        )
-        if question is None:
-            raise ValueError("assistant response requires a user message")
-
-        response = AIResponse(
-            message_id=question.message_id,
-            ai_mode_used=AIMode.DEFAULT,
-            response={"content": content},
-            confidence_score=None,
-            attempt_number=1,
-            is_selected=True,
-            execution_time_ms=0,
-            token_count=0,
-            generated_at=now,
-        )
-        self.session.add(response)
-        await self.session.flush()
-        for source in sources:
-            self.session.add(
-                AIResponseSource(
-                    response_id=response.response_id,
-                    chunk_id=source.chunk_id,
-                    node_id=None,
-                    edge_id=None,
-                    similarity_score=0.0,
-                    rerank_score=None,
-                    is_used_in_prompt=True,
-                )
-            )
-        channel.last_updated_at = now
-        try:
             await self.session.commit()
+            return result
         except Exception:
             await self.session.rollback()
             raise
-        await self.session.refresh(response)
-        return ChatMessage(
-            message_id=_ASSISTANT_ID_OFFSET + response.response_id,
-            chat_id=chat_id,
-            role=role,
-            content=content,
-            status=ChatMessageStatus.COMPLETED,
-            created_at=response.generated_at,
-            sources=sources,
-        )
 
     async def _response_sources(
         self,
@@ -403,11 +437,16 @@ class PostgreSQLChatRepository(ChatRepository):
 
         message_result = await self.session.scalars(
             select(Message)
+            .join(Channel, Channel.channel_id == Message.channel_id)
+            .join(Group, Group.group_id == Channel.group_id)
             .where(
                 Message.channel_id == chat_uuid,
                 Message.deleted_at.is_(None),
+                Channel.deleted_at.is_(None),
+                Group.group_type == GroupType.PERSONAL,
+                Group.deleted_at.is_(None),
             )
-            .order_by(Message.sent_at)
+            .order_by(Message.sent_at, Message.message_id)
         )
         history: list[ChatMessage] = []
         for message in message_result.all():
