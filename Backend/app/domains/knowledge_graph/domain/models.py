@@ -1,31 +1,31 @@
-"""Attachment-scoped knowledge-graph domain models.
-
-These objects contain no FastAPI, SQLAlchemy, or model-provider details. One
-uploaded attachment owns one graph; nodes may cite the document chunk from
-which the concept was derived.
-"""
-
+# Knowledge Graph domain data objects, independent of FastAPI and database libraries.
+# These dataclasses are not database tables or migrations.
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class KnowledgeNode:
-    """Represent one persisted concept in an attachment's graph."""
+    """One concept extracted from an attachment's study material.
+
+    id is a real database id once read back from storage, but a temporary,
+    batch-local id when freshly produced by graph_generation.py -- see
+    that module's docstring for the id-resolution convention.
+    """
 
     id: int
     attachment_id: int
     title: str
     topic: str
     description: str
-    source_chunk_id: int | None = None
+    source_chunk_id: int | None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class KnowledgeEdge:
-    """Represent one directed relationship between two graph nodes."""
+    """One relationship between two nodes within the same attachment's graph."""
 
     id: int
     attachment_id: int
     source_node_id: int
     target_node_id: int
-    label: str | None = None
+    label: str | None
