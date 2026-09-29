@@ -182,12 +182,43 @@
 
 .study-group-layout {
   display: grid;
-  grid-template-columns: 310px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 18px;
   width: 100%;
-  height: calc(100vh - 285px);
-  min-height: 540px;
+  height: calc(100vh - 175px);
+  min-height: 680px;
   min-width: 0;
+}
+
+.group-browser {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.group-browser .group-view-tabs {
+  margin-bottom: 12px;
+}
+
+.group-browser .group-view-tabs button {
+  flex: 1;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.group-browser .discover-toolbar,
+.group-browser .my-group-filters {
+  margin-bottom: 12px;
+}
+
+.group-browser .group-search {
+  width: 100%;
+}
+
+.group-browser .group-list-panel {
+  flex: 1;
+  min-height: 0;
 }
 
 /* =========================================================
@@ -430,7 +461,7 @@
 
 .workspace-body {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
+  grid-template-columns: 170px minmax(0, 1fr);
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -750,7 +781,7 @@
 
 .message-main {
   min-width: 0;
-  max-width: min(780px, calc(100% - 45px));
+  max-width: min(960px, calc(100% - 45px));
 }
 
 .message-meta {
@@ -973,6 +1004,139 @@
 .send-group-message:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* =========================================================
+   CHANNEL ATTACHMENTS
+   ========================================================= */
+
+.attachment-file-input {
+  display: none;
+}
+
+.attachment-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  padding: 0;
+  border: 1px solid var(--spc-border);
+  border-radius: 10px;
+  background: var(--spc-input-bg);
+  color: var(--spc-muted);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.attachment-button:hover:not(:disabled) {
+  border-color: var(--spc-purple);
+  background: var(--spc-surface-hover);
+  color: var(--spc-purple);
+}
+
+.attachment-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.channel-attachment-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--spc-border);
+  border-radius: 8px;
+  background: var(--spc-surface-soft);
+  color: var(--spc-muted);
+}
+
+.channel-attachment-status > svg {
+  flex: 0 0 auto;
+}
+
+.channel-attachment-info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.channel-attachment-info strong {
+  overflow: hidden;
+  color: var(--spc-heading);
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-attachment-info span {
+  color: var(--spc-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.channel-attachment-status.uploading,
+.channel-attachment-status.queued,
+.channel-attachment-status.processing {
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+.channel-attachment-status.uploading > svg,
+.channel-attachment-status.queued > svg,
+.channel-attachment-status.processing > svg {
+  color: var(--spc-purple);
+}
+
+.channel-attachment-status.ready {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.channel-attachment-status.ready > svg {
+  color: #16a34a;
+}
+
+.channel-attachment-status.failed {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.channel-attachment-status.failed > svg {
+  color: #dc2626;
+}
+
+.channel-attachment-status.failed
+  .channel-attachment-info span {
+  color: #dc2626;
+}
+
+.attachment-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--spc-muted);
+  cursor: pointer;
+}
+
+.attachment-dismiss:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-heading);
 }
 
 /* =========================================================

@@ -401,6 +401,68 @@ export function deleteStudyGroupChannel(
 
 /*
  * =========================================================
+ * CHANNEL ATTACHMENTS
+ * =========================================================
+ */
+
+/**
+ * Upload a PDF attachment to a Study Group channel.
+ *
+ * POST
+ * /study-groups/{groupId}/channels/{channelId}/attachments
+ *
+ * Do not set Content-Type manually.
+ * fetch will add the correct multipart/form-data boundary.
+ */
+export function uploadStudyGroupAttachment(
+  accessToken,
+  groupId,
+  channelId,
+  file,
+  title = "",
+) {
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  if (title.trim()) {
+    formData.append("title", title.trim());
+  }
+
+  return apiRequest(
+    `/study-groups/${groupId}/channels/${channelId}/attachments`,
+    {
+      method: "POST",
+      accessToken,
+      body: formData,
+    },
+  );
+}
+
+/**
+ * Get the current processing status of a channel attachment.
+ *
+ * GET
+ * /study-groups/{groupId}/channels/{channelId}/attachments/{attachmentId}/status
+ */
+export function getStudyGroupAttachmentStatus(
+  accessToken,
+  groupId,
+  channelId,
+  attachmentId,
+) {
+  return apiRequest(
+    `/study-groups/${groupId}/channels/${channelId}/attachments/${attachmentId}/status`,
+    {
+      method: "GET",
+      accessToken,
+    },
+  );
+}
+
+
+/*
+ * =========================================================
  * GROUP MESSAGES
  * =========================================================
  */
