@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Identity, Index, Integer, Text, UniqueConstraint, text)
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Identity, Index, Integer, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -136,6 +136,11 @@ class User(Base):
         foreign_keys="Channel.created_by",
     )
     messages: Mapped[list[Message]] = relationship(back_populates="user")
+    message_mentions: Mapped[list[MessageMention]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     attachments_uploaded: Mapped[list[Attachment]] = relationship(
         back_populates="uploader",
         foreign_keys="Attachment.uploaded_by",
@@ -271,10 +276,10 @@ class Message(Base):
         nullable=False,
     )
     message_content: Mapped[str] = mapped_column(Text, nullable=False)
-    ai_mode_used: Mapped[AIMode] = mapped_column(
+    # NULL is an ordinary human message; DEFAULT explicitly invokes Companion.
+    ai_mode_used: Mapped[AIMode | None] = mapped_column(
         pg_enum(AIMode, "ai_modes"),
-        nullable=False,
-        server_default=text("'default'"),
+        nullable=True,
     )
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -284,6 +289,30 @@ class Message(Base):
     channel: Mapped[Channel] = relationship(back_populates="messages")
     attachments: Mapped[list[Attachment]] = relationship(back_populates="message")
     ai_responses: Mapped[list[AIResponse]] = relationship(back_populates="message")
+    mentions: Mapped[list[MessageMention]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class MessageMention(Base):
+    __tablename__ = "message_mentions"
+
+    message_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("messages.message_id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    message: Mapped[Message] = relationship(back_populates="mentions")
+    user: Mapped[User] = relationship(back_populates="message_mentions")
 
 
 class Attachment(Base):
@@ -622,7 +651,7 @@ class UserActivityLog(Base):
 Index(
     "uq_channels_group_name",
     Channel.group_id,
-    Channel.channel_name,
+    func.lower(Channel.channel_name),
     unique=True,
     postgresql_where=Channel.deleted_at.is_(None),
 )
@@ -640,6 +669,48 @@ Index("ix_attachments_uploaded_by", Attachment.uploaded_by)
 Index("ix_attachments_channel_id", Attachment.channel_id)
 Index("ix_attachments_group_id", Attachment.group_id)
 Index("ix_attachments_message_id", Attachment.message_id)
+
+# Match the active-record and relationship lookup indexes in schema version 5.
+Index(
+    "ix_users_active_email", func.lower(User.email),
+    postgresql_where=User.deleted_at.is_(None) & (User.status == ActivityStatus.ACTIVE),
+)
+Index(
+    "ix_groups_active_type_updated", Group.group_type,
+    func.coalesce(Group.last_updated_at, Group.created_at).desc(), Group.group_id,
+    postgresql_where=Group.deleted_at.is_(None),
+)
+Index(
+    "ix_groups_active_owner_updated", Group.created_by,
+    func.coalesce(Group.last_updated_at, Group.created_at).desc(), Group.group_id,
+    postgresql_where=Group.deleted_at.is_(None),
+)
+Index("ix_channels_group_id", Channel.group_id)
+Index(
+    "ix_channels_active_group_created", Channel.group_id, Channel.created_at, Channel.channel_id,
+    postgresql_where=Channel.deleted_at.is_(None),
+)
+Index(
+    "ix_messages_active_channel_sent", Message.channel_id, Message.sent_at, Message.message_id,
+    postgresql_where=Message.deleted_at.is_(None),
+)
+Index("ix_message_mentions_user_id", MessageMention.user_id)
+Index(
+    "ix_attachments_ready_group_channel", Attachment.group_id, Attachment.channel_id, Attachment.attachment_id,
+    postgresql_where=Attachment.deleted_at.is_(None) & (Attachment.processing_status == AttachmentStatus.READY),
+)
+Index(
+    "ix_chunks_active_attachment_order", Chunk.attachment_id, Chunk.chunk_order, Chunk.chunk_id,
+    postgresql_where=Chunk.deleted_at.is_(None),
+)
+Index(
+    "ix_ai_responses_message_attempt", AIResponse.message_id,
+    AIResponse.attempt_number.desc(), AIResponse.response_id.desc(),
+)
+Index("ix_ai_response_sources_response", AIResponseSource.response_id, AIResponseSource.retrieval_id)
+Index("ix_ai_response_sources_chunk", AIResponseSource.chunk_id)
+Index("ix_ai_response_sources_node", AIResponseSource.node_id)
+Index("ix_ai_response_sources_edge", AIResponseSource.edge_id)
 
 Index(
     "ix_chunks_vector_embedding_hnsw",

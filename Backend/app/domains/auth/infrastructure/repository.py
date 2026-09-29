@@ -35,8 +35,6 @@ class PostgreSQLAuthRepository(AuthRepository):
     """Persist authentication data using one request-scoped session."""
 
     def __init__(self, session: AsyncSession) -> None:
-        """Store the SQLAlchemy session supplied by dependency injection."""
-
         self.session = session
 
     @staticmethod

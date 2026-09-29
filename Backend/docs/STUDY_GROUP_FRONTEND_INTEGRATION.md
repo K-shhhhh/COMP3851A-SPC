@@ -7,19 +7,19 @@ groups, public/private group creation, details, updates, soft deletion, public
 joining, owner/admin-managed membership, member listing, leaving, complete
 channel CRUD, structured human mentions, AI companion modes, normal
 channel-message CRUD, and authenticated WebSocket delivery. The
-current frontend still uses local component state and
-`Frontend/src/services/groupService.js` is only a placeholder, so frontend API
-integration is still required.
+current frontend already calls the group, membership, channel, message, AI-mode,
+and WebSocket APIs through `Frontend/src/services/groupService.js`. The main
+remaining frontend work is the channel-PDF upload/status workflow described
+below.
 
 Invitation links are not included in this endpoint slice. Message creation and
 AI generation remain HTTP operations; WebSocket is used only to deliver
 committed create/update/delete events to connected channel members.
 
-This sprint uses one shared in-memory Study Group repository. It preserves data
-between requests in one backend process, but restarting the backend clears all
-groups, memberships, and channels. PostgreSQL persistence will be enabled only
-after the database developer completes every method in the domain repository
-contract.
+Study Group dependency injection now uses PostgreSQL for groups, memberships,
+channels, messages, structured mentions, AI responses, and channel-scoped
+ready-chunk retrieval. Data therefore survives backend restarts. The in-memory
+repository remains available only for isolated unit and security tests.
 
 ## Authentication
 
@@ -128,7 +128,7 @@ Use `is_member` to show `Join` versus `Open/Joined`. Use `can_manage` to show
 edit/delete controls. These values help render the UI; the backend still checks
 authorization on every mutation.
 
-## Required `groupService.js` work
+## `groupService.js` contract
 
 Implement one exported function for each route:
 
@@ -155,8 +155,15 @@ Implement one exported function for each route:
 - `updateGroupMessage(groupId, channelId, messageId, content, mentionedUserIds)`
 - `deleteGroupMessage(groupId, channelId, messageId)`
 
-Every function should call the shared API client and return parsed backend data.
-Do not duplicate token storage, base URL logic, or error parsing in this file.
+These functions are implemented through the shared API client. Do not duplicate
+token storage, base URL logic, or error parsing in this file.
+
+Add two remaining channel-attachment functions:
+
+- `uploadStudyGroupAttachment(groupId, channelId, formData)` for the multipart
+  upload route.
+- `getStudyGroupAttachmentStatus(groupId, channelId, attachmentId)` for status
+  polling.
 
 ## Required page integration
 
@@ -242,8 +249,8 @@ The shared API client should expose these backend codes to the UI:
 - Non-admin members cannot edit or delete groups.
 - A normal member can leave; an owner/admin must transfer administration or
   delete the group instead.
-- Refreshing the browser keeps state while the same backend process is running;
-  restarting the backend clears this sprint's in-memory Study Group data.
+- Refreshing the browser or restarting the backend preserves Study Group data
+  in PostgreSQL.
 - Members can list/open channels, while only owners/admins see channel
   create/edit/delete controls.
 - Active members can read and send normal messages. Only the message author

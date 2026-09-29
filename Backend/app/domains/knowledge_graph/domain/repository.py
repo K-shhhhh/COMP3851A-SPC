@@ -1,28 +1,39 @@
-# Knowledge Graph repository contract used by the application service.
-# The database developer implements these operations; abstract methods provide no storage.
+"""Persistence contract for attachment-scoped knowledge graphs."""
+
 from abc import ABC, abstractmethod
 
 from app.domains.knowledge_graph.domain.models import (
+    KnowledgeEdge,
     KnowledgeNode,
 )
 
 
 class KnowledgeGraphRepository(ABC):
+    """Define storage operations implemented by infrastructure adapters."""
 
     @abstractmethod
-    async def get_all_nodes(self) -> list[KnowledgeNode]:
+    async def get_graph_for_attachment(
+        self,
+        attachment_id: int,
+    ) -> tuple[list[KnowledgeNode], list[KnowledgeEdge]]:
+        """Return the nodes and edges stored for one attachment."""
+
         raise NotImplementedError
 
     @abstractmethod
-    async def get_node_by_id(
+    async def replace_graph_for_attachment(
         self,
-        node_id: int,
-    ) -> KnowledgeNode:
-        raise NotImplementedError
+        *,
+        attachment_id: int,
+        nodes: list[KnowledgeNode],
+        edges: list[KnowledgeEdge],
+    ) -> None:
+        """Atomically replace the complete graph for one attachment.
 
-    @abstractmethod
-    async def search_nodes(
-        self,
-        keyword: str,
-    ) -> list[KnowledgeNode]:
+        Node identifiers supplied by the generator are graph-local references.
+        A database adapter must map them to generated database identifiers
+        before inserting edges, and must complete the replacement in one
+        transaction.
+        """
+
         raise NotImplementedError

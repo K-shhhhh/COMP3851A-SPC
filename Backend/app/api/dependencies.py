@@ -83,16 +83,18 @@ from app.domains.study_groups.domain.repository import StudyGroupRepository
 from app.domains.study_groups.domain.retrieval import (
     StudyGroupReadyChunkRepository,
 )
-from app.domains.study_groups.infrastructure.memory_repository import (
-    InMemoryStudyGroupRepository,
+from app.domains.study_groups.infrastructure.repository import (
+    PostgreSQLStudyGroupRepository,
 )
-from app.domains.study_groups.infrastructure.memory_retrieval import (
-    InMemoryStudyGroupReadyChunkRepository,
+from app.domains.study_groups.infrastructure.retrieval import (
+    PostgreSQLStudyGroupReadyChunkRepository,
 )
 
 from app.domains.knowledge_graph.application.services import KnowledgeGraphService
 from app.domains.knowledge_graph.domain.repository import KnowledgeGraphRepository
-from app.domains.knowledge_graph.infrastructure.repository import PostgreSQLKnowledgeGraphRepository
+from app.domains.knowledge_graph.infrastructure.memory_repository import (
+    InMemoryKnowledgeGraphRepository,
+)
 
 from app.domains.notifications.application.services import NotificationService
 from app.domains.notifications.domain.repository import NotificationRepository
@@ -362,25 +364,20 @@ def get_chat_service(
 
 # ---------- Study Groups ----------
 
-# The shared instance preserves groups, memberships, and channels between HTTP
-# requests during local testing. Data resets whenever the backend restarts.
-_local_study_group_repository = InMemoryStudyGroupRepository()
-_local_study_group_chunk_repository = (
-    InMemoryStudyGroupReadyChunkRepository()
-)
-
 def get_study_group_repository(
+    session: AsyncSession = Depends(get_db_session),
 ) -> StudyGroupRepository:
-    """Return local persistence until the database adapter is completed."""
+    """Return request-scoped PostgreSQL Study Group persistence."""
 
-    return _local_study_group_repository
+    return PostgreSQLStudyGroupRepository(session)
 
 
 def get_study_group_chunk_repository(
+    session: AsyncSession = Depends(get_db_session),
 ) -> StudyGroupReadyChunkRepository:
-    """Return channel-scoped chunks until PostgreSQL retrieval is completed."""
+    """Return PostgreSQL ready chunks scoped to one group channel."""
 
-    return _local_study_group_chunk_repository
+    return PostgreSQLStudyGroupReadyChunkRepository(session)
 
 
 def get_study_group_service(
@@ -405,16 +402,29 @@ def get_study_group_service(
 
 # ---------- Knowledge Graph ----------
 
+_local_knowledge_graph_repository = InMemoryKnowledgeGraphRepository()
+
+
 def get_knowledge_graph_repository() -> KnowledgeGraphRepository:
-    """Construct the configured knowledge-graph repository."""
+    """Return local graph storage until its PostgreSQL adapter is completed."""
 
-    return PostgreSQLKnowledgeGraphRepository()
+    return _local_knowledge_graph_repository
 
 
-def get_knowledge_graph_service() -> KnowledgeGraphService:
-    """Construct the knowledge-graph application service."""
+def get_knowledge_graph_service(
+    repository: KnowledgeGraphRepository = Depends(
+        get_knowledge_graph_repository
+    ),
+    attachment_repository: AttachmentRepository = Depends(
+        get_attachment_repository
+    ),
+) -> KnowledgeGraphService:
+    """Construct attachment-authorized knowledge-graph use cases."""
 
-    return KnowledgeGraphService(get_knowledge_graph_repository())
+    return KnowledgeGraphService(
+        repository=repository,
+        attachment_repository=attachment_repository,
+    )
 
 
 # ---------- Notificatios ----------

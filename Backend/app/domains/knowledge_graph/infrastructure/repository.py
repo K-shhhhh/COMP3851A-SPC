@@ -1,6 +1,12 @@
-# DEMO knowledge graph repository: returns constructed objects instead of executing SQL.
-# Do not interpret successful responses as persisted data or authenticated access.
+"""PostgreSQL knowledge-graph adapter integration boundary.
+
+The database developer implements this class against the migrated
+attachment-scoped graph tables. Local tests use ``memory_repository.py`` until
+that implementation is complete.
+"""
+
 from app.domains.knowledge_graph.domain.models import (
+    KnowledgeEdge,
     KnowledgeNode,
 )
 from app.domains.knowledge_graph.domain.repository import (
@@ -11,46 +17,23 @@ from app.domains.knowledge_graph.domain.repository import (
 class PostgreSQLKnowledgeGraphRepository(
     KnowledgeGraphRepository
 ):
+    """Declare the PostgreSQL adapter expected from the database layer."""
 
-    async def get_all_nodes(self) -> list[KnowledgeNode]:
-
-        return [
-            KnowledgeNode(
-                id=1,
-                title="Machine Learning",
-                topic="Artificial Intelligence",
-                description="Introduction to machine learning.",
-            ),
-            KnowledgeNode(
-                id=2,
-                title="Neural Networks",
-                topic="Artificial Intelligence",
-                description="Fundamentals of neural networks.",
-            ),
-        ]
-
-    async def get_node_by_id(
+    async def get_graph_for_attachment(
         self,
-        node_id: int,
-    ) -> KnowledgeNode:
-
-        return KnowledgeNode(
-            id=node_id,
-            title="Machine Learning",
-            topic="Artificial Intelligence",
-            description="Introduction to machine learning.",
+        attachment_id: int,
+    ) -> tuple[list[KnowledgeNode], list[KnowledgeEdge]]:
+        raise NotImplementedError(
+            "The attachment-scoped PostgreSQL graph reader is not implemented."
         )
 
-    async def search_nodes(
+    async def replace_graph_for_attachment(
         self,
-        keyword: str,
-    ) -> list[KnowledgeNode]:
-
-        return [
-            KnowledgeNode(
-                id=1,
-                title=f"Result for '{keyword}'",
-                topic="Search",
-                description="Placeholder search result.",
-            )
-        ]
+        *,
+        attachment_id: int,
+        nodes: list[KnowledgeNode],
+        edges: list[KnowledgeEdge],
+    ) -> None:
+        raise NotImplementedError(
+            "The attachment-scoped PostgreSQL graph writer is not implemented."
+        )

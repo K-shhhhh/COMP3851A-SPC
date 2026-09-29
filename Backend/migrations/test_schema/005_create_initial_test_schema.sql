@@ -1,22 +1,20 @@
 /*
-Version: 4
+Version: 5
 
-Existing tables:	users, groups, memberships, channels, messages, attachments, chunks,
-                	knowledge_graphs, knowledge_nodes, knowledge_edges,
-(14 in total)   	ai_responses, ai_response_sources, ai_response_feedbacks,
-                	user_activity_logs
-                
-Updated tables: all tables
+Existing tables:	users, groups, memberships, channels, messages, message_mentions, attachments, chunks,
+	knowledge_graphs, knowledge_nodes, knowledge_edges,
+(15 in total)   	ai_responses, ai_response_sources, ai_response_feedbacks,
+	user_activity_logs
 
-Changes: 	Removed "status" attribute from Groups table
-			Added "check" Constraints to Attachments tables.
-			Added indexes for Memberships, Messages, Attachments and Chunks tables for better query performance.
-			In Chunks table, "source_page" attribute is nullable and "chunk_content" attribute is non-nullable now.
-			Replaced/Added soft-deletion flags as "deleted_at" attribute in Users, Groups, Channels, Messages, Attachments and Chunks tables.
-			Removed deletion rules on every table relationship since the applicaiton solely depends on soft-deletions.
-					
-Notes:	Memberships table allows hard-deletion when a memeber left a group. Other than that, any deletions shall be soft-deletion.
-		Deletion rules will be implemented as required in future updates.
+New table:  message_mentions
+
+Updated tables: users, groups, messages, channels, messages, attachments, chunks
+
+Changes: 	A new juntion table called Message_Mentions is added to allow mentioning multiple users in a message. Unlike other tables, it uses composite keys as identifier.
+            Removed default value and not null constraint from "ai_mode_used" attribute in Messages table.
+            Added/Updates indexes in users, groups, messages, channels, messages, attachments, chunks, ai_responses, ai_response_sources
+
+Notes:	Deletion rules may be implemented as required in future updates.
 		Besides, future updates should focus more on constraints and indexes of the tables related to knowledge graph, AI responses and activity logs.
 */
 
@@ -54,10 +52,10 @@ create table if not exists groups (
     last_updated_at timestamptz,
 	deleted_at timestamptz,
 
-	constraint fk_group_created_by_for_groups foreign key (created_by)	
+	constraint fk_group_created_by_for_groups foreign key (created_by)
 	references users(user_id),
 
-	constraint fk_current_admin_for_groups foreign key (current_admin) 
+	constraint fk_current_admin_for_groups foreign key (current_admin)
 	references users(user_id)
 );
 
@@ -68,10 +66,10 @@ create table if not exists memberships (
     member_role member_roles not null,
     joined_at timestamptz not null,
 
-	constraint fk_user_id_for_memberships foreign key (user_id)	
+	constraint fk_user_id_for_memberships foreign key (user_id)
 	references users(user_id),
 
-	constraint fk_group_id_for_memberships foreign key (group_id) 
+	constraint fk_group_id_for_memberships foreign key (group_id)
 	references groups(group_id),
 
 	constraint uq_memberships_user_group	unique (user_id, group_id)
@@ -87,7 +85,7 @@ create table if not exists channels (
     last_updated_at timestamptz,
 	deleted_at timestamptz,
 
-	constraint fk_group_id_for_channels foreign key (group_id) 
+	constraint fk_group_id_for_channels foreign key (group_id)
 	references groups(group_id),
 
 	constraint fk_created_by_for_channels foreign key (created_by)
@@ -96,19 +94,25 @@ create table if not exists channels (
 
 create table if not exists messages (
     message_id bigint generated always as identity primary key,
-    user_id uuid not null, 
+    user_id uuid not null,
     channel_id uuid not null,
     message_content text not null,
-    ai_mode_used ai_modes default 'default' not null,
+    ai_mode_used ai_modes,
     sent_at timestamptz not null,
     edited_at timestamptz,
     deleted_at timestamptz,
 
-	constraint fk_user_id_for_messages foreign key (user_id)	
+	constraint fk_user_id_for_messages foreign key (user_id)
 	references users(user_id),
 
-	constraint fk_channel_id_for_messages foreign key (channel_id) 
+	constraint fk_channel_id_for_messages foreign key (channel_id)
 	references channels(channel_id)
+);
+
+create table if not exists message_mentions (
+    message_id bigint references messages(message_id) on delete cascade,
+    user_id uuid references users(user_id) on delete cascade,
+    primary key (message_id, user_id)
 );
 
 create table if not exists attachments (
@@ -129,20 +133,20 @@ create table if not exists attachments (
     last_updated_at timestamptz,
 	deleted_at timestamptz,
 
-	constraint fk_uploaded_by_for_attachments foreign key (uploaded_by) 
+	constraint fk_uploaded_by_for_attachments foreign key (uploaded_by)
 	references users(user_id),
 
-	constraint fk_channel_id_for_attachments foreign key (channel_id) 
+	constraint fk_channel_id_for_attachments foreign key (channel_id)
 	references channels(channel_id),
-	
-	constraint fk_group_id_for_attachments foreign key (group_id) 
+
+	constraint fk_group_id_for_attachments foreign key (group_id)
 	references groups(group_id),
 
-	constraint fk_message_id_for_attachments foreign key (message_id) 
+	constraint fk_message_id_for_attachments foreign key (message_id)
 	references messages(message_id),
-	
+
 	constraint ck_attachments_file_size check (file_size_bytes >= 0),
-	
+
 	constraint ck_attachments_processing_progress check (processing_progress between 0 and 100)
 );
 
@@ -157,8 +161,8 @@ create table if not exists chunks (
     vector_embedding vector(768) not null,
     created_at timestamptz not null,
 	deleted_at timestamptz,
-	
-	constraint fk_attachment_id_for_chunks foreign key (attachment_id) 
+
+	constraint fk_attachment_id_for_chunks foreign key (attachment_id)
 	references attachments(attachment_id),
 
 	constraint uq_chunks_attachment_order    unique (attachment_id, chunk_order)
@@ -173,7 +177,7 @@ create table if not exists knowledge_graphs (
     last_updated_at timestamptz,
     deleted_at timestamptz,
 
-	constraint fk_user_id_for_knowledge_graphs foreign key (user_id) 
+	constraint fk_user_id_for_knowledge_graphs foreign key (user_id)
 	references users(user_id)
 );
 
@@ -187,7 +191,7 @@ create table if not exists knowledge_nodes (
     created_at timestamptz not null,
     last_updated_at timestamptz,
 
-	constraint fk_graph_id_for_knowledge_nodes foreign key (graph_id) 
+	constraint fk_graph_id_for_knowledge_nodes foreign key (graph_id)
 	references knowledge_graphs(graph_id)
 );
 
@@ -201,13 +205,13 @@ create table if not exists knowledge_edges (
     created_at timestamptz not null,
     last_updated_at timestamptz,
 
-	constraint fk_graph_id_for_knowledge_edges foreign key (graph_id) 
+	constraint fk_graph_id_for_knowledge_edges foreign key (graph_id)
 	references knowledge_graphs(graph_id),
 
-	constraint fk_source_node_id_for_knowledge_edges foreign key (source_node_id) 
+	constraint fk_source_node_id_for_knowledge_edges foreign key (source_node_id)
 	references knowledge_nodes(node_id),
 
-	constraint fk_target_node_id_for_knowledge_edges foreign key (target_node_id) 
+	constraint fk_target_node_id_for_knowledge_edges foreign key (target_node_id)
 	references knowledge_nodes(node_id)
 );
 
@@ -222,8 +226,8 @@ create table if not exists ai_responses (
     execution_time_ms int not null,
     token_count int not null,
     generated_at timestamptz not null,
-	
-	constraint fk_message_id_for_ai_responses foreign key (message_id) 
+
+	constraint fk_message_id_for_ai_responses foreign key (message_id)
 	references messages(message_id)
 );
 
@@ -237,17 +241,17 @@ create table if not exists ai_response_sources (
     rerank_score double precision,
     is_used_in_prompt boolean not null,
 
-	
-	constraint fk_response_id_for_ai_response_sources foreign key (response_id) 
+
+	constraint fk_response_id_for_ai_response_sources foreign key (response_id)
 	references ai_responses(response_id),
 
-	constraint fk_chunk_id_for_ai_response_sources foreign key (chunk_id) 
+	constraint fk_chunk_id_for_ai_response_sources foreign key (chunk_id)
 	references chunks(chunk_id),
-	
-	constraint fk_node_id_for_ai_response_sources foreign key (node_id) 
+
+	constraint fk_node_id_for_ai_response_sources foreign key (node_id)
 	references knowledge_nodes(node_id),
 
-	constraint fk_edge_id_for_ai_response_sources foreign key (edge_id) 
+	constraint fk_edge_id_for_ai_response_sources foreign key (edge_id)
 	references knowledge_edges(edge_id)
 );
 
@@ -259,10 +263,10 @@ create table if not exists ai_response_feedbacks (
     feedback_text text,
     created_at timestamptz not null,
 
-	constraint fk_response_id_for_ai_response_feedbacks foreign key (response_id) 
+	constraint fk_response_id_for_ai_response_feedbacks foreign key (response_id)
 	references ai_responses(response_id),
 
-	constraint fk_user_id_for_ai_response_feedbacks foreign key (user_id) 
+	constraint fk_user_id_for_ai_response_feedbacks foreign key (user_id)
 	references users(user_id)
 );
 
@@ -279,7 +283,7 @@ create table if not exists user_activity_logs (
 );
 
 -- Unique index for channel name consistency, allows duplication if an old one is deleted
-create unique index uq_channels_group_name on channels (group_id, channel_name) where deleted_at is null;
+create unique index uq_channels_group_name on channels (group_id, lower(channel_name)) where deleted_at is null;
 
 -- Membership lookups from group
 create index if not exists ix_memberships_group_id on memberships (group_id);
@@ -301,3 +305,28 @@ create index if not exists ix_attachments_message_id on attachments (message_id)
 -- Vector embedding similarity search
 create index if not exists ix_chunks_vector_embedding_hnsw on chunks using hnsw (vector_embedding vector_cosine_ops) with (m = 16, ef_construction = 64);
 
+-- Active account lookup used when adding a group member by email.
+create index if not exists ix_users_active_email on users (lower(email)) where deleted_at is null and status = 'active';
+
+-- Discovery and owned-group listings, excluding soft-deleted records.
+create index if not exists ix_groups_active_type_updated on groups (group_type, coalesce(last_updated_at, created_at) desc, group_id) where deleted_at is null;
+create index if not exists ix_groups_active_owner_updated on groups (created_by, coalesce(last_updated_at, created_at) desc, group_id) where deleted_at is null;
+
+-- Keep a full FK lookup index as well as an active ordered channel listing.
+create index if not exists ix_channels_group_id on channels (group_id);
+create index if not exists ix_channels_active_group_created on channels (group_id, created_at, channel_id) where deleted_at is null;
+create index if not exists ix_messages_active_channel_sent on messages (channel_id, sent_at, message_id) where deleted_at is null;
+
+-- The mention PK supports message lookup, this index supports user lookup/cascade.
+create index if not exists ix_message_mentions_user_id on message_mentions (user_id);
+
+-- Exact group/channel grounding with ready, non-deleted content.
+create index if not exists ix_attachments_ready_group_channel on attachments (group_id, channel_id, attachment_id) where deleted_at is null and processing_status = 'ready';
+create index if not exists ix_chunks_active_attachment_order on chunks (attachment_id, chunk_order, chunk_id) where deleted_at is null;
+
+-- Response history, selected response lookup, and citation FK traversal.
+create index if not exists ix_ai_responses_message_attempt on ai_responses (message_id, attempt_number desc, response_id desc);
+create index if not exists ix_ai_response_sources_response on ai_response_sources (response_id, retrieval_id);
+create index if not exists ix_ai_response_sources_chunk on ai_response_sources (chunk_id);
+create index if not exists ix_ai_response_sources_node on ai_response_sources (node_id);
+create index if not exists ix_ai_response_sources_edge on ai_response_sources (edge_id);
