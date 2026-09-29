@@ -12,6 +12,7 @@ import {
   Edit3,
   Hash,
   Lock,
+  Paperclip,
   Plus,
   Search,
   Send,
@@ -36,6 +37,7 @@ import {
   discoverPublicGroups,
   getGroupMessages,
   getMyGroups,
+  getStudyGroupAttachmentStatus,
   getStudyGroupChannels,
   getStudyGroupMembers,
   joinStudyGroup,
@@ -44,6 +46,7 @@ import {
   updateGroupMessage,
   updateStudyGroup,
   updateStudyGroupChannel,
+  uploadStudyGroupAttachment,
 } from "../../services/groupService.js";
 
 import "./groupStudy.css";
@@ -122,7 +125,7 @@ function apiMessage(error) {
       "One of the mentioned users is no longer a group member.",
 
     STUDY_GROUP_NO_READY_CHUNKS:
-      "Upload and process a channel attachment before asking an AI companion.",
+      "The selected channel does not yet have a ready processed PDF.",
 
     STUDY_GROUP_ANSWER_GENERATION_FAILED:
       "The AI companion could not generate an answer. Please try again.",
@@ -438,6 +441,20 @@ function GroupStudyPage() {
 
   const [sendingMessage, setSendingMessage] =
     useState(false);
+
+  /* -------------------------------------------------------
+     CHANNEL ATTACHMENT
+     ------------------------------------------------------- */
+
+  const [attachment, setAttachment] =
+    useState(null);
+
+  const [attachmentUploading, setAttachmentUploading] =
+    useState(false);
+
+  const attachmentInputRef = useRef(null);
+  const attachmentPollRef = useRef(null);
+  const attachmentPollKeyRef = useRef(0);
 
   const [editingMessage, setEditingMessage] =
     useState(null);
@@ -1315,6 +1332,245 @@ function GroupStudyPage() {
       setPageError(apiMessage(error));
     } finally {
       setMutationLoading(false);
+    }
+  }
+
+  /* =======================================================
+     CHANNEL ATTACHMENTS
+     ======================================================= */
+
+  function stopAttachmentPolling() {
+    attachmentPollKeyRef.current += 1;
+
+    if (attachmentPollRef.current) {
+      window.clearTimeout(
+        attachmentPollRef.current,
+      );
+
+      attachmentPollRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      stopAttachmentPolling();
+    };
+  }, []);
+
+  useEffect(() => {
+    stopAttachmentPolling();
+    setAttachment(null);
+    setAttachmentUploading(false);
+
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = "";
+    }
+  }, [selectedChannel?.id]);
+
+  async function pollAttachmentStatus(
+    groupId,
+    channelId,
+    attachmentId,
+    pollKey,
+  ) {
+    try {
+      const result =
+        await getStudyGroupAttachmentStatus(
+          accessToken,
+          groupId,
+          channelId,
+          attachmentId,
+        );
+
+      if (
+        attachmentPollKeyRef.current !== pollKey
+      ) {
+        return;
+      }
+
+      setAttachment((current) => {
+        if (
+          !current ||
+          current.id !== attachmentId
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          status: result.status,
+          progress: result.progress ?? 0,
+          message: result.message || "",
+          error: result.error || null,
+        };
+      });
+
+      if (
+        result.status === "ready" ||
+        result.status === "failed"
+      ) {
+        attachmentPollRef.current = null;
+        return;
+      }
+
+      attachmentPollRef.current =
+        window.setTimeout(
+          () => {
+            pollAttachmentStatus(
+              groupId,
+              channelId,
+              attachmentId,
+              pollKey,
+            );
+          },
+          2000,
+        );
+    } catch (error) {
+      if (
+        attachmentPollKeyRef.current !== pollKey
+      ) {
+        return;
+      }
+
+      setAttachment((current) => {
+        if (
+          !current ||
+          current.id !== attachmentId
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          status: "failed",
+          error: {
+            message: apiMessage(error),
+          },
+        };
+      });
+
+      attachmentPollRef.current = null;
+    }
+  }
+
+  async function handleAttachmentChange(event) {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (
+      file.type !== "application/pdf" &&
+      !file.name.toLowerCase().endsWith(".pdf")
+    ) {
+      setPageError(
+        "Only PDF files can be uploaded to a Study Group channel.",
+      );
+
+      event.target.value = "";
+      return;
+    }
+
+    if (
+      !selectedGroup ||
+      !selectedChannel ||
+      !accessToken
+    ) {
+      event.target.value = "";
+      return;
+    }
+
+    stopAttachmentPolling();
+    const pollKey =
+      attachmentPollKeyRef.current;
+
+    setAttachmentUploading(true);
+    setPageError("");
+
+    setAttachment({
+      id: null,
+      fileName: file.name,
+      status: "uploading",
+      progress: 0,
+      message: "Uploading PDF...",
+      error: null,
+    });
+
+    try {
+      const result =
+        await uploadStudyGroupAttachment(
+          accessToken,
+          selectedGroup.id,
+          selectedChannel.id,
+          file,
+        );
+
+      if (
+        attachmentPollKeyRef.current !== pollKey
+      ) {
+        return;
+      }
+
+      const attachmentId =
+        result?.id;
+
+      if (!attachmentId) {
+        throw new Error(
+          "The backend did not return an attachment ID.",
+        );
+      }
+
+      setAttachment({
+        id: attachmentId,
+        fileName:
+          result.file_name || file.name,
+        status:
+          result.status || "queued",
+        progress:
+          result.processing_progress ?? 0,
+        message:
+          result.status === "ready"
+            ? "PDF is ready for AI questions."
+            : "PDF uploaded. Processing...",
+        error: null,
+      });
+
+      if (
+        result.status !== "ready" &&
+        result.status !== "failed"
+      ) {
+        pollAttachmentStatus(
+          selectedGroup.id,
+          selectedChannel.id,
+          attachmentId,
+          pollKey,
+        );
+      }
+    } catch (error) {
+      if (
+        attachmentPollKeyRef.current === pollKey
+      ) {
+        setAttachment({
+          id: null,
+          fileName: file.name,
+          status: "failed",
+          progress: 0,
+          message: "PDF upload failed.",
+          error: {
+            message: apiMessage(error),
+          },
+        });
+      }
+    } finally {
+      if (
+        attachmentPollKeyRef.current === pollKey
+      ) {
+        setAttachmentUploading(false);
+      }
+
+      event.target.value = "";
     }
   }
 
@@ -2382,6 +2638,54 @@ function GroupStudyPage() {
 
                         <div className="group-composer">
 
+                          {attachment && (
+                            <div
+                              className={`channel-attachment-status ${attachment.status}`}
+                            >
+                              <Paperclip size={15} />
+
+                              <div className="channel-attachment-info">
+                                <strong>
+                                  {attachment.fileName}
+                                </strong>
+
+                                <span>
+                                  {attachment.status === "uploading" &&
+                                    "Uploading PDF..."}
+
+                                  {attachment.status === "queued" &&
+                                    "PDF queued for processing..."}
+
+                                  {attachment.status === "processing" &&
+                                    `Processing PDF... ${attachment.progress ?? 0}%`}
+
+                                  {attachment.status === "ready" &&
+                                    "PDF ready for AI questions."}
+
+                                  {attachment.status === "failed" &&
+                                    (attachment.error?.message ||
+                                      attachment.message ||
+                                      "PDF processing failed.")}
+                                </span>
+                              </div>
+
+                              {attachment.status !== "uploading" &&
+                                attachment.status !== "processing" &&
+                                attachment.status !== "queued" && (
+                                  <button
+                                    type="button"
+                                    className="attachment-dismiss"
+                                    onClick={() =>
+                                      setAttachment(null)
+                                    }
+                                    aria-label="Dismiss attachment status"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
+                            </div>
+                          )}
+
                           {selectedAiMode && (
                             <div className="selected-ai-bar">
                               <Bot
@@ -2449,6 +2753,27 @@ function GroupStudyPage() {
                               handleSendMessage
                             }
                           >
+                            <input
+                              ref={attachmentInputRef}
+                              type="file"
+                              accept=".pdf,application/pdf"
+                              className="attachment-file-input"
+                              onChange={handleAttachmentChange}
+                            />
+
+                            <button
+                              type="button"
+                              className="attachment-button"
+                              title="Attach PDF"
+                              aria-label="Attach PDF"
+                              disabled={attachmentUploading}
+                              onClick={() =>
+                                attachmentInputRef.current?.click()
+                              }
+                            >
+                              <Paperclip size={18} />
+                            </button>
+
                             <div className="message-input-wrap">
 
                               {/* @ PICKER */}
