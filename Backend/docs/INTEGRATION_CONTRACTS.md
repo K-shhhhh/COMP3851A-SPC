@@ -1198,4 +1198,14 @@ references while writing, and the PostgreSQL adapter maps them to persisted
 node IDs before inserting the corresponding edges. A node's nullable
 `source_chunk_id` records the chunk citation used to derive that concept.
 
+The attachment worker invokes graph generation only after embedded chunks have
+been committed. It passes the original chunk payloads containing `chunk_id`
+and `text` to `generate_graph_for_attachment(attachment_id, chunks)`, then
+passes the returned nodes and edges to `replace_graph_for_attachment(...)`.
+For generated nodes, `source_chunk_id` is the batch chunk order. The PostgreSQL
+adapter resolves it to the actual `chunks.chunk_id` using the pair
+`(attachment_id, chunk_order)`. Set
+`ENABLE_KNOWLEDGE_GRAPH_GENERATION=true` only after this adapter and its schema
+migration are active.
+
 ---

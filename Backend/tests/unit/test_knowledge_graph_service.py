@@ -136,6 +136,7 @@ async def test_graph_replacement_rejects_missing_edge_node() -> None:
             title="Concept",
             topic="Topic",
             description="Description",
+            source_chunk_id=None,
         )
     ]
     edges = [

@@ -2,11 +2,10 @@
 
 ## Purpose and current status
 
-The Notes upload endpoint already stores a PDF, creates queued attachment
-metadata, and calls an `AttachmentProcessingDispatcher`. Local development
-currently uses `InMemoryAttachmentProcessingDispatcher`, which records the
-handoff but performs no extraction, chunking, or embedding. This is why the UI
-currently remains at `Queued 0%`.
+The Notes upload endpoint stores a PDF, creates queued attachment metadata, and
+calls an `AttachmentProcessingDispatcher`. The PostgreSQL/Celery path now runs
+extraction, chunking, embedding, chunk persistence, and the optional knowledge
+graph generation step outside the API request.
 
 Krish's tested entry point is currently:
 
@@ -14,8 +13,9 @@ Krish's tested entry point is currently:
 process_attachment(attachment_id, object_path)
 ```
 
-The Celery integration must connect that function to the existing dispatcher
-contract and replace printed status updates with repository writes.
+Knowledge graph generation is controlled by
+`ENABLE_KNOWLEDGE_GRAPH_GENERATION`. Keep it `false` until the
+attachment-scoped PostgreSQL graph repository and migration are deployed.
 
 ## End-to-end handoff
 
@@ -42,10 +42,16 @@ Celery process_attachment task
       +--> create chunks
       +--> create 768-dimensional embeddings
       +--> insert CHUNKS rows
+      +--> optionally generate and replace the attachment knowledge graph
       |
       v
 ready 100% or failed
 ```
+
+If knowledge graph generation fails after chunks have been committed, the
+worker logs that graph-specific failure and still marks the attachment ready.
+The note therefore remains usable for ordinary RAG questions while graph
+generation can be retried independently.
 
 ## Files Krish should work in
 

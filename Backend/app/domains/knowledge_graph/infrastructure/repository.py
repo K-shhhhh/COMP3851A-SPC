@@ -5,6 +5,8 @@ attachment-scoped graph tables. Local tests use ``memory_repository.py`` until
 that implementation is complete.
 """
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.domains.knowledge_graph.domain.models import (
     KnowledgeEdge,
     KnowledgeNode,
@@ -18,6 +20,11 @@ class PostgreSQLKnowledgeGraphRepository(
     KnowledgeGraphRepository
 ):
     """Declare the PostgreSQL adapter expected from the database layer."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind future graph operations to the worker's database session."""
+
+        self._session = session
 
     async def get_graph_for_attachment(
         self,

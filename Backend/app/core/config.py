@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # configured separately because this server does not provide a GPU.
     INFERENCE_API_URL: str = ""
     INFERENCE_API_KEY: str = ""
+    # Turn on only after the attachment-scoped PostgreSQL graph repository and
+    # migration are deployed. Knowledge graphs are optional derived data and
+    # must not prevent ordinary note processing.
+    ENABLE_KNOWLEDGE_GRAPH_GENERATION: bool = False
 
     @model_validator(mode="after")
     def reject_insecure_production_secret(self) -> "Settings":
