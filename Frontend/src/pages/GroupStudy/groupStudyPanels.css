@@ -1,0 +1,261 @@
+/*
+ * Study Groups — collapsible Figma-style workspace panels
+ * Imported after groupStudy.css so these rules are intentionally overrides.
+ */
+
+@media (min-width: 851px) {
+  .group-study-page {
+    --sg-groups-width: 300px;
+    --sg-details-width: 240px;
+
+    grid-template-columns:
+      var(--sg-groups-width)
+      var(--sg-details-width)
+      minmax(0, 1fr);
+
+    transition:
+      grid-template-columns 0.2s ease;
+  }
+
+  .group-study-page.groups-panel-collapsed {
+    --sg-groups-width: 40px;
+  }
+
+  .group-study-page.details-panel-collapsed {
+    --sg-details-width: 40px;
+  }
+
+  /* =======================================================
+     FIRST PANEL — PUBLIC / PRIVATE + GROUP LIST
+     ======================================================= */
+
+  .group-view-tabs {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+
+    padding:
+      12px
+      12px
+      9px
+      18px;
+  }
+
+  .group-view-tab-buttons {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .group-view-tab-buttons > button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .group-panel-collapse-toggle {
+    width: 28px !important;
+    height: 28px;
+    min-height: 28px !important;
+    flex: 0 0 28px !important;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0 !important;
+
+    border: 1px solid var(--spc-border) !important;
+    border-radius: 8px !important;
+
+    background: var(--spc-surface) !important;
+    color: var(--spc-muted) !important;
+  }
+
+  .group-panel-collapse-toggle:hover {
+    background: var(--spc-surface-hover) !important;
+    color: var(--spc-purple) !important;
+  }
+
+  .private-groups-label {
+    grid-column: 1;
+    grid-row: 3;
+
+    display: flex;
+    align-items: center;
+
+    min-height: 42px;
+
+    padding:
+      0
+      18px
+      12px;
+
+    border-right: 1px solid var(--spc-border);
+
+    background: var(--spc-surface);
+    color: var(--spc-muted);
+
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Collapsed first panel becomes a slim rail */
+  .groups-panel-collapsed .group-view-tabs {
+    grid-column: 1;
+    grid-row: 1 / 5;
+
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+
+    padding: 12px 5px;
+
+    border-right: 1px solid var(--spc-border);
+    border-bottom: 0;
+  }
+
+  .groups-panel-collapsed
+    .group-view-tab-buttons,
+  .groups-panel-collapsed
+    .create-group-button,
+  .groups-panel-collapsed
+    .discover-toolbar,
+  .groups-panel-collapsed
+    .private-groups-label,
+  .groups-panel-collapsed
+    .group-list-panel {
+    display: none !important;
+  }
+
+  .groups-panel-collapsed
+    .group-panel-collapse-toggle {
+    width: 30px !important;
+    height: 30px;
+    min-height: 30px !important;
+    flex-basis: 30px !important;
+  }
+
+  /* =======================================================
+     SECOND PANEL — GROUP / CHANNELS / MEMBERS
+     ======================================================= */
+
+  .workspace-header {
+    position: relative;
+
+    padding-right: 44px;
+  }
+
+  .details-panel-collapse-toggle {
+    position: absolute;
+    top: 14px;
+    right: 11px;
+
+    width: 28px;
+    height: 28px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0;
+
+    border: 1px solid var(--spc-border);
+    border-radius: 8px;
+
+    background: var(--spc-surface);
+    color: var(--spc-muted);
+
+    cursor: pointer;
+  }
+
+  .details-panel-collapse-toggle:hover {
+    background: var(--spc-surface-hover);
+    color: var(--spc-purple);
+  }
+
+  /*
+   * When collapsed, the workspace header itself becomes the slim
+   * rail. The channels/members body disappears and the chat expands.
+   */
+  .details-panel-collapsed .workspace-header {
+    grid-column: 2;
+    grid-row: 1 / 5;
+
+    min-height: 0;
+
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+
+    padding: 12px 5px;
+
+    border-right: 1px solid var(--spc-border);
+    border-bottom: 0;
+
+    background: var(--spc-surface-soft);
+  }
+
+  .details-panel-collapsed
+    .workspace-header > div {
+    display: none !important;
+  }
+
+  .details-panel-collapsed
+    .details-panel-collapse-toggle {
+    position: static;
+
+    width: 30px;
+    height: 30px;
+
+    flex: 0 0 30px;
+  }
+
+  .details-panel-collapsed
+    .channel-sidebar {
+    display: none !important;
+  }
+
+  /* =======================================================
+     CHAT — ALWAYS THE MAIN AREA
+     ======================================================= */
+
+  .channel-chat {
+    min-width: 0;
+
+    transition:
+      width 0.2s ease;
+  }
+
+  .group-message-list {
+    max-width: none;
+  }
+
+  .message-main {
+    max-width:
+      min(
+        1050px,
+        calc(100% - 50px)
+      );
+  }
+}
+
+/* Keep the existing stacked mobile/tablet layout */
+@media (max-width: 850px) {
+  .group-panel-collapse-toggle,
+  .details-panel-collapse-toggle {
+    display: none;
+  }
+
+  .private-groups-label {
+    margin-bottom: 12px;
+
+    color: var(--spc-muted);
+
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+}

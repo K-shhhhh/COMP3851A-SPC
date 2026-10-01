@@ -1422,3 +1422,600 @@
     margin-left: 0;
   }
 }
+
+/* =========================================================
+   HENRICK STUDY GROUP LAYOUT
+   Figma-style 3-column workspace
+   Keeps existing SPC purple theme + dark mode
+   ========================================================= */
+
+@media (min-width: 851px) {
+
+  /* Fill the space underneath the shared top bar */
+  .group-study-page {
+    position: relative;
+
+    display: grid;
+    grid-template-columns:
+      320px
+      260px
+      minmax(0, 1fr);
+
+    grid-template-rows:
+      auto
+      auto
+      auto
+      minmax(0, 1fr);
+
+    width: auto;
+    height: calc(100vh - 76px);
+    min-height: 650px;
+
+    margin:
+      -30px
+      -32px
+      -40px;
+
+    overflow: hidden;
+
+    background: var(--spc-surface);
+  }
+
+  /* -------------------------------------------------------
+     REMOVE OLD LARGE PAGE HEADING
+     ------------------------------------------------------- */
+
+  .group-study-header {
+    display: contents;
+  }
+
+  .group-study-header > div {
+    display: none;
+  }
+
+  /* -------------------------------------------------------
+     LEFT COLUMN — GROUP BROWSER
+     ------------------------------------------------------- */
+
+  .group-view-tabs {
+    grid-column: 1;
+    grid-row: 1;
+
+    display: flex;
+    gap: 4px;
+
+    margin: 0;
+    padding: 14px 18px 10px;
+
+    border-right: 1px solid var(--spc-border);
+    background: var(--spc-surface);
+  }
+
+  .group-view-tabs button {
+    flex: 1;
+
+    min-height: 38px;
+
+    padding: 0 10px;
+
+    border: 0;
+    border-radius: 9px;
+
+    background: var(--spc-surface-soft);
+    color: var(--spc-muted);
+
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .group-view-tabs button:hover {
+    background: var(--spc-surface-hover);
+    color: var(--spc-heading);
+  }
+
+  .group-view-tabs button.active {
+    border: 0;
+
+    background: var(--spc-purple-soft);
+    color: var(--spc-purple);
+
+    box-shadow:
+      inset 0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--spc-purple) 18%,
+        transparent
+      );
+  }
+
+  /* Create group now lives below the switch */
+  .create-group-button {
+    grid-column: 1;
+    grid-row: 2;
+
+    width: calc(100% - 36px);
+    min-height: 43px;
+
+    margin: 0 18px 12px;
+    padding: 0 15px;
+
+    justify-content: center;
+
+    border-radius: 9px;
+  }
+
+  /* Search / filters */
+  .discover-toolbar,
+  .my-group-filters {
+    grid-column: 1;
+    grid-row: 3;
+
+    margin: 0;
+    padding: 0 18px 14px;
+
+    border-right: 1px solid var(--spc-border);
+    background: var(--spc-surface);
+  }
+
+  .group-search {
+    width: 100%;
+    min-height: 41px;
+
+    border-radius: 9px;
+  }
+
+  .group-search input {
+    font-size: 12px;
+  }
+
+  .my-group-filters {
+    gap: 5px;
+  }
+
+  .my-group-filters button {
+    padding: 6px 9px;
+
+    font-size: 10px;
+  }
+
+  /* Flatten old 2-column wrapper */
+  .study-group-layout {
+    display: contents;
+  }
+
+  /* Actual scrolling group list */
+  .group-list-panel {
+    grid-column: 1;
+    grid-row: 4;
+
+    min-height: 0;
+
+    border: 0;
+    border-top: 1px solid var(--spc-border);
+    border-right: 1px solid var(--spc-border);
+    border-radius: 0;
+
+    background: var(--spc-surface);
+  }
+
+  /* -------------------------------------------------------
+     GROUP CARDS
+     ------------------------------------------------------- */
+
+  .group-card {
+    gap: 7px;
+
+    padding: 13px 14px;
+
+    border-bottom:
+      1px solid
+      var(--spc-border-soft);
+  }
+
+  .group-card:hover {
+    background: var(--spc-surface-hover);
+  }
+
+  .group-card.selected {
+    background: var(--spc-purple-soft);
+
+    box-shadow:
+      inset 3px 0 0
+      var(--spc-purple);
+  }
+
+  .group-card-main {
+    gap: 11px;
+  }
+
+  .group-card-icon {
+    width: 39px;
+    height: 39px;
+    flex: 0 0 39px;
+
+    border-radius: 50%;
+
+    background: var(--spc-purple-soft);
+  }
+
+  .group-card-info strong {
+    font-size: 13px;
+  }
+
+  .group-card-info span {
+    margin-top: 3px;
+
+    font-size: 11px;
+  }
+
+  .group-card-info small {
+    margin-top: 4px;
+
+    font-size: 10px;
+  }
+
+  .group-card-action button {
+    padding: 5px 8px;
+
+    border-radius: 6px;
+
+    font-size: 10px;
+  }
+
+  /* -------------------------------------------------------
+     FLATTEN WORKSPACE
+     This exposes the middle sidebar + chat as grid columns
+     ------------------------------------------------------- */
+
+  .group-workspace {
+    display: contents;
+  }
+
+  /* No group selected — fill middle + chat */
+  .group-workspace > .group-placeholder {
+    grid-column: 2 / 4;
+    grid-row: 1 / 5;
+
+    min-height: 0;
+
+    border: 0;
+    border-radius: 0;
+
+    background: var(--spc-surface);
+  }
+
+  /* -------------------------------------------------------
+     MIDDLE COLUMN — SELECTED GROUP HEADER
+     ------------------------------------------------------- */
+
+  .workspace-header {
+    grid-column: 2;
+    grid-row: 1;
+
+    display: block;
+
+    min-height: 76px;
+
+    padding: 15px 17px;
+
+    border-right: 1px solid var(--spc-border);
+    border-bottom: 1px solid var(--spc-border);
+
+    background: var(--spc-surface-soft);
+  }
+
+  .workspace-title {
+    gap: 0;
+  }
+
+  /* Figma only shows the group name here */
+  .workspace-title svg {
+    display: none;
+  }
+
+  .workspace-header h2 {
+    overflow: hidden;
+
+    font-size: 15px;
+    font-weight: 700;
+
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workspace-header p {
+    display: -webkit-box;
+
+    margin-top: 5px;
+
+    overflow: hidden;
+
+    font-size: 10px;
+    line-height: 1.35;
+
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .workspace-actions {
+    justify-content: flex-start;
+
+    gap: 5px;
+
+    margin-top: 9px;
+  }
+
+  .workspace-actions button {
+    min-height: 27px;
+
+    padding: 0 7px;
+
+    border-radius: 6px;
+
+    font-size: 9px;
+  }
+
+  .workspace-actions button svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* Old body wrapper becomes invisible to layout */
+  .workspace-body {
+    display: contents;
+  }
+
+  /* -------------------------------------------------------
+     MIDDLE COLUMN — CHANNELS + MEMBERS
+     ------------------------------------------------------- */
+
+  .channel-sidebar {
+    grid-column: 2;
+    grid-row: 2 / 5;
+
+    min-height: 0;
+
+    padding: 14px 11px;
+
+    border-right: 1px solid var(--spc-border);
+
+    background: var(--spc-surface-soft);
+  }
+
+  .channel-heading,
+  .members-heading {
+    padding:
+      5px
+      8px
+      8px;
+
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+
+  .channel-row {
+    margin-bottom: 2px;
+
+    border-radius: 8px;
+  }
+
+  .channel-select {
+    padding: 8px;
+
+    font-size: 12px;
+  }
+
+  .channel-row.active {
+    background: var(--spc-surface);
+  }
+
+  .channel-row.active .channel-select {
+    color: var(--spc-heading);
+
+    font-weight: 650;
+  }
+
+  .members-heading {
+    margin-top: 20px;
+    padding-top: 15px;
+  }
+
+  .member-row {
+    padding: 6px 7px;
+  }
+
+  .member-avatar {
+    width: 27px;
+    height: 27px;
+    flex: 0 0 27px;
+
+    font-size: 9px;
+  }
+
+  .member-info span {
+    font-size: 11px;
+  }
+
+  .member-info small {
+    font-size: 9px;
+  }
+
+  /* -------------------------------------------------------
+     RIGHT COLUMN — CHAT
+     ------------------------------------------------------- */
+
+  .channel-chat {
+    grid-column: 3;
+    grid-row: 1 / 5;
+
+    min-width: 0;
+    min-height: 0;
+
+    border-radius: 0;
+
+    background: var(--spc-surface);
+  }
+
+  .channel-chat > .group-placeholder {
+    height: 100%;
+  }
+
+  .channel-chat-header {
+    min-height: 76px;
+
+    padding: 13px 20px;
+
+    background: var(--spc-surface);
+  }
+
+  .channel-chat-header h3 {
+    font-size: 15px;
+  }
+
+  .channel-chat-header h3 svg {
+    color: var(--spc-purple);
+  }
+
+  .channel-chat-header p {
+    margin-top: 4px;
+
+    font-size: 10px;
+  }
+
+  .group-message-list {
+    padding: 24px 22px;
+  }
+
+  .group-message {
+    gap: 12px;
+
+    margin-bottom: 21px;
+  }
+
+  .message-avatar {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+
+    font-size: 11px;
+  }
+
+  .message-meta strong {
+    font-size: 13px;
+  }
+
+  .message-meta span {
+    font-size: 10px;
+  }
+
+  .message-content {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  /* -------------------------------------------------------
+     COMPOSER — stays at bottom like Figma
+     ------------------------------------------------------- */
+
+  .group-composer {
+    padding: 12px 18px 15px;
+
+    background: var(--spc-surface);
+  }
+
+  .message-form {
+    gap: 8px;
+  }
+
+  .message-input-wrap > input {
+    min-height: 46px;
+
+    border-radius: 12px;
+
+    padding: 0 15px;
+  }
+
+  .attachment-button,
+  .send-group-message {
+    width: 46px;
+    height: 46px;
+    flex-basis: 46px;
+
+    border-radius: 11px;
+  }
+
+  /* -------------------------------------------------------
+     ERROR — floating so it does not destroy the grid
+     ------------------------------------------------------- */
+
+  .sg-error {
+    position: absolute;
+    top: 12px;
+    right: 18px;
+    z-index: 100;
+
+    width: min(420px, calc(100% - 36px));
+
+    margin: 0;
+
+    box-shadow: var(--spc-shadow-md);
+  }
+}
+
+/* =========================================================
+   MEDIUM DESKTOP
+   ========================================================= */
+
+@media (min-width: 851px) and (max-width: 1250px) {
+
+  .group-study-page {
+    grid-template-columns:
+      270px
+      220px
+      minmax(0, 1fr);
+  }
+
+  .workspace-header {
+    padding:
+      13px
+      12px;
+  }
+
+  .channel-sidebar {
+    padding:
+      12px
+      8px;
+  }
+
+  .group-message-list {
+    padding:
+      18px
+      16px;
+  }
+}
+
+/* =========================================================
+   EXISTING TABLET / MOBILE LAYOUT
+   Keep stacked behaviour below 850px
+   ========================================================= */
+
+@media (max-width: 850px) {
+
+  .group-study-page {
+    height: auto;
+
+    margin: 0;
+
+    display: block;
+
+    overflow: visible;
+  }
+
+  .group-study-header {
+    display: flex;
+  }
+
+  .group-study-header > div {
+    display: block;
+  }
+}

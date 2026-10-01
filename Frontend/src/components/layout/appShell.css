@@ -709,3 +709,39 @@ textarea:focus-visible {
     padding: 0 16px;
   }
 }
+
+/* =========================================================
+   COLLAPSIBLE SIDEBAR SECTIONS
+   ========================================================= */
+
+.sidebar-section-toggle {
+  width: 100%;
+
+  border: 0;
+
+  background: transparent;
+
+  text-align: left;
+
+  cursor: pointer;
+}
+
+.sidebar-section-toggle:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-purple);
+
+  border-radius: var(--spc-radius-sm);
+}
+
+.sidebar-section-toggle.active {
+  color: var(--spc-purple);
+}
+
+.sidebar-chevron {
+  transition:
+    transform 0.2s ease;
+}
+
+.sidebar-chevron.open {
+  transform: rotate(180deg);
+}
