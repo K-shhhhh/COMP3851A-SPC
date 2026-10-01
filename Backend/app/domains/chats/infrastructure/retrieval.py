@@ -103,7 +103,7 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
             )
             .where(
                 Attachment.uploaded_by == user_uuid,
-                Attachment.channel_id.is_(None),
+                Attachment.show_in_library.is_(True),
                 Attachment.processing_status == AttachmentStatus.READY,
                 Attachment.deleted_at.is_(None),
                 Chunk.deleted_at.is_(None),

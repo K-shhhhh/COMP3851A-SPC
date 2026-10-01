@@ -5,18 +5,16 @@ import uuid
 from datetime import datetime
 from typing import Any
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Identity, Index, Integer, Text, UniqueConstraint, func, text)
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
 
 # -----------------------------------------------------------------------------
 # Base Model
 # -----------------------------------------------------------------------------
 class Base(DeclarativeBase):
     pass
-
 
 
 # -----------------------------------------------------------------------------
@@ -145,7 +143,6 @@ class User(Base):
         back_populates="uploader",
         foreign_keys="Attachment.uploaded_by",
     )
-    knowledge_graphs: Mapped[list[KnowledgeGraph]] = relationship(back_populates="user")
     ai_response_feedbacks: Mapped[list[AIResponseFeedback]] = relationship(
         back_populates="user"
     )
@@ -276,7 +273,6 @@ class Message(Base):
         nullable=False,
     )
     message_content: Mapped[str] = mapped_column(Text, nullable=False)
-    # NULL is an ordinary human message; DEFAULT explicitly invokes Companion.
     ai_mode_used: Mapped[AIMode | None] = mapped_column(
         pg_enum(AIMode, "ai_modes"),
         nullable=True,
@@ -304,11 +300,13 @@ class MessageMention(Base):
         ForeignKey("messages.message_id", ondelete="CASCADE"),
         primary_key=True,
         autoincrement=False,
+        nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
         primary_key=True,
+        nullable=False,
     )
 
     message: Mapped[Message] = relationship(back_populates="mentions")
@@ -319,7 +317,7 @@ class Attachment(Base):
     __tablename__ = "attachments"
     __table_args__ = (
         CheckConstraint(
-            "file_size_bytes >= 0",
+            "file_size_bytes > 0",
             name="ck_attachments_file_size",
         ),
         CheckConstraint(
@@ -354,7 +352,7 @@ class Attachment(Base):
     file_name: Mapped[str] = mapped_column(Text, nullable=False)
     file_type: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    object_path: Mapped[str | None] = mapped_column(Text)
+    object_path: Mapped[str] = mapped_column(Text, nullable=False)
     processing_status: Mapped[AttachmentStatus] = mapped_column(
         pg_enum(AttachmentStatus, "attachment_status"),
         nullable=False,
@@ -366,6 +364,9 @@ class Attachment(Base):
         server_default=text("0"),
     )
     processing_error: Mapped[str | None] = mapped_column(Text)
+    show_in_library: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true"),
+    )
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -378,6 +379,11 @@ class Attachment(Base):
     group: Mapped[Group | None] = relationship(back_populates="attachments")
     message: Mapped[Message | None] = relationship(back_populates="attachments")
     chunks: Mapped[list[Chunk]] = relationship(back_populates="attachment")
+    
+    # A graph may not exist yet while the attachment is awaiting processing.
+    knowledge_graph: Mapped[KnowledgeGraph | None] = relationship(
+        back_populates="attachment", uselist=False,
+    )
 
 
 class Chunk(Base):
@@ -410,6 +416,7 @@ class Chunk(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     attachment: Mapped[Attachment] = relationship(back_populates="chunks")
+    knowledge_nodes: Mapped[list[KnowledgeNode]] = relationship(back_populates="source_chunk")
     ai_response_sources: Mapped[list[AIResponseSource]] = relationship(
         back_populates="chunk"
     )
@@ -423,9 +430,9 @@ class KnowledgeGraph(Base):
         Identity(always=True),
         primary_key=True,
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("users.user_id", name="fk_user_id_for_knowledge_graphs"),
+    attachment_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("attachments.attachment_id", name="fk_attachment_id_for_knowledge_graphs"),
         nullable=False,
     )
     graph_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -434,13 +441,16 @@ class KnowledgeGraph(Base):
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    user: Mapped[User] = relationship(back_populates="knowledge_graphs")
+    attachment: Mapped[Attachment] = relationship(back_populates="knowledge_graph")
     nodes: Mapped[list[KnowledgeNode]] = relationship(back_populates="graph")
     edges: Mapped[list[KnowledgeEdge]] = relationship(back_populates="graph")
 
 
 class KnowledgeNode(Base):
     __tablename__ = "knowledge_nodes"
+    __table_args__ = (
+        UniqueConstraint("graph_id", "node_id", name="uq_knowledge_nodes_graph_node"),
+    )
 
     node_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -452,14 +462,20 @@ class KnowledgeNode(Base):
         ForeignKey("knowledge_graphs.graph_id", name="fk_graph_id_for_knowledge_nodes"),
         nullable=False,
     )
-    node_label: Mapped[str] = mapped_column(Text, nullable=False)
-    node_properties: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    position_x: Mapped[float | None] = mapped_column(Float)
-    position_y: Mapped[float | None] = mapped_column(Float)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    topic: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source_chunk_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("chunks.chunk_id", name="fk_source_chunk_id_for_knowledge_nodes"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     graph: Mapped[KnowledgeGraph] = relationship(back_populates="nodes")
+    source_chunk: Mapped[Chunk | None] = relationship(back_populates="knowledge_nodes")
     source_edges: Mapped[list[KnowledgeEdge]] = relationship(
         back_populates="source_node",
         foreign_keys="KnowledgeEdge.source_node_id",
@@ -475,6 +491,18 @@ class KnowledgeNode(Base):
 
 class KnowledgeEdge(Base):
     __tablename__ = "knowledge_edges"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["graph_id", "source_node_id"],
+            ["knowledge_nodes.graph_id", "knowledge_nodes.node_id"],
+            name="fk_edge_source_same_graph",
+        ),
+        ForeignKeyConstraint(
+            ["graph_id", "target_node_id"],
+            ["knowledge_nodes.graph_id", "knowledge_nodes.node_id"],
+            name="fk_edge_target_same_graph",
+        ),
+    )
 
     edge_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -502,10 +530,10 @@ class KnowledgeEdge(Base):
         ),
         nullable=False,
     )
-    edge_label: Mapped[str | None] = mapped_column(Text)
-    edge_properties: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    relationship_label: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     graph: Mapped[KnowledgeGraph] = relationship(back_populates="edges")
     source_node: Mapped[KnowledgeNode] = relationship(
@@ -626,7 +654,7 @@ class UserActivityLog(Base):
         Identity(always=True),
         primary_key=True,
     )
-    # Intentionally no ForeignKey: the Version 4 SQL schema does not define one.
+    # Intentionally no ForeignKey: the SQL schema does not define one.
     user_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
     user_action: Mapped[Action] = mapped_column(
         pg_enum(Action, "actions"), nullable=False
@@ -659,6 +687,12 @@ Index(
 Index("ix_memberships_group_id", Membership.group_id)
 
 Index(
+    "uq_knowledge_graphs_attachment",
+    KnowledgeGraph.attachment_id,
+    unique=True,
+)
+
+Index(
     "ix_messages_channel_sent_at",
     Message.channel_id,
     Message.sent_at.desc(),
@@ -670,7 +704,6 @@ Index("ix_attachments_channel_id", Attachment.channel_id)
 Index("ix_attachments_group_id", Attachment.group_id)
 Index("ix_attachments_message_id", Attachment.message_id)
 
-# Match the active-record and relationship lookup indexes in schema version 5.
 Index(
     "ix_users_active_email", func.lower(User.email),
     postgresql_where=User.deleted_at.is_(None) & (User.status == ActivityStatus.ACTIVE),
@@ -711,6 +744,20 @@ Index("ix_ai_response_sources_response", AIResponseSource.response_id, AIRespons
 Index("ix_ai_response_sources_chunk", AIResponseSource.chunk_id)
 Index("ix_ai_response_sources_node", AIResponseSource.node_id)
 Index("ix_ai_response_sources_edge", AIResponseSource.edge_id)
+
+Index(
+    "ix_knowledge_nodes_active_graph", KnowledgeNode.graph_id, KnowledgeNode.node_id,
+    postgresql_where=KnowledgeNode.deleted_at.is_(None),
+)
+Index(
+    "ix_knowledge_edges_active_graph", KnowledgeEdge.graph_id, KnowledgeEdge.edge_id,
+    postgresql_where=KnowledgeEdge.deleted_at.is_(None),
+)
+Index(
+    "ix_attachments_active_library_owner_uploaded",
+    Attachment.uploaded_by, Attachment.uploaded_at.desc(),
+    postgresql_where=Attachment.deleted_at.is_(None) & Attachment.show_in_library.is_(True),
+)
 
 Index(
     "ix_chunks_vector_embedding_hnsw",

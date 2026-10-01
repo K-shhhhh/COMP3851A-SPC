@@ -12,6 +12,8 @@ from app.models.orm_models import (
     Attachment as ORMAttachment,
     AttachmentStatus,
     Channel,
+    Group,
+    GroupType,
     Membership,
 )
 
@@ -51,14 +53,7 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
             processing_progress=attachment.processing_progress,
             uploaded_at=attachment.uploaded_at,
             updated_at=attachment.last_updated_at or attachment.uploaded_at,
-            # The fallback keeps this branch compatible until the database
-            # migration adds the explicit column. Personal-chat uploads become
-            # fully library-visible once that migration is applied.
-            show_in_library=getattr(
-                attachment,
-                "show_in_library",
-                attachment.channel_id is None,
-            ),
+            show_in_library=attachment.show_in_library,
             channel_id=(
                 str(attachment.channel_id)
                 if attachment.channel_id is not None
@@ -82,7 +77,11 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
         channel_id: str | None = None,
         message_id: int | None = None,
     ) -> NoteAttachment:
-        """Create queued metadata after validation and private file storage."""
+        """Create metadata with visibility derived from the stored group type.
+
+        The visibility argument is retained for the shared repository interface;
+        PostgreSQL derives the authoritative value from the upload destination.
+        """
 
         uploader_uuid = self._parse_uuid(uploaded_by)
         if uploader_uuid is None:
@@ -90,18 +89,22 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
 
         channel_uuid = None
         group_id = None
+        show_in_library = True
         if channel_id is not None:
             channel_uuid = self._parse_uuid(channel_id)
             if channel_uuid is None:
                 raise ValueError("channel_id must be a valid UUID")
-            group_id = await self.session.scalar(
-                select(Channel.group_id).where(
+            group = await self.session.scalar(
+                select(Group).join(Channel, Channel.group_id == Group.group_id).where(
                     Channel.channel_id == channel_uuid,
                     Channel.deleted_at.is_(None),
+                    Group.deleted_at.is_(None),
                 )
             )
-            if group_id is None:
+            if group is None:
                 raise LookupError("active channel not found")
+            group_id = group.group_id
+            show_in_library = group.group_type == GroupType.PERSONAL
 
         now = datetime.now(timezone.utc)
         orm_attachment = ORMAttachment(
@@ -116,6 +119,7 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
             object_path=object_path,
             processing_status=AttachmentStatus.QUEUED,
             processing_progress=0,
+            show_in_library=show_in_library,
             uploaded_at=now,
             last_updated_at=now,
         )
@@ -164,7 +168,7 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
                 ORMAttachment.deleted_at.is_(None),
                 or_(
                     (
-                        ORMAttachment.channel_id.is_(None)
+                        ORMAttachment.show_in_library.is_(True)
                         & (ORMAttachment.uploaded_by == user_uuid)
                     ),
                     (
@@ -193,7 +197,7 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
             return [], 0
         filters = [
             ORMAttachment.uploaded_by == user_uuid,
-            ORMAttachment.channel_id.is_(None),
+            ORMAttachment.show_in_library.is_(True),
             ORMAttachment.deleted_at.is_(None),
         ]
         if processing_status is not None:

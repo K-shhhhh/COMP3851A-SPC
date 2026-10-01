@@ -1,18 +1,16 @@
 /*
-Version: 5
+Version: 6
 
 Existing tables:	users, groups, memberships, channels, messages, message_mentions, attachments, chunks,
                 	knowledge_graphs, knowledge_nodes, knowledge_edges,
 (15 in total)   	ai_responses, ai_response_sources, ai_response_feedbacks,
                 	user_activity_logs
 
-New table:  message_mentions
+Updated tables: message_mentions, attachments, knowledge_graphs, knowledge_nodes, knowledge_edges
 
-Updated tables: users, groups, messages, channels, messages, attachments, chunks
-
-Changes: 	A new juntion table called Message_Mentions is added to allow mentioning multiple users in a message. Unlike other tables, it uses composite keys as identifier.
-            Removed default value and not null constraint from "ai_mode_used" attribute in Messages table.
-            Added/Updates indexes in users, groups, messages, channels, messages, attachments, chunks, ai_responses, ai_response_sources
+Changes:    Added not null constraints to the composite keys of Message_Mentions table.
+            Added "show_in_library" attribute in Attachments table.
+            Restructured Knowledge_Graphs, Knowledge_Nodes and Knowledge_Edges tables: attributes, relationships, constraints and their indexes.
 
 Notes:	Deletion rules may be implemented as required in future updates.
 		Besides, future updates should focus more on constraints and indexes of the tables related to knowledge graph, AI responses and activity logs.
@@ -72,7 +70,7 @@ create table if not exists memberships (
 	constraint fk_group_id_for_memberships foreign key (group_id)
 	references groups(group_id),
 
-	constraint uq_memberships_user_group	unique (user_id, group_id)
+	constraint uq_memberships_user_group unique (user_id, group_id)
 );
 
 create table if not exists channels (
@@ -110,8 +108,8 @@ create table if not exists messages (
 );
 
 create table if not exists message_mentions (
-    message_id bigint references messages(message_id) on delete cascade,
-    user_id uuid references users(user_id) on delete cascade,
+    message_id bigint not null references messages(message_id) on delete cascade,
+    user_id uuid not null references users(user_id) on delete cascade,
     primary key (message_id, user_id)
 );
 
@@ -125,10 +123,11 @@ create table if not exists attachments (
     file_name text not null,
     file_type text not null,
     file_size_bytes bigint not null,
-    object_path text,
+    object_path text not null,
     processing_status attachment_status default 'queued' not null,
 	processing_progress int default 0 not null,
 	processing_error text,
+    show_in_library boolean default true not null,
     uploaded_at timestamptz not null,
     last_updated_at timestamptz,
 	deleted_at timestamptz,
@@ -145,7 +144,7 @@ create table if not exists attachments (
 	constraint fk_message_id_for_attachments foreign key (message_id)
 	references messages(message_id),
 
-	constraint ck_attachments_file_size check (file_size_bytes >= 0),
+	constraint ck_attachments_file_size check (file_size_bytes > 0),
 
 	constraint ck_attachments_processing_progress check (processing_progress between 0 and 100)
 );
@@ -165,34 +164,40 @@ create table if not exists chunks (
 	constraint fk_attachment_id_for_chunks foreign key (attachment_id)
 	references attachments(attachment_id),
 
-	constraint uq_chunks_attachment_order    unique (attachment_id, chunk_order)
+	constraint uq_chunks_attachment_order unique (attachment_id, chunk_order)
 );
 
 create table if not exists knowledge_graphs (
     graph_id bigint generated always as identity primary key,
-    user_id uuid not null,
+    attachment_id bigint not null,
     graph_name text not null,
     description text,
     created_at timestamptz not null,
     last_updated_at timestamptz,
     deleted_at timestamptz,
 
-	constraint fk_user_id_for_knowledge_graphs foreign key (user_id)
-	references users(user_id)
+	constraint fk_attachment_id_for_knowledge_graphs foreign key (attachment_id)
+	references attachments(attachment_id)
 );
 
 create table if not exists knowledge_nodes (
     node_id bigint generated always as identity primary key,
     graph_id bigint not null,
-    node_label text not null,
-    node_properties jsonb,
-    position_x double precision,
-    position_y double precision,
+    title text not null,
+    topic text not null,
+    description text not null,
+    source_chunk_id bigint,
     created_at timestamptz not null,
     last_updated_at timestamptz,
+    deleted_at timestamptz,
 
 	constraint fk_graph_id_for_knowledge_nodes foreign key (graph_id)
-	references knowledge_graphs(graph_id)
+	references knowledge_graphs(graph_id),
+
+    constraint fk_source_chunk_id_for_knowledge_nodes foreign key (source_chunk_id)
+	references chunks(chunk_id),
+
+    constraint uq_knowledge_nodes_graph_node unique (graph_id, node_id)
 );
 
 create table if not exists knowledge_edges (
@@ -200,10 +205,10 @@ create table if not exists knowledge_edges (
     graph_id bigint not null,
     source_node_id bigint not null,
     target_node_id bigint not null,
-    edge_label text,
-    edge_properties jsonb,
+    relationship_label text,
     created_at timestamptz not null,
     last_updated_at timestamptz,
+    deleted_at timestamptz,
 
 	constraint fk_graph_id_for_knowledge_edges foreign key (graph_id)
 	references knowledge_graphs(graph_id),
@@ -212,7 +217,13 @@ create table if not exists knowledge_edges (
 	references knowledge_nodes(node_id),
 
 	constraint fk_target_node_id_for_knowledge_edges foreign key (target_node_id)
-	references knowledge_nodes(node_id)
+	references knowledge_nodes(node_id),
+
+    constraint fk_edge_source_same_graph foreign key (graph_id, source_node_id) 
+    references knowledge_nodes(graph_id, node_id),
+
+    constraint fk_edge_target_same_graph foreign key (graph_id, target_node_id) 
+    references knowledge_nodes(graph_id, node_id)
 );
 
 create table if not exists ai_responses (
@@ -285,6 +296,9 @@ create table if not exists user_activity_logs (
 -- Unique index for channel name consistency, allows duplication if an old one is deleted
 create unique index uq_channels_group_name on channels (group_id, lower(channel_name)) where deleted_at is null;
 
+-- One graph record per attachment, including soft-deleted records. Regeneration should update/reuse the existing graph rather than inserting another.
+create unique index uq_knowledge_graphs_attachment on knowledge_graphs (attachment_id);
+
 -- Membership lookups from group
 create index if not exists ix_memberships_group_id on memberships (group_id);
 
@@ -330,3 +344,12 @@ create index if not exists ix_ai_response_sources_response on ai_response_source
 create index if not exists ix_ai_response_sources_chunk on ai_response_sources (chunk_id);
 create index if not exists ix_ai_response_sources_node on ai_response_sources (node_id);
 create index if not exists ix_ai_response_sources_edge on ai_response_sources (edge_id);
+
+-- Active graph nodes: graph loading and replacement.
+create index if not exists ix_knowledge_nodes_active_graph on knowledge_nodes (graph_id, node_id) where deleted_at is null;
+
+-- Active graph edges: graph loading and replacement.
+create index if not exists ix_knowledge_edges_active_graph on knowledge_edges (graph_id, edge_id) where deleted_at is null;
+
+-- My Notes: owner filtering and newest-first pagination.
+create index if not exists ix_attachments_active_library_owner_uploaded on attachments (uploaded_by, uploaded_at desc) where deleted_at is null and show_in_library is true;
