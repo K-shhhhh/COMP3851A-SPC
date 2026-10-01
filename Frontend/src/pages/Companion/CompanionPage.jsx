@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   BookOpen,
@@ -23,16 +19,18 @@ import {
 } from "lucide-react";
 
 import AppShell from "../../components/layout/AppShell.jsx";
-import { useAuth } from "../../contexts/AuthContext.jsx";
 import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
+import { useAuth } from "../../contexts/AuthContext.jsx";
 
 import {
   createChat,
   deleteChat,
+  getChatAttachmentStatus,
   getChatMessages,
   getChats,
   renameChat,
   sendChatMessage,
+  uploadChatAttachment,
 } from "../../services/chatService.js";
 
 import "./companion.css";
@@ -60,22 +58,10 @@ const suggestedPrompts = [
 ];
 
 function CompanionPage() {
-  const {
-    accessToken,
-    logout,
-  } = useAuth();
+  const { accessToken, logout } = useAuth();
 
-  const [message, setMessage] =
-    useState("");
+  const [message, setMessage] = useState("");
 
-  /*
-   * Response format selected by the user.
-   *
-   * Values sent to the backend:
-   * paragraph
-   * bullet_points
-   * table
-   */
   const [
     responseFormat,
     setResponseFormat,
@@ -138,22 +124,93 @@ function CompanionPage() {
     useState("");
 
   /*
-   * Bottom marker used for automatic
-   * scrolling to the newest message.
+   * Personal chat PDF attachment state.
    */
+  const [
+    attachment,
+    setAttachment,
+  ] = useState(null);
+
+  const [
+    isAttachmentUploading,
+    setIsAttachmentUploading,
+  ] = useState(false);
+
   const messagesEndRef =
     useRef(null);
+
+  const attachmentInputRef =
+    useRef(null);
+
+  const attachmentPollRef =
+    useRef(null);
+
+  const attachmentPollKeyRef =
+    useRef(0);
 
   async function clearInvalidSession() {
     try {
       await logout();
     } catch {
       /*
-       * AuthContext clears authentication
-       * state in its finally block.
+       * AuthContext clears auth state
+       * in its finally block.
        */
     }
   }
+
+  /*
+   * =========================================================
+   * ATTACHMENT HELPERS
+   * =========================================================
+   */
+
+  function stopAttachmentPolling() {
+    attachmentPollKeyRef.current += 1;
+
+    if (
+      attachmentPollRef.current
+    ) {
+      window.clearTimeout(
+        attachmentPollRef.current,
+      );
+
+      attachmentPollRef.current =
+        null;
+    }
+  }
+
+  function clearAttachmentState() {
+    stopAttachmentPolling();
+
+    setAttachment(null);
+
+    setIsAttachmentUploading(
+      false,
+    );
+
+    if (
+      attachmentInputRef.current
+    ) {
+      attachmentInputRef.current.value =
+        "";
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      attachmentPollKeyRef.current +=
+        1;
+
+      if (
+        attachmentPollRef.current
+      ) {
+        window.clearTimeout(
+          attachmentPollRef.current,
+        );
+      }
+    };
+  }, []);
 
   /*
    * =========================================================
@@ -171,10 +228,13 @@ function CompanionPage() {
     async function loadChats() {
       try {
         setIsLoadingChats(true);
+
         setError("");
 
         const result =
-          await getChats(accessToken);
+          await getChats(
+            accessToken,
+          );
 
         if (cancelled) {
           return;
@@ -183,7 +243,9 @@ function CompanionPage() {
         const chatItems =
           result?.items ?? [];
 
-        setConversations(chatItems);
+        setConversations(
+          chatItems,
+        );
 
         setSelectedChatId(
           (currentChatId) => {
@@ -228,7 +290,9 @@ function CompanionPage() {
         );
       } finally {
         if (!cancelled) {
-          setIsLoadingChats(false);
+          setIsLoadingChats(
+            false,
+          );
         }
       }
     }
@@ -259,7 +323,10 @@ function CompanionPage() {
 
     async function loadMessages() {
       try {
-        setIsLoadingMessages(true);
+        setIsLoadingMessages(
+          true,
+        );
+
         setError("");
 
         const result =
@@ -307,8 +374,13 @@ function CompanionPage() {
               ),
           );
 
-          setSelectedChatId(null);
+          setSelectedChatId(
+            null,
+          );
+
           setMessages([]);
+
+          clearAttachmentState();
 
           setError(
             "This conversation is no longer available.",
@@ -343,24 +415,25 @@ function CompanionPage() {
    * =========================================================
    * AUTO SCROLL
    * =========================================================
-   *
-   * When messages change, move to the
-   * actual bottom of the conversation.
-   *
-   * There is no artificial spacer.
    */
 
   useEffect(() => {
-    if (isLoadingMessages) {
+    if (
+      isLoadingMessages
+    ) {
       return;
     }
 
-    requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
-    });
+    requestAnimationFrame(
+      () => {
+        messagesEndRef.current?.scrollIntoView(
+          {
+            behavior: "smooth",
+            block: "end",
+          },
+        );
+      },
+    );
   }, [
     messages,
     isLoadingMessages,
@@ -381,7 +454,10 @@ function CompanionPage() {
     }
 
     try {
-      setIsCreatingChat(true);
+      setIsCreatingChat(
+        true,
+      );
+
       setError("");
 
       const newChat =
@@ -401,9 +477,15 @@ function CompanionPage() {
       );
 
       setMessages([]);
+
       setMessage("");
 
-      setEditingChatId(null);
+      clearAttachmentState();
+
+      setEditingChatId(
+        null,
+      );
+
       setEditingTitle("");
     } catch (err) {
       console.error(
@@ -424,7 +506,9 @@ function CompanionPage() {
         "Unable to create a conversation. Please try again.",
       );
     } finally {
-      setIsCreatingChat(false);
+      setIsCreatingChat(
+        false,
+      );
     }
   }
 
@@ -437,9 +521,19 @@ function CompanionPage() {
   function handleSelectConversation(
     chatId,
   ) {
-    setSelectedChatId(chatId);
+    if (
+      chatId !==
+      selectedChatId
+    ) {
+      clearAttachmentState();
+    }
+
+    setSelectedChatId(
+      chatId,
+    );
 
     setMessage("");
+
     setError("");
   }
 
@@ -465,7 +559,10 @@ function CompanionPage() {
   }
 
   function cancelRename() {
-    setEditingChatId(null);
+    setEditingChatId(
+      null,
+    );
+
     setEditingTitle("");
   }
 
@@ -487,7 +584,10 @@ function CompanionPage() {
     }
 
     try {
-      setRenamingChatId(chatId);
+      setRenamingChatId(
+        chatId,
+      );
+
       setError("");
 
       const updatedChat =
@@ -499,21 +599,26 @@ function CompanionPage() {
 
       setConversations(
         (current) =>
-          current.map((chat) =>
-            chat.id === chatId
-              ? {
-                  ...chat,
-                  ...updatedChat,
-                  title:
-                    updatedChat
-                      ?.title ||
-                    newTitle,
-                }
-              : chat,
+          current.map(
+            (chat) =>
+              chat.id ===
+              chatId
+                ? {
+                    ...chat,
+                    ...updatedChat,
+                    title:
+                      updatedChat
+                        ?.title ||
+                      newTitle,
+                  }
+                : chat,
           ),
       );
 
-      setEditingChatId(null);
+      setEditingChatId(
+        null,
+      );
+
       setEditingTitle("");
     } catch (err) {
       console.error(
@@ -543,7 +648,9 @@ function CompanionPage() {
             ),
         );
 
-        setEditingChatId(null);
+        setEditingChatId(
+          null,
+        );
 
         setError(
           "This conversation is no longer available.",
@@ -556,7 +663,9 @@ function CompanionPage() {
         "Unable to rename this conversation.",
       );
     } finally {
-      setRenamingChatId(null);
+      setRenamingChatId(
+        null,
+      );
     }
   }
 
@@ -616,9 +725,9 @@ function CompanionPage() {
           nextChatId,
         );
 
-        if (!nextChatId) {
-          setMessages([]);
-        }
+        setMessages([]);
+
+        clearAttachmentState();
       }
 
       if (
@@ -667,6 +776,8 @@ function CompanionPage() {
           );
 
           setMessages([]);
+
+          clearAttachmentState();
         }
 
         return;
@@ -676,7 +787,331 @@ function CompanionPage() {
         "Unable to delete this conversation.",
       );
     } finally {
-      setDeletingChatId(null);
+      setDeletingChatId(
+        null,
+      );
+    }
+  }
+
+  /*
+   * =========================================================
+   * PERSONAL CHAT ATTACHMENT STATUS
+   * =========================================================
+   */
+
+  async function pollAttachmentStatus(
+    chatId,
+    attachmentId,
+    pollKey,
+  ) {
+    try {
+      const result =
+        await getChatAttachmentStatus(
+          accessToken,
+          chatId,
+          attachmentId,
+        );
+
+      if (
+        attachmentPollKeyRef
+          .current !==
+        pollKey
+      ) {
+        return;
+      }
+
+      setAttachment(
+        (current) => {
+          if (
+            !current ||
+            current.id !==
+              attachmentId
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+            status:
+              result.status,
+            progress:
+              result.progress ??
+              0,
+            message:
+              result.message ||
+              "",
+            error:
+              result.error ||
+              null,
+          };
+        },
+      );
+
+      if (
+        result.status ===
+          "ready" ||
+        result.status ===
+          "failed"
+      ) {
+        attachmentPollRef.current =
+          null;
+
+        return;
+      }
+
+      attachmentPollRef.current =
+        window.setTimeout(
+          () => {
+            void pollAttachmentStatus(
+              chatId,
+              attachmentId,
+              pollKey,
+            );
+          },
+          2000,
+        );
+    } catch (err) {
+      if (
+        attachmentPollKeyRef
+          .current !==
+        pollKey
+      ) {
+        return;
+      }
+
+      if (
+        AUTH_ERROR_CODES.has(
+          err.code,
+        )
+      ) {
+        await clearInvalidSession();
+        return;
+      }
+
+      setAttachment(
+        (current) => {
+          if (
+            !current ||
+            current.id !==
+              attachmentId
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+            status: "failed",
+            error: {
+              message:
+                err.message ||
+                "Unable to check PDF processing status.",
+            },
+          };
+        },
+      );
+
+      attachmentPollRef.current =
+        null;
+    }
+  }
+
+  /*
+   * =========================================================
+   * UPLOAD PERSONAL CHAT PDF
+   * =========================================================
+   */
+
+  async function handleAttachmentChange(
+    event,
+  ) {
+    const file =
+      event.target
+        .files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (
+      file.type !==
+        "application/pdf" &&
+      !file.name
+        .toLowerCase()
+        .endsWith(".pdf")
+    ) {
+      setError(
+        "Only PDF files can be attached to a personal chat.",
+      );
+
+      event.target.value =
+        "";
+
+      return;
+    }
+
+    if (
+      !accessToken ||
+      isAttachmentUploading
+    ) {
+      event.target.value =
+        "";
+
+      return;
+    }
+
+    stopAttachmentPolling();
+
+    const pollKey =
+      attachmentPollKeyRef.current;
+
+    setIsAttachmentUploading(
+      true,
+    );
+
+    setError("");
+
+    setAttachment({
+      id: null,
+      fileName: file.name,
+      status: "uploading",
+      progress: 0,
+      message:
+        "Uploading PDF...",
+      error: null,
+    });
+
+    try {
+      let chatId =
+        selectedChatId;
+
+      /*
+       * If the user has no chat selected yet,
+       * create one before uploading the PDF.
+       */
+      if (!chatId) {
+        const newChat =
+          await createChat(
+            accessToken,
+          );
+
+        setConversations(
+          (current) => [
+            newChat,
+            ...current,
+          ],
+        );
+
+        setSelectedChatId(
+          newChat.id,
+        );
+
+        setMessages([]);
+
+        chatId =
+          newChat.id;
+      }
+
+      const result =
+        await uploadChatAttachment(
+          accessToken,
+          chatId,
+          file,
+        );
+
+      if (
+        attachmentPollKeyRef
+          .current !==
+        pollKey
+      ) {
+        return;
+      }
+
+      const attachmentId =
+        result?.id;
+
+      if (!attachmentId) {
+        throw new Error(
+          "The backend did not return an attachment ID.",
+        );
+      }
+
+      setAttachment({
+        id: attachmentId,
+
+        fileName:
+          result.file_name ||
+          file.name,
+
+        status:
+          result.status ||
+          "queued",
+
+        progress:
+          result
+            .processing_progress ??
+          0,
+
+        message:
+          result.status ===
+          "ready"
+            ? "PDF is ready for AI questions."
+            : result.status ===
+                "failed"
+              ? "PDF processing failed."
+              : "PDF uploaded. Processing...",
+
+        error: null,
+      });
+
+      if (
+        result.status !==
+          "ready" &&
+        result.status !==
+          "failed"
+      ) {
+        void pollAttachmentStatus(
+          chatId,
+          attachmentId,
+          pollKey,
+        );
+      }
+    } catch (err) {
+      if (
+        AUTH_ERROR_CODES.has(
+          err.code,
+        )
+      ) {
+        await clearInvalidSession();
+        return;
+      }
+
+      const uploadMessage =
+        err.message ||
+        "Unable to upload this PDF. Please try again.";
+
+      setAttachment({
+        id: null,
+        fileName: file.name,
+        status: "failed",
+        progress: 0,
+        message:
+          "PDF upload failed.",
+        error: {
+          message:
+            uploadMessage,
+        },
+      });
+
+      setError(
+        uploadMessage,
+      );
+    } finally {
+      setIsAttachmentUploading(
+        false,
+      );
+
+      event.target.value =
+        "";
     }
   }
 
@@ -704,6 +1139,7 @@ function CompanionPage() {
 
     try {
       setIsSending(true);
+
       setError("");
 
       let chatId =
@@ -734,15 +1170,6 @@ function CompanionPage() {
           newChat.id;
       }
 
-      /*
-       * responseFormat is passed separately
-       * from the question.
-       *
-       * Example:
-       *
-       * content: "Explain machine learning"
-       * responseFormat: "bullet_points"
-       */
       const result =
         await sendChatMessage(
           accessToken,
@@ -752,8 +1179,31 @@ function CompanionPage() {
         );
 
       /*
-       * Backend returns both the student's
-       * message and the AI response.
+       * The backend generates the automatic
+       * title from the first user question.
+       *
+       * Merge the returned chat into the
+       * sidebar immediately instead of
+       * generating a title on the frontend.
+       */
+      if (result?.chat) {
+        setConversations(
+          (current) =>
+            current.map(
+              (chat) =>
+                chat.id ===
+                result.chat.id
+                  ? {
+                      ...chat,
+                      ...result.chat,
+                    }
+                  : chat,
+            ),
+        );
+      }
+
+      /*
+       * Add both returned messages.
        */
       if (
         result?.user_message &&
@@ -811,11 +1261,24 @@ function CompanionPage() {
             ),
         );
 
-        setSelectedChatId(null);
+        setSelectedChatId(
+          null,
+        );
+
         setMessages([]);
+
+        clearAttachmentState();
 
         setError(
           "This conversation could not be found.",
+        );
+      } else if (
+        err.code ===
+        "PROMPT_INJECTION_DETECTED"
+      ) {
+        setError(
+          err.message ||
+            "That question contains instructions that could override the AI's safety rules. Please rephrase it and try again.",
         );
       } else if (
         err.code ===
@@ -855,7 +1318,7 @@ function CompanionPage() {
 
   /*
    * =========================================================
-   * TIME
+   * MESSAGE TIME
    * =========================================================
    */
 
@@ -866,15 +1329,71 @@ function CompanionPage() {
       return "";
     }
 
-    const date =
-      new Date(createdAt);
-
-    return date.toLocaleTimeString(
+    return new Date(
+      createdAt,
+    ).toLocaleTimeString(
       [],
       {
         hour: "2-digit",
         minute: "2-digit",
       },
+    );
+  }
+
+  /*
+   * =========================================================
+   * ATTACHMENT STATUS TEXT
+   * =========================================================
+   */
+
+  function attachmentStatusText() {
+    if (!attachment) {
+      return "";
+    }
+
+    if (
+      attachment.status ===
+      "uploading"
+    ) {
+      return "Uploading PDF...";
+    }
+
+    if (
+      attachment.status ===
+      "queued"
+    ) {
+      return "PDF queued for processing...";
+    }
+
+    if (
+      attachment.status ===
+      "processing"
+    ) {
+      return `Processing PDF... ${attachment.progress ?? 0}%`;
+    }
+
+    if (
+      attachment.status ===
+      "ready"
+    ) {
+      return "PDF ready for AI questions.";
+    }
+
+    if (
+      attachment.status ===
+      "failed"
+    ) {
+      return (
+        attachment.error
+          ?.message ||
+        attachment.message ||
+        "PDF processing failed."
+      );
+    }
+
+    return (
+      attachment.message ||
+      ""
     );
   }
 
@@ -887,6 +1406,7 @@ function CompanionPage() {
         ============================== */}
 
         <aside className="conversation-sidebar">
+
           <div className="conversation-new-wrapper">
             <button
               type="button"
@@ -907,7 +1427,9 @@ function CompanionPage() {
           </div>
 
           <div className="conversation-list">
+
             <div className="conversation-section">
+
               <p className="conversation-group-title">
                 CONVERSATIONS
               </p>
@@ -927,7 +1449,9 @@ function CompanionPage() {
                 )}
 
               {conversations.map(
-                (conversation) => {
+                (
+                  conversation,
+                ) => {
                   const isEditing =
                     editingChatId ===
                     conversation.id;
@@ -947,6 +1471,7 @@ function CompanionPage() {
                           : ""
                       }`}
                     >
+
                       {isEditing ? (
                         <form
                           className="conversation-rename-form"
@@ -959,6 +1484,7 @@ function CompanionPage() {
                             )
                           }
                         >
+
                           <input
                             type="text"
                             value={
@@ -968,7 +1494,8 @@ function CompanionPage() {
                               event,
                             ) =>
                               setEditingTitle(
-                                event.target
+                                event
+                                  .target
                                   .value,
                               )
                             }
@@ -1005,9 +1532,11 @@ function CompanionPage() {
                               size={14}
                             />
                           </button>
+
                         </form>
                       ) : (
                         <>
+
                           <button
                             type="button"
                             className="conversation-title-button"
@@ -1022,6 +1551,7 @@ function CompanionPage() {
                           </button>
 
                           <div className="conversation-actions">
+
                             <button
                               type="button"
                               className="conversation-action-button"
@@ -1031,7 +1561,10 @@ function CompanionPage() {
                                 )
                               }
                               title="Rename conversation"
-                              aria-label={`Rename ${conversation.title || "conversation"}`}
+                              aria-label={`Rename ${
+                                conversation.title ||
+                                "conversation"
+                              }`}
                             >
                               <Pencil
                                 size={14}
@@ -1051,21 +1584,28 @@ function CompanionPage() {
                                 conversation.id
                               }
                               title="Delete conversation"
-                              aria-label={`Delete ${conversation.title || "conversation"}`}
+                              aria-label={`Delete ${
+                                conversation.title ||
+                                "conversation"
+                              }`}
                             >
                               <Trash2
                                 size={14}
                               />
                             </button>
+
                           </div>
                         </>
                       )}
+
                     </div>
                   );
                 },
               )}
+
             </div>
           </div>
+
         </aside>
 
         {/* ==============================
@@ -1077,6 +1617,7 @@ function CompanionPage() {
           {/* HEADER */}
 
           <header className="chat-header">
+
             <div className="chat-header-icon">
               <Sparkles
                 size={20}
@@ -1094,10 +1635,11 @@ function CompanionPage() {
                 materials
               </p>
             </div>
+
           </header>
 
           {/* ==============================
-              SCROLLABLE MESSAGE AREA
+              MESSAGE AREA
           ============================== */}
 
           <div className="chat-content">
@@ -1108,7 +1650,9 @@ function CompanionPage() {
                 0 &&
               !isLoadingMessages && (
                 <>
+
                   <div className="assistant-message-row">
+
                     <div className="assistant-avatar">
                       <Sparkles
                         size={20}
@@ -1116,7 +1660,9 @@ function CompanionPage() {
                     </div>
 
                     <div className="assistant-message-container">
+
                       <div className="assistant-message">
+
                         <p>
                           Hi! I&apos;m
                           your AI study
@@ -1136,11 +1682,15 @@ function CompanionPage() {
                           like to study
                           today?
                         </p>
+
                       </div>
+
                     </div>
+
                   </div>
 
                   <div className="suggested-prompts">
+
                     <p>
                       Try a suggested
                       prompt:
@@ -1171,7 +1721,9 @@ function CompanionPage() {
                         </button>
                       ),
                     )}
+
                   </div>
+
                 </>
               )}
 
@@ -1187,14 +1739,12 @@ function CompanionPage() {
 
             {!isLoadingMessages &&
               messages.map(
-                (chatMessage) => {
+                (
+                  chatMessage,
+                ) => {
                   const isUser =
                     chatMessage.role ===
                     "user";
-
-                  /*
-                   * USER MESSAGE
-                   */
 
                   if (isUser) {
                     return (
@@ -1204,7 +1754,9 @@ function CompanionPage() {
                         }
                         className="user-message-row"
                       >
+
                         <div className="user-message-container">
+
                           <div className="user-message">
                             <p>
                               {
@@ -1216,18 +1768,17 @@ function CompanionPage() {
                           <div className="message-meta user-message-meta">
                             <span>
                               {formatMessageTime(
-                                chatMessage.created_at,
+                                chatMessage
+                                  .created_at,
                               )}
                             </span>
                           </div>
+
                         </div>
+
                       </div>
                     );
                   }
-
-                  /*
-                   * AI MESSAGE
-                   */
 
                   return (
                     <div
@@ -1236,6 +1787,7 @@ function CompanionPage() {
                       }
                       className="assistant-message-row"
                     >
+
                       <div className="assistant-avatar">
                         <Sparkles
                           size={20}
@@ -1243,7 +1795,9 @@ function CompanionPage() {
                       </div>
 
                       <div className="assistant-message-container">
+
                         <div className="assistant-message">
+
                           <SimpleMarkdown>
                             {
                               chatMessage.content
@@ -1255,6 +1809,7 @@ function CompanionPage() {
                             ?.length >
                             0 && (
                             <div className="message-sources">
+
                               <strong>
                                 Sources
                               </strong>
@@ -1278,14 +1833,18 @@ function CompanionPage() {
                                   </span>
                                 ),
                               )}
+
                             </div>
                           )}
+
                         </div>
 
                         <div className="message-meta">
+
                           <span>
                             {formatMessageTime(
-                              chatMessage.created_at,
+                              chatMessage
+                                .created_at,
                             )}
                           </span>
 
@@ -1293,9 +1852,11 @@ function CompanionPage() {
                             type="button"
                             aria-label="Copy message"
                             onClick={() =>
-                              navigator.clipboard.writeText(
-                                chatMessage.content,
-                              )
+                              navigator
+                                .clipboard
+                                .writeText(
+                                  chatMessage.content,
+                                )
                             }
                           >
                             <Copy
@@ -1320,20 +1881,22 @@ function CompanionPage() {
                               size={13}
                             />
                           </button>
+
                         </div>
+
                       </div>
+
                     </div>
                   );
                 },
               )}
-
-            {/* REAL END OF CHAT */}
 
             <div
               ref={messagesEndRef}
               className="chat-scroll-end"
               aria-hidden="true"
             />
+
           </div>
 
           {/* ==============================
@@ -1350,9 +1913,66 @@ function CompanionPage() {
               </div>
             )}
 
+            {/* PDF ATTACHMENT STATUS */}
+
+            {attachment && (
+              <div
+                className={`chat-attachment-status ${
+                  attachment.status ||
+                  ""
+                }`}
+              >
+
+                <Paperclip
+                  size={15}
+                />
+
+                <div className="chat-attachment-info">
+
+                  <strong>
+                    {
+                      attachment.fileName
+                    }
+                  </strong>
+
+                  <span>
+                    {
+                      attachmentStatusText()
+                    }
+                  </span>
+
+                </div>
+
+                {![
+                  "uploading",
+                  "queued",
+                  "processing",
+                ].includes(
+                  attachment.status,
+                ) && (
+                  <button
+                    type="button"
+                    className="chat-attachment-dismiss"
+                    onClick={() =>
+                      setAttachment(
+                        null,
+                      )
+                    }
+                    aria-label="Dismiss attachment status"
+                  >
+                    <X
+                      size={14}
+                    />
+                  </button>
+                )}
+
+              </div>
+            )}
+
             {/* RESPONSE FORMAT */}
 
             <div className="response-format-control">
+
               <span className="response-format-label">
                 Response format:
               </span>
@@ -1366,7 +1986,8 @@ function CompanionPage() {
                   event,
                 ) =>
                   setResponseFormat(
-                    event.target
+                    event
+                      .target
                       .value,
                   )
                 }
@@ -1375,6 +1996,7 @@ function CompanionPage() {
                 }
                 aria-label="Select AI response format"
               >
+
                 <option value="paragraph">
                   Paragraph
                 </option>
@@ -1386,8 +2008,24 @@ function CompanionPage() {
                 <option value="table">
                   Table
                 </option>
+
               </select>
+
             </div>
+
+            {/* HIDDEN PDF INPUT */}
+
+            <input
+              ref={
+                attachmentInputRef
+              }
+              type="file"
+              accept=".pdf,application/pdf"
+              hidden
+              onChange={
+                handleAttachmentChange
+              }
+            />
 
             {/* MESSAGE INPUT */}
 
@@ -1397,7 +2035,9 @@ function CompanionPage() {
                 handleSubmit
               }
             >
+
               <div className="chat-input-box">
+
                 <input
                   type="text"
                   value={message}
@@ -1405,7 +2045,8 @@ function CompanionPage() {
                     event,
                   ) =>
                     setMessage(
-                      event.target
+                      event
+                        .target
                         .value,
                     )
                   }
@@ -1418,7 +2059,17 @@ function CompanionPage() {
                 <button
                   type="button"
                   className="chat-tool-button"
-                  aria-label="Attach file"
+                  aria-label="Attach PDF"
+                  title="Attach PDF"
+                  disabled={
+                    isAttachmentUploading ||
+                    isSending
+                  }
+                  onClick={() =>
+                    attachmentInputRef
+                      .current
+                      ?.click()
+                  }
                 >
                   <Paperclip
                     size={18}
@@ -1434,6 +2085,7 @@ function CompanionPage() {
                     size={18}
                   />
                 </button>
+
               </div>
 
               <button
@@ -1449,6 +2101,7 @@ function CompanionPage() {
                   size={20}
                 />
               </button>
+
             </form>
 
             <p className="chat-disclaimer">
@@ -1457,8 +2110,11 @@ function CompanionPage() {
               information with your
               course materials.
             </p>
+
           </div>
+
         </section>
+
       </div>
     </AppShell>
   );

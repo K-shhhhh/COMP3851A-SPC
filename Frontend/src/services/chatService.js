@@ -131,3 +131,51 @@ export function sendChatMessage(
     }),
   });
 }
+
+/**
+ * Upload a PDF attachment to a personal chat.
+ *
+ * POST /api/v1/chats/{chat_id}/attachments
+ */
+export function uploadChatAttachment(
+  accessToken,
+  chatId,
+  file,
+  title = "",
+) {
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  if (title.trim()) {
+    formData.append("title", title.trim());
+  }
+
+  return apiRequest(
+    `/chats/${chatId}/attachments`,
+    {
+      method: "POST",
+      accessToken,
+      body: formData,
+    },
+  );
+}
+
+/**
+ * Get the current processing status of a personal chat attachment.
+ *
+ * GET /api/v1/chats/{chat_id}/attachments/{attachment_id}/status
+ */
+export function getChatAttachmentStatus(
+  accessToken,
+  chatId,
+  attachmentId,
+) {
+  return apiRequest(
+    `/chats/${chatId}/attachments/${attachmentId}/status`,
+    {
+      method: "GET",
+      accessToken,
+    },
+  );
+}
