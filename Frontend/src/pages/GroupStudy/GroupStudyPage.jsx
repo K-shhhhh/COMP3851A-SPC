@@ -9,6 +9,8 @@ import {
 
 import {
   Bot,
+  ChevronLeft,
+  ChevronRight,
   Edit3,
   Hash,
   Lock,
@@ -21,6 +23,10 @@ import {
   Users,
   X,
 } from "lucide-react";
+
+import {
+  useSearchParams,
+} from "react-router-dom";
 
 import AppShell from "../../components/layout/AppShell.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
@@ -51,6 +57,7 @@ import {
 } from "../../services/groupService.js";
 
 import "./groupStudy.css";
+import "./groupStudyPanels.css";
 
 /* =========================================================
    CONSTANTS
@@ -75,12 +82,6 @@ const AI_MODES = [
   },
 ];
 
-const FILTERS = [
-  "all",
-  "public",
-  "private",
-  "owned",
-];
 
 /* =========================================================
    HELPERS
@@ -209,6 +210,11 @@ function Modal({
    ========================================================= */
 
 function GroupStudyPage() {
+  const [
+    searchParams,
+    setSearchParams,
+  ] = useSearchParams();
+
   const {
     accessToken,
     user,
@@ -244,6 +250,16 @@ function GroupStudyPage() {
 
   const [mutationLoading, setMutationLoading] =
     useState(false);
+
+  const [
+    groupsPanelCollapsed,
+    setGroupsPanelCollapsed,
+  ] = useState(false);
+
+  const [
+    detailsPanelCollapsed,
+    setDetailsPanelCollapsed,
+  ] = useState(false);
 
   /* -------------------------------------------------------
      GROUP FORM
@@ -348,6 +364,33 @@ function GroupStudyPage() {
     useState("paragraph");
 
   const messagesEndRef = useRef(null);
+
+  /* =======================================================
+     SIDEBAR / URL VIEW SYNC
+     ======================================================= */
+
+  const requestedGroupView =
+    searchParams.get("view");
+
+  useEffect(() => {
+    if (
+      requestedGroupView ===
+      "private"
+    ) {
+      setActiveView("mine");
+      setMyFilter("private");
+      setSelectedGroup(null);
+      return;
+    }
+
+    if (
+      requestedGroupView ===
+      "public"
+    ) {
+      setActiveView("discover");
+      setSelectedGroup(null);
+    }
+  }, [requestedGroupView]);
 
   /* =======================================================
      DISCOVER PUBLIC GROUPS
@@ -1738,7 +1781,17 @@ function GroupStudyPage() {
 
   return (
     <AppShell>
-      <div className="group-study-page">
+      <div
+        className={`group-study-page ${
+          groupsPanelCollapsed
+            ? "groups-panel-collapsed"
+            : ""
+        } ${
+          detailsPanelCollapsed
+            ? "details-panel-collapsed"
+            : ""
+        }`}
+      >
 
         {/* HEADER */}
 
@@ -1771,46 +1824,86 @@ function GroupStudyPage() {
           </div>
         )}
 
-        {/* MAIN TABS */}
+        {/* PUBLIC / PRIVATE + GROUP PANEL COLLAPSE */}
 
         <div className="group-view-tabs">
+          <div className="group-view-tab-buttons">
+            <button
+              type="button"
+              className={
+                activeView ===
+                "discover"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => {
+                setSearchParams({
+                  view: "public",
+                });
+
+                setActiveView(
+                  "discover",
+                );
+
+                setSelectedGroup(null);
+              }}
+            >
+              Public
+            </button>
+
+            <button
+              type="button"
+              className={
+                activeView === "mine"
+                  ? "active"
+                  : ""
+              }
+              onClick={() => {
+                setSearchParams({
+                  view: "private",
+                });
+
+                setActiveView("mine");
+                setMyFilter("private");
+                setSelectedGroup(null);
+              }}
+            >
+              Private
+            </button>
+          </div>
+
           <button
             type="button"
-            className={
-              activeView ===
-              "discover"
-                ? "active"
-                : ""
+            className="group-panel-collapse-toggle"
+            title={
+              groupsPanelCollapsed
+                ? "Show groups panel"
+                : "Hide groups panel"
             }
-            onClick={() => {
-              setActiveView(
-                "discover",
-              );
-
-              setSelectedGroup(null);
-            }}
-          >
-            Discover Public
-          </button>
-
-          <button
-            type="button"
-            className={
-              activeView === "mine"
-                ? "active"
-                : ""
+            aria-label={
+              groupsPanelCollapsed
+                ? "Show groups panel"
+                : "Hide groups panel"
             }
-            onClick={() => {
-              setActiveView("mine");
-
-              setSelectedGroup(null);
-            }}
+            aria-expanded={
+              !groupsPanelCollapsed
+            }
+            onClick={() =>
+              setGroupsPanelCollapsed(
+                (current) =>
+                  !current,
+              )
+            }
           >
-            My Groups
+            {groupsPanelCollapsed ? (
+              <ChevronRight size={17} />
+            ) : (
+              <ChevronLeft size={17} />
+            )}
           </button>
         </div>
 
-        {/* SEARCH / FILTERS */}
+        {/* SEARCH / PRIVATE LABEL */}
 
         {activeView ===
         "discover" ? (
@@ -1830,29 +1923,8 @@ function GroupStudyPage() {
             </div>
           </div>
         ) : (
-          <div className="my-group-filters">
-            {FILTERS.map(
-              (filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  className={
-                    myFilter ===
-                    filter
-                      ? "active"
-                      : ""
-                  }
-                  onClick={() =>
-                    setMyFilter(
-                      filter,
-                    )
-                  }
-                >
-                  {filter[0].toUpperCase() +
-                    filter.slice(1)}
-                </button>
-              ),
-            )}
+          <div className="private-groups-label">
+            My Private Groups
           </div>
         )}
 
@@ -2076,6 +2148,36 @@ function GroupStudyPage() {
                         </button>
                       )}
                   </div>
+
+                  <button
+                    type="button"
+                    className="details-panel-collapse-toggle"
+                    title={
+                      detailsPanelCollapsed
+                        ? "Show channels and members"
+                        : "Hide channels and members"
+                    }
+                    aria-label={
+                      detailsPanelCollapsed
+                        ? "Show channels and members"
+                        : "Hide channels and members"
+                    }
+                    aria-expanded={
+                      !detailsPanelCollapsed
+                    }
+                    onClick={() =>
+                      setDetailsPanelCollapsed(
+                        (current) =>
+                          !current,
+                      )
+                    }
+                  >
+                    {detailsPanelCollapsed ? (
+                      <ChevronRight size={17} />
+                    ) : (
+                      <ChevronLeft size={17} />
+                    )}
+                  </button>
                 </div>
 
                 <div className="workspace-body">
