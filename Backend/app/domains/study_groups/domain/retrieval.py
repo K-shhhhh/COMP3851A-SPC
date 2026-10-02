@@ -18,3 +18,16 @@ class StudyGroupReadyChunkRepository(ABC):
         """Return non-deleted ready chunks scoped to group and channel."""
 
         raise NotImplementedError
+
+    @abstractmethod
+    async def search_ready_chunks_for_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        query_embedding: tuple[float, ...],
+        limit: int,
+    ) -> tuple[GroundingChunk, ...]:
+        """Return top-ranked ready chunks from one exact group channel."""
+
+        raise NotImplementedError

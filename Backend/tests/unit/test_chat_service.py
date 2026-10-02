@@ -12,6 +12,7 @@ from app.domains.chats.domain.exceptions import (
     ChatNotFoundError,
     NoProcessedNotesError,
 )
+from app.domains.chats.domain.embedding import QuestionEmbeddingProvider
 from app.domains.chats.domain.models import ChatSource
 from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.chats.infrastructure.memory_answering import (
@@ -28,7 +29,23 @@ from app.domains.chats.infrastructure.memory_retrieval import (
 pytestmark = pytest.mark.asyncio
 
 
-def make_service(answer_generator=None):
+class RecordingQuestionEmbeddingProvider(QuestionEmbeddingProvider):
+    """Return one valid vector and record the normalized question."""
+
+    def __init__(self) -> None:
+        self.question: str | None = None
+
+    async def embed_question(self, question: str) -> tuple[float, ...]:
+        self.question = question
+        return (0.25,) * 768
+
+
+def make_service(
+    answer_generator=None,
+    *,
+    question_embedding_provider=None,
+    semantic_search_limit=5,
+):
     """Build isolated Chat use cases and return seedable dependencies."""
 
     repository = InMemoryChatRepository()
@@ -40,6 +57,8 @@ def make_service(answer_generator=None):
             answer_generator or LocalGroundedAnswerGenerator()
         ),
         maximum_question_length=4000,
+        question_embedding_provider=question_embedding_provider,
+        semantic_search_limit=semantic_search_limit,
     )
     return service, repository, chunks
 
@@ -99,6 +118,40 @@ async def test_question_persists_grounded_exchange() -> None:
     assert exchange.chat.title == "What is indexing"
     assert total == 2
     assert history == [exchange.user_message, exchange.assistant_message]
+
+
+async def test_semantic_path_embeds_question_and_uses_bounded_results() -> None:
+    """Use the semantic repository contract when an embedder is configured."""
+
+    embedding_provider = RecordingQuestionEmbeddingProvider()
+    service, _, chunks = make_service(
+        question_embedding_provider=embedding_provider,
+        semantic_search_limit=1,
+    )
+    chat = await service.create_chat(user_id="user-1", title=None)
+    first = sample_chunk()
+    second = GroundingChunk(
+        content="A B-tree keeps keys balanced.",
+        source=ChatSource(
+            note_id=2,
+            note_title="B-Trees",
+            chunk_id=8,
+            page=2,
+        ),
+    )
+    await chunks.replace_user_chunks(
+        user_id="user-1",
+        chunks=(first, second),
+    )
+
+    exchange = await service.ask_question(
+        chat_id=chat.chat_id,
+        user_id="user-1",
+        question="  Explain indexes  ",
+    )
+
+    assert embedding_provider.question == "Explain indexes"
+    assert exchange.assistant_message.sources == (first.source,)
 
 
 async def test_only_placeholder_chat_uses_first_question_as_title() -> None:

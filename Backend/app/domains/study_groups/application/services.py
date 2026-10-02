@@ -7,6 +7,7 @@ without depending on FastAPI or SQLAlchemy.
 from datetime import datetime, timezone
 
 from app.domains.chats.domain.answering import ChatAnswerGenerator
+from app.domains.chats.domain.embedding import QuestionEmbeddingProvider
 from app.domains.chats.domain.models import ChatSource
 from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.study_groups.domain.exceptions import (
@@ -55,12 +56,19 @@ class StudyGroupService:
         repository: StudyGroupRepository,
         chunk_repository: StudyGroupReadyChunkRepository | None = None,
         answer_generator: ChatAnswerGenerator | None = None,
+        question_embedding_provider: QuestionEmbeddingProvider | None = None,
+        semantic_search_limit: int = 5,
     ) -> None:
         """Initialize the service with replaceable persistence."""
+
+        if semantic_search_limit <= 0:
+            raise ValueError("semantic_search_limit must be positive")
 
         self._repository = repository
         self._chunk_repository = chunk_repository
         self._answer_generator = answer_generator
+        self._question_embedding_provider = question_embedding_provider
+        self._semantic_search_limit = semantic_search_limit
 
     async def discover_public_groups(
         self,
@@ -441,12 +449,27 @@ class StudyGroupService:
                 raise StudyGroupAiUnavailableError(
                     "Group companion services are not configured."
                 )
-            chunks = (
-                await self._chunk_repository.list_ready_chunks_for_channel(
-                    group_id=group_id,
-                    channel_id=channel_id,
+            if self._question_embedding_provider is None:
+                chunks = (
+                    await self._chunk_repository.list_ready_chunks_for_channel(
+                        group_id=group_id,
+                        channel_id=channel_id,
+                    )
                 )
-            )
+            else:
+                query_embedding = (
+                    await self._question_embedding_provider.embed_question(
+                        normalized_content
+                    )
+                )
+                chunks = (
+                    await self._chunk_repository.search_ready_chunks_for_channel(
+                        group_id=group_id,
+                        channel_id=channel_id,
+                        query_embedding=query_embedding,
+                        limit=self._semantic_search_limit,
+                    )
+                )
             if not chunks:
                 raise StudyGroupNoReadyChunksError(
                     "Upload and process at least one attachment in this "

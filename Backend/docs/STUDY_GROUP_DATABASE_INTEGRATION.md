@@ -86,14 +86,32 @@ the requested `group_id` and `channel_id`, ready/non-deleted attachments,
 non-deleted chunks, and an active channel. Never use the personal-chat
 `list_ready_chunks_for_user(...)` query for a group response.
 
+For HNSW retrieval, implement the additional contract:
+
+```python
+search_ready_chunks_for_channel(
+    *,
+    group_id: str,
+    channel_id: str,
+    query_embedding: tuple[float, ...],
+    limit: int,
+) -> tuple[GroundingChunk, ...]
+```
+
+Keep the exact group/channel, ready-status, and deletion predicates in the SQL
+query. Order authorized results by pgvector cosine distance and apply `LIMIT`.
+Return ranked chunks only; similarity scores and Python reranking are not
+required for the prototype.
+
 ## Runtime and migrations
 
 `Backend/app/api/dependencies.py` injects
 `PostgreSQLStudyGroupRepository(session)` and
 `PostgreSQLStudyGroupReadyChunkRepository(session)`. Fresh local databases load
-`005_create_initial_test_schema.sql`. Existing version-4 Docker volumes must
-apply `006_upgrade_existing_study_group_schema.sql` once to add structured
-mentions, nullable ordinary-message AI mode, and the retrieval indexes.
+`006_create_initial_test_schema.sql`, which is the current schema source of
+truth. Existing databases need a separately reviewed migration before enabling
+the new graph and semantic-search paths; do not replay the fresh-schema file
+against a populated database.
 
 The PostgreSQL integration suite covers membership lookup/listing, channel and
 message lifecycle/isolation, multiple mentions, channel-scoped retrieval,

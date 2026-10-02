@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # must not prevent ordinary note processing.
     ENABLE_KNOWLEDGE_GRAPH_GENERATION: bool = False
 
+    # Keep disabled until both PostgreSQL HNSW repository methods are
+    # implemented. The existing list-and-rank path remains the fallback.
+    ENABLE_DATABASE_SEMANTIC_SEARCH: bool = False
+    RAG_SEMANTIC_SEARCH_TOP_K: int = 5
+
     @model_validator(mode="after")
     def reject_insecure_production_secret(self) -> "Settings":
         """Prevent staging/production from using a known placeholder secret."""
@@ -87,6 +92,9 @@ class Settings(BaseSettings):
                 "SECRET_KEY must contain at least 32 bytes and must not use "
                 "a placeholder value when DEBUG is false."
             )
+
+        if self.RAG_SEMANTIC_SEARCH_TOP_K <= 0:
+            raise ValueError("RAG_SEMANTIC_SEARCH_TOP_K must be positive")
 
         return self
 

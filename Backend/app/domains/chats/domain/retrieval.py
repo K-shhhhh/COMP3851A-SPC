@@ -33,3 +33,19 @@ class ReadyNoteChunkRepository(ABC):
 
         raise NotImplementedError
 
+    @abstractmethod
+    async def search_ready_chunks_for_user(
+        self,
+        *,
+        user_id: str,
+        query_embedding: tuple[float, ...],
+        limit: int,
+    ) -> tuple[GroundingChunk, ...]:
+        """Return top-ranked ready library chunks owned by one student.
+
+        All My Notes attachments are treated equally in this prototype. The
+        database adapter applies ownership/status/deletion filters before
+        ordering by pgvector cosine distance and applying ``limit``.
+        """
+
+        raise NotImplementedError

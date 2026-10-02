@@ -161,6 +161,23 @@ instances containing chunk text plus `ChatSource` metadata.
 This repository is the authorization boundary. Krish's RAG adapter must receive
 only the already scoped chunks and must not decide database ownership.
 
+For HNSW retrieval, also implement:
+
+```python
+search_ready_chunks_for_user(
+    *,
+    user_id: str,
+    query_embedding: tuple[float, ...],
+    limit: int,
+) -> tuple[GroundingChunk, ...]
+```
+
+The query must retain all authorization/status/deletion predicates above,
+require compatible `nomic-embed-text` vectors, order by pgvector cosine
+distance, and apply `LIMIT`. Ranked chunks are sufficient; do not return the
+similarity score. Personal-channel attachments and upload-screen attachments
+are one equal retrieval pool when `show_in_library = TRUE`.
+
 ## ORM-to-domain mapping
 
 SQLAlchemy models represent rows. Repository methods must map them to:

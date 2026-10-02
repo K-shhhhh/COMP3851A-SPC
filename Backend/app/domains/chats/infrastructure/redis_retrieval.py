@@ -78,6 +78,20 @@ class RedisReadyNoteChunkRepository(ReadyNoteChunkRepository):
 
         return tuple(chunks)
 
+    async def search_ready_chunks_for_user(
+        self,
+        *,
+        user_id: str,
+        query_embedding: tuple[float, ...],
+        limit: int,
+    ) -> tuple[GroundingChunk, ...]:
+        """Return a bounded fallback; Redis does not own vector ranking."""
+
+        if limit <= 0:
+            raise ValueError("semantic search limit must be positive")
+        existing = await self.list_ready_chunks_for_user(user_id=user_id)
+        return existing[:limit]
+
     async def replace_attachment_chunks(
         self,
         *,

@@ -57,3 +57,17 @@ class PostgreSQLStudyGroupReadyChunkRepository(StudyGroupReadyChunkRepository):
             )
             for chunk, attachment in rows.all()
         )
+
+    async def search_ready_chunks_for_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        query_embedding: tuple[float, ...],
+        limit: int,
+    ) -> tuple[GroundingChunk, ...]:
+        """Declare the channel-scoped pgvector search implemented by the DB owner."""
+
+        raise NotImplementedError(
+            "PostgreSQL Study Group HNSW retrieval is not implemented."
+        )

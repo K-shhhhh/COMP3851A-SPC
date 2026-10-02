@@ -123,3 +123,16 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
             )
             for chunk, attachment in result.all()
         )
+
+    async def search_ready_chunks_for_user(
+        self,
+        *,
+        user_id: str,
+        query_embedding: tuple[float, ...],
+        limit: int,
+    ) -> tuple[GroundingChunk, ...]:
+        """Declare the authorized pgvector search implemented by the DB owner."""
+
+        raise NotImplementedError(
+            "PostgreSQL personal-library HNSW retrieval is not implemented."
+        )

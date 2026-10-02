@@ -937,9 +937,11 @@ Every response should include an `X-Request-ID` header.
 For personal-chat retrieval, the backend must enforce the equivalent of:
 
 ```text
-note.owner_id = authenticated_user.id
-note.status = ready
-note.deleted_at = null
+attachment.uploaded_by = authenticated_user.id
+attachment.show_in_library = true
+attachment.processing_status = ready
+attachment.deleted_at = null
+chunk.deleted_at = null
 ```
 
 The RAG service must not search:
@@ -951,6 +953,25 @@ The RAG service must not search:
 - Deleted notes
 
 Every source included in an answer must refer to a note accessible to the authenticated student.
+
+For semantic retrieval, the application embeds the normalized question once
+using the same 768-dimensional Nomic embedding model used for stored chunks.
+PostgreSQL then returns the top-ranked authorized chunks using cosine distance
+and the existing HNSW `vector_cosine_ops` index. The initial top-k is `5` and
+is configurable. Ranked chunks are passed directly to the answer generator;
+there is no similarity-score response and no second-stage Python reranking.
+
+All ready attachments with `show_in_library = true` form one equal Personal AI
+retrieval pool. The prototype does not prioritize attachments from the current
+personal conversation over other documents in My Notes.
+
+Study Group semantic retrieval applies the same ranking method only after
+restricting results to the exact accessible `group_id` and `channel_id`.
+Personal-library chunks must never enter a Study Group answer.
+
+Database semantic search is enabled only after both PostgreSQL repository
+methods are implemented and tested. Until then, the existing authorized-list
+and local-ranking path remains the operational fallback.
 
 ---
 

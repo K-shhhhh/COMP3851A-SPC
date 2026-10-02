@@ -6,6 +6,7 @@ from app.domains.chats.domain.answering import (
     ChatAnswerGenerator,
     GeneratedAnswer,
 )
+from app.domains.chats.domain.embedding import QuestionEmbeddingProvider
 from app.domains.chats.domain.models import ChatSource
 from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.study_groups.application.services import StudyGroupService
@@ -58,6 +59,17 @@ class RecordingAnswerGenerator(ChatAnswerGenerator):
             content=f"{mode} response to {question}",
             sources=(chunks[0].source,),
         )
+
+
+class RecordingQuestionEmbeddingProvider(QuestionEmbeddingProvider):
+    """Return one valid vector and record the group question."""
+
+    def __init__(self) -> None:
+        self.question: str | None = None
+
+    async def embed_question(self, question: str) -> tuple[float, ...]:
+        self.question = question
+        return (0.5,) * 768
 
 
 @pytest.fixture
@@ -587,6 +599,69 @@ async def test_ai_mode_generates_and_persists_scoped_companion_response(
             user_id=owner,
             content="Rewrite the AI question",
         )
+
+
+@pytest.mark.asyncio
+async def test_group_semantic_path_uses_exact_channel_and_limit() -> None:
+    """Embed once and pass only bounded channel-scoped results to answering."""
+
+    repository = InMemoryStudyGroupRepository()
+    chunk_repository = InMemoryStudyGroupReadyChunkRepository()
+    answer_generator = RecordingAnswerGenerator()
+    embedding_provider = RecordingQuestionEmbeddingProvider()
+    service = StudyGroupService(
+        repository,
+        chunk_repository=chunk_repository,
+        answer_generator=answer_generator,
+        question_embedding_provider=embedding_provider,
+        semantic_search_limit=1,
+    )
+    owner = "11111111-1111-1111-1111-111111111111"
+    group = await service.create_group(
+        user_id=owner,
+        name="Semantic group",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    channel = await service.create_channel(
+        group_id=group.group.group_id,
+        user_id=owner,
+        name="Semantic channel",
+        description=None,
+    )
+    selected_source = ChatSource(
+        note_id=1,
+        note_title="Selected note",
+        chunk_id=1,
+        page=1,
+    )
+    ignored_source = ChatSource(
+        note_id=2,
+        note_title="Ignored note",
+        chunk_id=2,
+        page=2,
+    )
+    await chunk_repository.replace_channel_chunks(
+        group_id=group.group.group_id,
+        channel_id=channel.channel_id,
+        chunks=(
+            GroundingChunk(content="Selected context", source=selected_source),
+            GroundingChunk(content="Ignored context", source=ignored_source),
+        ),
+    )
+
+    message = await service.create_message(
+        group_id=group.group.group_id,
+        channel_id=channel.channel_id,
+        user_id=owner,
+        content="  Explain this topic  ",
+        ai_mode=StudyGroupAiMode.DEFAULT,
+    )
+
+    assert embedding_provider.question == "Explain this topic"
+    assert message.ai_response is not None
+    assert message.ai_response.sources == (selected_source,)
 
 
 @pytest.mark.asyncio

@@ -60,6 +60,7 @@ from app.domains.notes.infrastructure.repository import (
 
 from app.domains.chats.application.services import ChatService
 from app.domains.chats.domain.answering import ChatAnswerGenerator
+from app.domains.chats.domain.embedding import QuestionEmbeddingProvider
 from app.domains.chats.domain.repository import ChatRepository
 from app.domains.chats.domain.retrieval import ReadyNoteChunkRepository
 from app.domains.chats.infrastructure.repository import (
@@ -67,6 +68,9 @@ from app.domains.chats.infrastructure.repository import (
 )
 from app.domains.chats.infrastructure.retrieval import (
     PostgreSQLReadyNoteChunkRepository,
+)
+from app.domains.chats.infrastructure.question_embedding import (
+    NomicQuestionEmbeddingProvider,
 )
 
 # ---------- Remaining integration switch templates ----------
@@ -92,8 +96,8 @@ from app.domains.study_groups.infrastructure.retrieval import (
 
 from app.domains.knowledge_graph.application.services import KnowledgeGraphService
 from app.domains.knowledge_graph.domain.repository import KnowledgeGraphRepository
-from app.domains.knowledge_graph.infrastructure.memory_repository import (
-    InMemoryKnowledgeGraphRepository,
+from app.domains.knowledge_graph.infrastructure.repository import (
+    PostgreSQLKnowledgeGraphRepository,
 )
 
 from app.domains.notifications.application.services import NotificationService
@@ -340,7 +344,18 @@ def get_chat_repository(
 def get_chat_answer_generator() -> ChatAnswerGenerator:
     """Return Krish's real RAG answer generator."""
 
-    return KrishRagAnswerGenerator()
+    return KrishRagAnswerGenerator(
+        top_k=settings.RAG_SEMANTIC_SEARCH_TOP_K,
+        rank_chunks=not settings.ENABLE_DATABASE_SEMANTIC_SEARCH,
+    )
+
+
+def get_question_embedding_provider() -> QuestionEmbeddingProvider | None:
+    """Enable query embedding only after PostgreSQL HNSW methods are ready."""
+
+    if not settings.ENABLE_DATABASE_SEMANTIC_SEARCH:
+        return None
+    return NomicQuestionEmbeddingProvider()
 
 
 def get_chat_service(
@@ -351,6 +366,9 @@ def get_chat_service(
     answer_generator: ChatAnswerGenerator = Depends(
         get_chat_answer_generator
     ),
+    question_embedding_provider: QuestionEmbeddingProvider | None = Depends(
+        get_question_embedding_provider
+    ),
 ) -> ChatService:
     """Construct personal-chat use cases from the active adapters."""
 
@@ -359,6 +377,8 @@ def get_chat_service(
         chunk_repository=chunk_repository,
         answer_generator=answer_generator,
         maximum_question_length=settings.MAX_CHAT_QUESTION_LENGTH,
+        question_embedding_provider=question_embedding_provider,
+        semantic_search_limit=settings.RAG_SEMANTIC_SEARCH_TOP_K,
     )
 
 
@@ -390,6 +410,9 @@ def get_study_group_service(
     answer_generator: ChatAnswerGenerator = Depends(
         get_chat_answer_generator
     ),
+    question_embedding_provider: QuestionEmbeddingProvider | None = Depends(
+        get_question_embedding_provider
+    ),
 ) -> StudyGroupService:
     """Construct the study-group application service."""
 
@@ -397,18 +420,19 @@ def get_study_group_service(
         repository,
         chunk_repository=chunk_repository,
         answer_generator=answer_generator,
+        question_embedding_provider=question_embedding_provider,
+        semantic_search_limit=settings.RAG_SEMANTIC_SEARCH_TOP_K,
     )
 
 
 # ---------- Knowledge Graph ----------
 
-_local_knowledge_graph_repository = InMemoryKnowledgeGraphRepository()
+def get_knowledge_graph_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> KnowledgeGraphRepository:
+    """Return request-scoped PostgreSQL knowledge-graph persistence."""
 
-
-def get_knowledge_graph_repository() -> KnowledgeGraphRepository:
-    """Return local graph storage until its PostgreSQL adapter is completed."""
-
-    return _local_knowledge_graph_repository
+    return PostgreSQLKnowledgeGraphRepository(session)
 
 
 def get_knowledge_graph_service(

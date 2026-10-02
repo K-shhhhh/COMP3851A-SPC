@@ -219,10 +219,10 @@ create table if not exists knowledge_edges (
 	constraint fk_target_node_id_for_knowledge_edges foreign key (target_node_id)
 	references knowledge_nodes(node_id),
 
-    constraint fk_edge_source_same_graph foreign key (graph_id, source_node_id) 
+    constraint fk_edge_source_same_graph foreign key (graph_id, source_node_id)
     references knowledge_nodes(graph_id, node_id),
 
-    constraint fk_edge_target_same_graph foreign key (graph_id, target_node_id) 
+    constraint fk_edge_target_same_graph foreign key (graph_id, target_node_id)
     references knowledge_nodes(graph_id, node_id)
 );
 

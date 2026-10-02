@@ -19,7 +19,11 @@ POST /chats/{chat_id}/messages
 ChatService authenticates and checks chat ownership
         |
         v
-ReadyNoteChunkRepository retrieves this user's ready My Notes chunks
+QuestionEmbeddingProvider embeds the validated question once
+        |
+        v
+ReadyNoteChunkRepository retrieves top-k authorized My Notes chunks
+using PostgreSQL HNSW cosine ranking
         |
         v
 ChatAnswerGenerator adapter calls Krish's RAG function
@@ -72,10 +76,9 @@ source.chunk_id
 source.page nullable
 ```
 
-These chunks have already been scoped by the retrieval repository to the
-authenticated student's ready My Notes. The RAG adapter must search only this
-supplied collection. It must not load all chunks from PostgreSQL or perform its
-own user/group authorization query.
+These chunks have already been scoped and ranked by the retrieval repository.
+The RAG adapter must use the supplied order directly. It must not reload all
+chunks, re-embed stored chunk content, or perform its own authorization query.
 
 If Krish's existing function currently expects dictionaries, the adapter may
 convert `GroundingChunk` objects into that internal format. Keep that conversion
@@ -107,6 +110,33 @@ notebook-specific structures across this boundary.
 - Keep the adapter deterministic enough for repeatable integration tests.
 - Do not perform note summarization in this sprint.
 - Do not add Celery or WebSocket delivery to the synchronous adapter.
+
+## Semantic retrieval contract
+
+Personal AI uses:
+
+```python
+search_ready_chunks_for_user(
+    *,
+    user_id: str,
+    query_embedding: tuple[float, ...],
+    limit: int,
+) -> tuple[GroundingChunk, ...]
+```
+
+The query embedding contains exactly 768 values and uses the same
+`nomic-embed-text` model version as stored chunk vectors. PostgreSQL must apply
+ownership, library visibility, ready status, and deletion filters before
+ordering by cosine distance and applying `LIMIT`.
+
+All attachments displayed in My Notes are treated equally for the prototype.
+There is no personal-channel priority or second-stage Python reranking. The
+initial configurable top-k is 5, and only ranked chunks—not similarity
+scores—cross the repository boundary.
+
+`ENABLE_DATABASE_SEMANTIC_SEARCH` remains false until both PostgreSQL search
+methods are implemented and integration-tested. While false, the existing
+authorized list retrieval and Python ranking path remains active.
 
 ## Current in-memory demonstration path
 

@@ -7,6 +7,7 @@ from app.domains.chats.application.prompt_security import (
 )
 
 from app.domains.chats.domain.answering import ChatAnswerGenerator
+from app.domains.chats.domain.embedding import QuestionEmbeddingProvider
 from app.domains.chats.domain.exceptions import (
     AnswerGenerationError,
     ChatNotFoundError,
@@ -34,16 +35,22 @@ class ChatService:
         chunk_repository: ReadyNoteChunkRepository,
         answer_generator: ChatAnswerGenerator,
         maximum_question_length: int,
+        question_embedding_provider: QuestionEmbeddingProvider | None = None,
+        semantic_search_limit: int = 5,
     ) -> None:
         """Initialize the use cases with replaceable infrastructure adapters."""
 
         if maximum_question_length <= 0:
             raise ValueError("maximum_question_length must be positive")
+        if semantic_search_limit <= 0:
+            raise ValueError("semantic_search_limit must be positive")
 
         self._repository = repository
         self._chunk_repository = chunk_repository
         self._answer_generator = answer_generator
         self._maximum_question_length = maximum_question_length
+        self._question_embedding_provider = question_embedding_provider
+        self._semantic_search_limit = semantic_search_limit
 
     async def create_chat(
         self,
@@ -158,10 +165,25 @@ class ChatService:
         normalized_question = self._normalize_question(question)
 
         # The repository is the security boundary: it must exclude other
-        # students' chunks, failed/deleted notes, and channel attachments.
-        chunks = await self._chunk_repository.list_ready_chunks_for_user(
-            user_id=user_id
-        )
+        # students' chunks and failed/deleted notes. All attachments displayed
+        # in My Notes are treated equally in the prototype search pool.
+        if self._question_embedding_provider is None:
+            chunks = await self._chunk_repository.list_ready_chunks_for_user(
+                user_id=user_id
+            )
+        else:
+            query_embedding = (
+                await self._question_embedding_provider.embed_question(
+                    normalized_question
+                )
+            )
+            chunks = (
+                await self._chunk_repository.search_ready_chunks_for_user(
+                    user_id=user_id,
+                    query_embedding=query_embedding,
+                    limit=self._semantic_search_limit,
+                )
+            )
 
         if not chunks:
             raise NoProcessedNotesError(

@@ -379,7 +379,7 @@ class Attachment(Base):
     group: Mapped[Group | None] = relationship(back_populates="attachments")
     message: Mapped[Message | None] = relationship(back_populates="attachments")
     chunks: Mapped[list[Chunk]] = relationship(back_populates="attachment")
-    
+
     # A graph may not exist yet while the attachment is awaiting processing.
     knowledge_graph: Mapped[KnowledgeGraph | None] = relationship(
         back_populates="attachment", uselist=False,

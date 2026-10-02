@@ -44,3 +44,18 @@ class InMemoryStudyGroupReadyChunkRepository(
 
         async with self._lock:
             return self._chunks.get((group_id, channel_id), ())
+
+    async def search_ready_chunks_for_channel(
+        self,
+        *,
+        group_id: str,
+        channel_id: str,
+        query_embedding: tuple[float, ...],
+        limit: int,
+    ) -> tuple[GroundingChunk, ...]:
+        """Provide a deterministic bounded fallback for isolated tests."""
+
+        if limit <= 0:
+            raise ValueError("semantic search limit must be positive")
+        async with self._lock:
+            return self._chunks.get((group_id, channel_id), ())[:limit]
