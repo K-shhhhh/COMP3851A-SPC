@@ -1,6 +1,7 @@
 """PostgreSQL persistence for uploaded note metadata."""
 
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
@@ -15,6 +16,7 @@ from app.models.orm_models import (
     Group,
     GroupType,
     Membership,
+    Message,
 )
 
 
@@ -86,6 +88,8 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
         uploader_uuid = self._parse_uuid(uploaded_by)
         if uploader_uuid is None:
             raise ValueError("uploaded_by must be a valid UUID")
+        if message_id is not None and channel_id is None:
+            raise ValueError("message_id requires a channel_id")
 
         channel_uuid = None
         group_id = None
@@ -105,6 +109,17 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
                 raise LookupError("active channel not found")
             group_id = group.group_id
             show_in_library = group.group_type == GroupType.PERSONAL
+
+        if message_id is not None:
+            matching_message_id = await self.session.scalar(
+                select(Message.message_id).where(
+                    Message.message_id == message_id,
+                    Message.channel_id == channel_uuid,
+                    Message.deleted_at.is_(None),
+                ).with_for_update(read=True)
+            )
+            if matching_message_id is None:
+                raise LookupError("active message not found in the supplied channel")
 
         now = datetime.now(timezone.utc)
         orm_attachment = ORMAttachment(
@@ -237,12 +252,21 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
         )
         if attachment is None:
             return None
-        attachment.processing_status = AttachmentStatus(
-            processing_status.value
+        # Validate a detached domain value before making the ORM row dirty.
+        # A later query/commit therefore cannot autoflush a rejected state.
+        validated = replace(
+            self._to_domain(attachment),
+            processing_status=processing_status,
+            processing_progress=processing_progress,
+            processing_error=processing_error,
+            updated_at=datetime.now(timezone.utc),
         )
-        attachment.processing_progress = processing_progress
-        attachment.processing_error = processing_error
-        attachment.last_updated_at = datetime.now(timezone.utc)
+        attachment.processing_status = AttachmentStatus(
+            validated.processing_status.value
+        )
+        attachment.processing_progress = validated.processing_progress
+        attachment.processing_error = validated.processing_error
+        attachment.last_updated_at = validated.updated_at
         try:
             await self.session.commit()
         except Exception:
