@@ -68,9 +68,9 @@ class Settings(BaseSettings):
     # must not prevent ordinary note processing.
     ENABLE_KNOWLEDGE_GRAPH_GENERATION: bool = False
 
-    # Keep disabled until both PostgreSQL HNSW repository methods are
-    # implemented. The existing list-and-rank path remains the fallback.
-    ENABLE_DATABASE_SEMANTIC_SEARCH: bool = False
+    # PostgreSQL performs authorized HNSW cosine ranking by default. Set this
+    # false only to use the legacy authorized-list and Python-ranking fallback.
+    ENABLE_DATABASE_SEMANTIC_SEARCH: bool = True
     RAG_SEMANTIC_SEARCH_TOP_K: int = 5
 
     @model_validator(mode="after")

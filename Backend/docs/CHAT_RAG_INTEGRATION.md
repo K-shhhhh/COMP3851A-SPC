@@ -134,9 +134,9 @@ There is no personal-channel priority or second-stage Python reranking. The
 initial configurable top-k is 5, and only ranked chunks—not similarity
 scores—cross the repository boundary.
 
-`ENABLE_DATABASE_SEMANTIC_SEARCH` remains false until both PostgreSQL search
-methods are implemented and integration-tested. While false, the existing
-authorized list retrieval and Python ranking path remains active.
+`ENABLE_DATABASE_SEMANTIC_SEARCH` is enabled by default now that both
+PostgreSQL search methods are implemented and integration-tested. Setting it
+to false restores the authorized-list and Python-ranking fallback.
 
 ## Current in-memory demonstration path
 

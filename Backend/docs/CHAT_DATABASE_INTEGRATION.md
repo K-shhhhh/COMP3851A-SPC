@@ -161,7 +161,7 @@ instances containing chunk text plus `ChatSource` metadata.
 This repository is the authorization boundary. Krish's RAG adapter must receive
 only the already scoped chunks and must not decide database ownership.
 
-For HNSW retrieval, also implement:
+The PostgreSQL adapter implements HNSW retrieval through:
 
 ```python
 search_ready_chunks_for_user(

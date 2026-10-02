@@ -86,7 +86,7 @@ the requested `group_id` and `channel_id`, ready/non-deleted attachments,
 non-deleted chunks, and an active channel. Never use the personal-chat
 `list_ready_chunks_for_user(...)` query for a group response.
 
-For HNSW retrieval, implement the additional contract:
+The PostgreSQL adapter implements the additional HNSW contract:
 
 ```python
 search_ready_chunks_for_channel(
@@ -115,4 +115,5 @@ against a populated database.
 
 The PostgreSQL integration suite covers membership lookup/listing, channel and
 message lifecycle/isolation, multiple mentions, channel-scoped retrieval,
-companion-response persistence, and the WebSocket persistence boundary.
+semantic group/channel isolation, companion-response persistence, and the
+WebSocket persistence boundary.

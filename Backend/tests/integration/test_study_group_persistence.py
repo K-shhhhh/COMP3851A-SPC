@@ -35,7 +35,7 @@ async def sessions():
         async with admin.begin() as connection:
             await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         sql = (Path(__file__).resolve().parents[2] / "migrations" /
-               "005_create_initial_test_schema.sql").read_text()
+               "006_create_initial_test_schema.sql").read_text()
         # pgvector is a database prerequisite; tests create only their own schema.
         sql = sql.replace("create extension if not exists vector;", "")
         async with engine.begin() as connection:

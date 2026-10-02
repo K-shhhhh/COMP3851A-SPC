@@ -969,9 +969,10 @@ Study Group semantic retrieval applies the same ranking method only after
 restricting results to the exact accessible `group_id` and `channel_id`.
 Personal-library chunks must never enter a Study Group answer.
 
-Database semantic search is enabled only after both PostgreSQL repository
-methods are implemented and tested. Until then, the existing authorized-list
-and local-ranking path remains the operational fallback.
+Database semantic search is enabled by default because both PostgreSQL
+repository methods are implemented and tested. Setting
+`ENABLE_DATABASE_SEMANTIC_SEARCH=false` restores the authorized-list and
+local-ranking fallback.
 
 ---
 
