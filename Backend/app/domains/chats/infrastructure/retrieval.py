@@ -11,6 +11,10 @@ from app.domains.chats.domain.retrieval import (
     GroundingChunk,
     ReadyNoteChunkRepository,
 )
+from app.domains.chats.infrastructure.vector_search import (
+    SEMANTIC_EMBEDDING_MODEL_VERSION,
+    validate_semantic_search,
+)
 from app.models.orm_models import (
     Attachment,
     AttachmentStatus,
@@ -131,8 +135,38 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
         query_embedding: tuple[float, ...],
         limit: int,
     ) -> tuple[GroundingChunk, ...]:
-        """Declare the authorized pgvector search implemented by the DB owner."""
+        """Rank authorized My Notes chunks equally, regardless of chat origin."""
+        embedding = validate_semantic_search(query_embedding, limit)
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except (TypeError, ValueError, AttributeError):
+            return ()
 
-        raise NotImplementedError(
-            "PostgreSQL personal-library HNSW retrieval is not implemented."
+        result = await self.session.execute(
+            select(Chunk, Attachment)
+            .join(Attachment, Attachment.attachment_id == Chunk.attachment_id)
+            .where(
+                Attachment.uploaded_by == user_uuid,
+                Attachment.show_in_library.is_(True),
+                Attachment.processing_status == AttachmentStatus.READY,
+                Attachment.deleted_at.is_(None),
+                Chunk.deleted_at.is_(None),
+                Chunk.embedding_model_version == SEMANTIC_EMBEDDING_MODEL_VERSION,
+            )
+            # The direct ascending cosine operator can use vector_cosine_ops.
+            # Scope/status predicates belong in this query, before LIMIT.
+            .order_by(Chunk.vector_embedding.cosine_distance(embedding))
+            .limit(limit)
+        )
+        return tuple(
+            GroundingChunk(
+                content=chunk.chunk_content,
+                source=ChatSource(
+                    note_id=attachment.attachment_id,
+                    note_title=attachment.title,
+                    chunk_id=chunk.chunk_id,
+                    page=chunk.source_page,
+                ),
+            )
+            for chunk, attachment in result.all()
         )
