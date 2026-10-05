@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, Text, UniqueConstraint, func, text)
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Computed, DateTime, Float, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -37,6 +37,7 @@ class UserRole(str, enum.Enum):
 
 
 class MemberRole(str, enum.Enum):
+    OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
 
@@ -124,9 +125,9 @@ class User(Base):
         back_populates="creator",
         foreign_keys="Group.created_by",
     )
-    groups_administered: Mapped[list[Group]] = relationship(
-        back_populates="current_admin_user",
-        foreign_keys="Group.current_admin",
+    groups_owned: Mapped[list[Group]] = relationship(
+        back_populates="current_owner_user",
+        foreign_keys="Group.current_owner",
     )
     memberships: Mapped[list[Membership]] = relationship(back_populates="user")
     channels_created: Mapped[list[Channel]] = relationship(
@@ -150,6 +151,14 @@ class User(Base):
 
 class Group(Base):
     __tablename__ = "groups"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["group_id", "current_owner", "active_owner_role"],
+            ["memberships.group_id", "memberships.user_id", "memberships.member_role"],
+            name="fk_groups_active_owner", use_alter=True,
+            deferrable=True, initially="DEFERRED",
+        ),
+    )
 
     group_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
@@ -165,9 +174,9 @@ class Group(Base):
         PGUUID(as_uuid=True),
         ForeignKey("users.user_id", name="fk_group_created_by_for_groups"),
     )
-    current_admin: Mapped[uuid.UUID] = mapped_column(
+    current_owner: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("users.user_id", name="fk_current_admin_for_groups"),
+        ForeignKey("users.user_id", name="fk_current_owner_for_groups"),
         nullable=False,
     )
     max_members: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -175,15 +184,24 @@ class Group(Base):
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Always require an owner membership, including for soft-deleted groups.
+    # This generated constant cannot be overwritten to bypass the deferred FK.
+    active_owner_role: Mapped[MemberRole] = mapped_column(
+        pg_enum(MemberRole, "member_roles"),
+        Computed("'owner'::member_roles", persisted=True), nullable=False,
+    )
+
     creator: Mapped[User] = relationship(
         back_populates="groups_created",
         foreign_keys=[created_by],
     )
-    current_admin_user: Mapped[User] = relationship(
-        back_populates="groups_administered",
-        foreign_keys=[current_admin],
+    current_owner_user: Mapped[User] = relationship(
+        back_populates="groups_owned",
+        foreign_keys=[current_owner],
     )
-    memberships: Mapped[list[Membership]] = relationship(back_populates="group")
+    memberships: Mapped[list[Membership]] = relationship(
+        back_populates="group", foreign_keys="Membership.group_id",
+    )
     channels: Mapped[list[Channel]] = relationship(back_populates="group")
     attachments: Mapped[list[Attachment]] = relationship(back_populates="group")
 
@@ -196,6 +214,7 @@ class Membership(Base):
             "group_id",
             name="uq_memberships_user_group",
         ),
+        UniqueConstraint("group_id", "user_id", "member_role", name="uq_memberships_group_user_role"),
     )
 
     membership_id: Mapped[int] = mapped_column(
@@ -219,7 +238,7 @@ class Membership(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     user: Mapped[User] = relationship(back_populates="memberships")
-    group: Mapped[Group] = relationship(back_populates="memberships")
+    group: Mapped[Group] = relationship(back_populates="memberships", foreign_keys=[group_id])
 
 
 class Channel(Base):
@@ -685,6 +704,10 @@ Index(
 )
 
 Index("ix_memberships_group_id", Membership.group_id)
+Index(
+    "uq_memberships_group_owner", Membership.group_id, unique=True,
+    postgresql_where=Membership.member_role == MemberRole.OWNER,
+)
 
 Index(
     "uq_knowledge_graphs_attachment",

@@ -12,9 +12,8 @@ The required method signatures are defined in:
 
 `Backend/app/domains/study_groups/domain/repository.py`
 
-The PostgreSQL adapter still needs the ownership-role methods and schema update
-described below before the new role and transfer endpoints are available with
-the real database.
+The PostgreSQL adapter implements role updates and atomic ownership transfer.
+Deploy it with the current 6.1 schema, which includes the matching constraints.
 
 ## Ownership and role persistence
 
@@ -29,7 +28,8 @@ Active authorization comes from `memberships.role`, whose exact values are:
 Memberships contain active participants only. If the original creator later
 leaves, `groups.created_by` remains unchanged while that user's membership row
 is removed. The legacy `current_admin_id` field is non-authoritative and should
-be removed by migration when safe, or ignored until then.
+be ignored for authorization. The domain and API retain that field name for
+compatibility; the infrastructure maps it from `groups.current_owner`.
 
 Implement these repository contracts:
 
@@ -41,8 +41,23 @@ transaction. A role update may assign only `member` or `admin`; it must never
 create a second owner. Ownership transfer must lock the affected group
 memberships, verify both users are active members and the caller is the current
 owner, demote the old owner to `admin`, promote the target to `owner`, and commit
-both changes atomically. Add a database constraint or partial unique index that
-prevents more than one active `owner` membership for a group.
+both changes atomically. The 6.1 schema enforces exactly one owner as follows:
+
+- `uq_memberships_group_owner` permits at most one owner membership per group.
+- `fk_groups_active_owner` requires every group's `current_owner` to reference
+  an owner membership in that same group. The stored generated column
+  `active_owner_role` is always the non-null constant `owner`, including when
+  the group is soft-deleted. It cannot be overwritten to bypass this check.
+- The foreign key is deferred until commit, allowing group creation and
+  transfers within one transaction. Transfer flushes the old owner's demotion
+  before promotion to respect the immediate unique index.
+- These rules also apply to personal and soft-deleted groups. An owner cannot
+  leave a soft-deleted group, and its owner membership cannot be removed by
+  bypassing the application and deleting directly in the database.
+
+Both transfer participants must have an existing membership and an active,
+non-deleted account. Group, membership and user locks protect the operation;
+any failure rolls back the role changes and current-owner pointer together.
 
 The service contract deliberately applies these permissions:
 
@@ -53,6 +68,25 @@ The service contract deliberately applies these permissions:
 - Owner: may leave only after transferring ownership.
 
 ## Membership persistence
+
+### Verified lifecycle checklist
+
+- [x] New study groups set `created_by` and `current_owner` to the creator and
+  insert that user's `owner` membership in the same transaction.
+- [x] Registration creates the user, a new personal group, and its owner
+  membership atomically.
+- [x] Membership rows represent current participants only. Leaving deletes the
+  row instead of marking it historical.
+- [x] An owner cannot leave until transferring ownership. Transfer demotes the
+  old owner to `admin`, after which they may leave without changing `created_by`.
+- [x] The 6.1 SQL schema and ORM agree on tables, columns, types, nullability,
+  defaults, enums, keys, check constraints, indexes and ownership enforcement.
+
+Regression coverage: `tests/unit/test_study_group_ownership.py` exercises the
+real repository against SQLite with dialect-specific DDL adaptations;
+`tests/unit/test_schema_61_alignment.py` compares PostgreSQL schema definitions
+with ORM metadata. PostgreSQL concurrency checks still require
+`SPC_TEST_DATABASE_URL`; these local checks do not replace that integration run.
 
 - `find_active_user_id_by_email(...)`
 - `list_members(...)`
@@ -143,15 +177,17 @@ query. Order authorized results by pgvector cosine distance and apply `LIMIT`.
 Return ranked chunks only; similarity scores and Python reranking are not
 required for the prototype.
 
-## Runtime and migrations
+## Runtime and development rebuilds
 
 `Backend/app/api/dependencies.py` injects
 `PostgreSQLStudyGroupRepository(session)` and
 `PostgreSQLStudyGroupReadyChunkRepository(session)`. Fresh local databases load
-`006_create_initial_test_schema.sql`, which is the current schema source of
-truth. Existing databases need a separately reviewed migration before enabling
-the new graph and semantic-search paths; do not replay the fresh-schema file
-against a populated database.
+`006_1_create_initial_test_schema.sql`, which is the current schema source of
+truth. During development the database schema is removed and recreated for
+each update. All ownership changes are included directly in version 6.1 and
+its test-schema mirror; there is no separate data migration script. Recreate
+the schema using the project's development reset workflow before loading this
+file. No database reset or schema application has been performed automatically.
 
 The PostgreSQL integration suite covers membership lookup/listing, channel and
 message lifecycle/isolation, multiple mentions, channel-scoped retrieval,

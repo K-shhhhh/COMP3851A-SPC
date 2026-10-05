@@ -11,6 +11,7 @@ from app.domains.study_groups.domain.exceptions import (
     InvalidStudyGroupError,
     StudyGroupAlreadyMemberError,
     StudyGroupFullError,
+    StudyGroupPermissionDeniedError,
 )
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
@@ -513,6 +514,8 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
             if key not in self._memberships:
                 return False
 
+            if self._memberships[key].role == StudyGroupMemberRole.OWNER:
+                raise StudyGroupPermissionDeniedError("Transfer ownership before leaving.")
             del self._memberships[key]
             return True
 

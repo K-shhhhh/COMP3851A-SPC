@@ -873,9 +873,8 @@ class StudyGroupService:
         if group is None:
             raise StudyGroupNotFoundError("Study group not found.")
 
-        can_manage = (
-            group.is_owner
-            or group.membership_role == StudyGroupMemberRole.ADMIN
+        can_manage = group.is_member and group.membership_role in (
+            StudyGroupMemberRole.OWNER, StudyGroupMemberRole.ADMIN,
         )
 
         if not can_manage:
