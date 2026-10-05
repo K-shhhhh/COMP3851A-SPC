@@ -35,7 +35,7 @@ async def sessions():
         async with admin.begin() as connection:
             await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         sql = (Path(__file__).resolve().parents[2] / "migrations" /
-               "006_create_initial_test_schema.sql").read_text()
+               "006_1_create_initial_test_schema.sql").read_text()
         # pgvector is a database prerequisite; tests create only their own schema.
         sql = sql.replace("create extension if not exists vector;", "")
         async with engine.begin() as connection:
@@ -532,13 +532,16 @@ async def test_ready_chunks_enforce_channel_group_and_active_boundaries(sessions
 
 
 async def add_personal_group(session, owner):
-    from app.models.orm_models import Group, GroupType
+    from app.models.orm_models import Group, GroupType, Membership, MemberRole
     group = Group(
         group_name="Personal", group_type=GroupType.PERSONAL,
-        created_by=owner.user_id, current_admin=owner.user_id,
+        created_by=owner.user_id, current_owner=owner.user_id,
         max_members=1, created_at=datetime.now(timezone.utc),
     )
     session.add(group)
+    await session.flush()
+    session.add(Membership(group_id=group.group_id, user_id=owner.user_id,
+        member_role=MemberRole.OWNER, joined_at=datetime.now(timezone.utc)))
     await session.commit()
     return group.group_id
 
@@ -706,12 +709,7 @@ async def test_my_groups_filters_include_owned_or_joined_active_nonpersonal_grou
         await add_personal_group(session, user)
         deleted = await add_group(session, user, name="Deleted")
         await repo.soft_delete_group(group_id=deleted.group.group_id, deleted_at=datetime.now(timezone.utc))
-        # Ownership comes from created_by, even without a membership and when
-        # current_admin points to somebody else.
-        await session.execute(delete(Membership).where(Membership.group_id == UUID(owned_public.group.group_id)))
-        row = await session.get(Group, UUID(owned_public.group.group_id))
-        row.current_admin = other.user_id
-        await session.commit()
+        # Ownership comes from the active owner membership.
         expected = {
             "all": (owned_public, owned_private, joined_public, joined_private),
             "public": (owned_public, joined_public),
@@ -725,7 +723,7 @@ async def test_my_groups_filters_include_owned_or_joined_active_nonpersonal_grou
         page, page_total = await repo.list_user_groups(**args, offset=1, limit=1)
         assert page_total == total and page == groups[1:2]
         owned = await repo.get_group_for_user(group_id=owned_public.group.group_id, user_id=str(user.user_id))
-        assert owned.is_owner and not owned.is_member
+        assert owned.is_owner and owned.is_member
 
 
 @pytest.mark.asyncio
@@ -757,7 +755,7 @@ async def test_private_group_is_hidden_from_nonmembers_and_cannot_be_self_joined
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("visibility", [StudyGroupVisibility.PUBLIC, StudyGroupVisibility.PRIVATE])
-async def test_group_and_initial_owner_admin_membership_are_committed_together(sessions, visibility):
+async def test_group_and_initial_owner_membership_are_committed_together(sessions, visibility):
     from app.models.orm_models import Group, Membership, MemberRole
     async with sessions() as session:
         owner = await add_user(session)
@@ -767,9 +765,9 @@ async def test_group_and_initial_owner_admin_membership_are_committed_together(s
         group = await session.get(Group, UUID(created.group.group_id))
         membership = await session.scalar(select(Membership).where(Membership.group_id == group.group_id))
         assert group.created_by == owner.user_id
-        assert membership.user_id == owner.user_id and membership.member_role == MemberRole.ADMIN
+        assert membership.user_id == owner.user_id and membership.member_role == MemberRole.OWNER
         assert created.is_owner and created.is_member and created.member_count == 1
-        assert created.membership_role == StudyGroupMemberRole.ADMIN
+        assert created.membership_role == StudyGroupMemberRole.OWNER
 
 
 @pytest.mark.asyncio
@@ -781,7 +779,7 @@ async def test_group_creation_rolls_back_if_initial_membership_insert_fails(sess
         owner = await add_user(session)
         # Force a real database failure on the second insert, inside this
         # disposable test schema only. No repository methods are mocked.
-        await session.execute(text("ALTER TABLE memberships ADD CONSTRAINT test_reject_admin CHECK (member_role <> 'admin')"))
+        await session.execute(text("ALTER TABLE memberships ADD CONSTRAINT test_reject_owner CHECK (member_role <> 'owner')"))
         await session.commit()
         with pytest.raises(IntegrityError):
             await add_group(session, owner)

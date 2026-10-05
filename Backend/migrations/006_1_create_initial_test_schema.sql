@@ -1,14 +1,15 @@
 /*
-Version: 6
+Version: 6.1
 
 Existing tables:	users, groups, memberships, channels, messages, message_mentions, attachments, chunks,
                 	knowledge_graphs, knowledge_nodes, knowledge_edges,
 (15 in total)   	ai_responses, ai_response_sources, ai_response_feedbacks,
                 	user_activity_logs
 
-Updated tables: message_mentions, attachments, knowledge_graphs, knowledge_nodes, knowledge_edges
+Updated tables: memberships, message_mentions, attachments, knowledge_graphs, knowledge_nodes, knowledge_edges
 
-Changes:    Added not null constraints to the composite keys of Message_Mentions table.
+Changes:    Updated member_roles enum for Memberships table. 
+            Added not null constraints to the composite keys of Message_Mentions table.
             Added "show_in_library" attribute in Attachments table.
             Restructured Knowledge_Graphs, Knowledge_Nodes and Knowledge_Edges tables: attributes, relationships, constraints and their indexes.
 
@@ -19,7 +20,7 @@ Notes:	Deletion rules may be implemented as required in future updates.
 create extension if not exists vector;
 create type activity_status as enum ('active', 'deactivated');
 create type user_roles as enum ('student','admin');
-create type member_roles as enum ('admin', 'member');
+create type member_roles as enum ('owner', 'admin', 'member');
 create type group_types as enum ('personal', 'private', 'public');
 create type attachment_status as enum('queued', 'processing', 'ready', 'failed');
 create type ai_modes as enum ('quiz', 'summarizer','facilitator','default');
@@ -44,7 +45,7 @@ create table if not exists groups (
     group_type group_types not null,
     description text,
     created_by uuid not null,
-    current_admin uuid not null,
+    current_owner uuid not null,
     max_members int not null,
     created_at timestamptz not null,
     last_updated_at timestamptz,
@@ -53,7 +54,7 @@ create table if not exists groups (
 	constraint fk_group_created_by_for_groups foreign key (created_by)
 	references users(user_id),
 
-	constraint fk_current_admin_for_groups foreign key (current_admin)
+	constraint fk_current_owner_for_groups foreign key (current_owner)
 	references users(user_id)
 );
 
@@ -70,7 +71,8 @@ create table if not exists memberships (
 	constraint fk_group_id_for_memberships foreign key (group_id)
 	references groups(group_id),
 
-	constraint uq_memberships_user_group unique (user_id, group_id)
+	constraint uq_memberships_user_group unique (user_id, group_id),
+    constraint uq_memberships_group_user_role unique (group_id, user_id, member_role)
 );
 
 create table if not exists channels (
@@ -292,6 +294,18 @@ create table if not exists user_activity_logs (
     metadata jsonb,
     created_at timestamptz not null
 );
+
+-- Memberships have no deleted_at: leaving hard-deletes the membership.
+create unique index uq_memberships_group_owner on memberships (group_id) where member_role = 'owner';
+
+-- Every group, including personal and soft-deleted groups, retains an owner. The generated constant cannot be overwritten or become NULL to bypass the FK.
+alter table groups add column active_owner_role member_roles generated always as
+    ('owner'::member_roles) stored not null;
+    
+alter table groups add constraint fk_groups_active_owner
+    foreign key (group_id, current_owner, active_owner_role)
+    references memberships (group_id, user_id, member_role)
+    deferrable initially deferred;
 
 -- Unique index for channel name consistency, allows duplication if an old one is deleted
 create unique index uq_channels_group_name on channels (group_id, lower(channel_name)) where deleted_at is null;

@@ -142,7 +142,7 @@ class PostgreSQLAuthRepository(AuthRepository):
                 group_type=GroupType.PERSONAL,
                 description="Personal AI Assistant",
                 created_by=orm_user.user_id,
-                current_admin=orm_user.user_id,
+                current_owner=orm_user.user_id,
                 max_members=1,
                 created_at=now,
             )
@@ -155,7 +155,7 @@ class PostgreSQLAuthRepository(AuthRepository):
             personal_membership = ORMMembership(
                 user_id=orm_user.user_id,
                 group_id=personal_group.group_id,
-                member_role=MemberRole.ADMIN,
+                member_role=MemberRole.OWNER,
                 joined_at=now,
             )
 
