@@ -120,12 +120,16 @@ async def _process_attachment_async(attachment_id: int, object_path: str) -> Non
                     chunks=embedded_chunks,
                 )
 
+                # The note is fully searchable as soon as its chunks are saved,
+                # so mark it ready NOW. Waiting for the knowledge graph (a slow
+                # model call) would make every upload look slower than it is.
+                await attachment_repository.update_processing_status(
+                    attachment_id=attachment_id,
+                    processing_status=NoteProcessingStatus.READY,
+                    processing_progress=100,
+                )
+
                 if graph_service is not None:
-                    await attachment_repository.update_processing_status(
-                        attachment_id=attachment_id,
-                        processing_status=NoteProcessingStatus.PROCESSING,
-                        processing_progress=85,
-                    )
                     try:
                         await _generate_and_store_graph(
                             attachment_id=attachment_id,
@@ -133,19 +137,14 @@ async def _process_attachment_async(attachment_id: int, object_path: str) -> Non
                             graph_service=graph_service,
                         )
                     except Exception:
-                        # Graphs are an optional derived view. Preserve the
-                        # successfully processed note and chunks for normal RAG.
+                        # Graphs are an optional derived view. The note and its
+                        # chunks are already ready for normal RAG, so a failed
+                        # graph must not change that.
                         logger.exception(
                             "Knowledge graph generation failed for attachment %s; "
-                            "continuing note processing",
+                            "note remains ready",
                             attachment_id,
                         )
-
-                await attachment_repository.update_processing_status(
-                    attachment_id=attachment_id,
-                    processing_status=NoteProcessingStatus.READY,
-                    processing_progress=100,
-                )
             except Exception as error:
                 logger.exception(
                     "Processing failed for attachment %s",
