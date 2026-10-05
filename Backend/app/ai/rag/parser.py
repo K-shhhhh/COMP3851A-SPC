@@ -5,6 +5,7 @@
 # notebook version. Images are safety-checked (NudeNet) then captioned via a
 # vision model, so they flow into chunking as plain text like everything else.
 
+import logging
 import os
 from dotenv import load_dotenv, find_dotenv
 
@@ -19,7 +20,15 @@ import fitz
 from nudenet import NudeDetector
 from openai import OpenAI
 
+logger = logging.getLogger(__name__)
+
 _detector = NudeDetector()
+
+# Images with either side shorter than this are almost always decorative
+# (icons, bullets, divider lines, logos). Captioning them costs a safety
+# check plus a vision-model round trip each, and the junk captions they
+# produce pollute search results. Real diagrams and charts are far larger.
+MIN_IMAGE_DIMENSION_PX = 100
 
 UNSAFE_LABELS = {
     "EXPOSED_BREAST_F",
@@ -94,6 +103,10 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
     doc = fitz.open(file_path)
     pages_out = []
     flagged_images = []
+    seen_xrefs = set()
+    skipped_duplicate = 0
+    skipped_small = 0
+    captioned = 0
 
     for page_index, page in enumerate(doc):
         page_num = page_index + 1
@@ -114,6 +127,21 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
 
         for img in page.get_images(full=True):
             xref = img[0]
+            width, height = img[2], img[3]
+
+            # The same image (e.g. a header logo) is listed again on every
+            # page it appears on: process each distinct image only once.
+            if xref in seen_xrefs:
+                skipped_duplicate += 1
+                continue
+            seen_xrefs.add(xref)
+
+            # Decide cheaply from the metadata, before extracting the image
+            # or running the safety check and the vision model on it.
+            if width < MIN_IMAGE_DIMENSION_PX or height < MIN_IMAGE_DIMENSION_PX:
+                skipped_small += 1
+                continue
+
             image_bytes = doc.extract_image(xref)["image"]
             if not is_image_safe(image_bytes):
                 if image_mode == "strict":
@@ -122,7 +150,15 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
                     flagged_images.append({"page_num": page_num, "xref": xref})
                     continue
             caption = caption_image(image_bytes)
+            captioned += 1
             pages_out.append({"page_num": page_num, "content": caption, "type": "image"})
+
+    logger.info(
+        "Image processing: %d captioned, %d skipped as duplicates, %d skipped as too small",
+        captioned,
+        skipped_duplicate,
+        skipped_small,
+    )
 
     if image_mode == "lenient" and flagged_images:
         print(f"Warning: {len(flagged_images)} image(s) flagged and skipped: {flagged_images}")

@@ -1,0 +1,20 @@
+# HTTPS in front of the staging stack. Caddy gets and renews the certificate
+# automatically. Replace the hostname, save as /etc/caddy/Caddyfile on the
+# server, then: sudo systemctl reload caddy
+#
+# Hostname options:
+#   * your own domain with an A record pointing at the server IP, or
+#   * a free name that already resolves to the IP, e.g. 168-119-99-65.sslip.io
+#     (if certificate issuance is rate limited, use a free DuckDNS name instead)
+#
+# Requires NGINX_HTTP_PORT=8080 in .env.staging, so nginx stays on port 8080
+# and leaves ports 80/443 free for Caddy. The Hetzner firewall must NOT open 8080.
+
+your-hostname.example.com {
+	# Do not publish the interactive API documentation to testers.
+	@docs path /docs* /redoc* /openapi.json
+	respond @docs 404
+
+	# WebSocket upgrades (study group live chat) are proxied automatically.
+	reverse_proxy 127.0.0.1:8080
+}
