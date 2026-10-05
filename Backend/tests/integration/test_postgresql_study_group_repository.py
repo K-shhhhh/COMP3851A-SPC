@@ -93,7 +93,7 @@ async def test_postgresql_study_group_workflow() -> None:
                 max_members=5,
             )
             assert public_group.member_count == 1
-            assert public_group.membership_role == StudyGroupMemberRole.OWNER
+            assert public_group.membership_role == StudyGroupMemberRole.ADMIN
 
         async with session_factory() as session:
             groups = PostgreSQLStudyGroupRepository(session)

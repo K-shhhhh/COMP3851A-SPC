@@ -16,8 +16,6 @@ from app.domains.study_groups.domain.exceptions import (
     InvalidStudyGroupError,
     StudyGroupAlreadyMemberError,
     StudyGroupFullError,
-    StudyGroupPermissionDeniedError,
-    StudyGroupMembershipNotFoundError,
     StudyGroupChannelNameConflictError,
     StudyGroupChannelNotFoundError,
     StudyGroupMessageNotFoundError,
@@ -104,7 +102,6 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         ) or 0)
         rows = await self._session.execute(
             statement.order_by(
-                (ORMMembership.member_role == MemberRole.OWNER).desc(),
                 (ORMMembership.member_role == MemberRole.ADMIN).desc(),
                 ORMMembership.joined_at, ORMMembership.membership_id,
             ).offset(offset).limit(limit)
@@ -593,7 +590,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             ORMGroup.group_type.in_(
                 (GroupType.PUBLIC, GroupType.PRIVATE)
             ),
-            membership_exists,
+            or_(ORMGroup.created_by == user_uuid, membership_exists),
         ]
 
         if group_filter == MyGroupsFilter.PUBLIC:
@@ -601,11 +598,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         elif group_filter == MyGroupsFilter.PRIVATE:
             filters.append(ORMGroup.group_type == GroupType.PRIVATE)
         elif group_filter == MyGroupsFilter.OWNED:
-            filters.append(select(ORMMembership.membership_id).where(
-                ORMMembership.group_id == ORMGroup.group_id,
-                ORMMembership.user_id == user_uuid,
-                ORMMembership.member_role == MemberRole.OWNER,
-            ).exists())
+            filters.append(ORMGroup.created_by == user_uuid)
 
         total = int(
             await self._session.scalar(
@@ -654,9 +647,11 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             group_id=group_uuid,
             user_id=user_uuid,
         )
+        is_owner = group.created_by == user_uuid
         if (
             group.group_type == GroupType.PRIVATE
             and membership is None
+            and not is_owner
         ):
             return None
 
@@ -683,7 +678,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         created_by: str,
         max_members: int,
     ) -> StudyGroupSummary:
-        """Create the group and creator's owner membership atomically."""
+        """Create the group and creator's admin membership atomically."""
 
         creator_uuid = self._uuid(created_by, "created_by")
         now = datetime.now(timezone.utc)
@@ -692,7 +687,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             group_type=GroupType(visibility.value),
             description=description,
             created_by=creator_uuid,
-            current_owner=creator_uuid,
+            current_admin=creator_uuid,
             max_members=max_members,
             created_at=now,
             last_updated_at=now,
@@ -704,7 +699,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             membership = ORMMembership(
                 user_id=creator_uuid,
                 group_id=group.group_id,
-                member_role=MemberRole.OWNER,
+                member_role=MemberRole.ADMIN,
                 joined_at=now,
             )
             self._session.add(membership)
@@ -851,85 +846,6 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             raise
         return self._membership_to_domain(membership)
 
-    async def update_membership_role(
-        self, *, group_id: str, user_id: str, role: StudyGroupMemberRole,
-    ) -> StudyGroupMembership:
-        """Change only member/admin roles under the group and membership locks."""
-        try:
-            if role not in (StudyGroupMemberRole.MEMBER, StudyGroupMemberRole.ADMIN):
-                raise InvalidStudyGroupError("Use ownership transfer to assign an owner.")
-            group_uuid = self._uuid(group_id, "group_id")
-            if await self._active_group(group_uuid, for_update=True) is None:
-                raise LookupError("Study group not found.")
-            membership = await self._locked_membership(
-                group_uuid, self._uuid(user_id, "user_id"),
-            )
-            if membership is None:
-                raise StudyGroupMembershipNotFoundError("Active membership not found.")
-            if membership.member_role == MemberRole.OWNER:
-                raise StudyGroupPermissionDeniedError("The owner role must be transferred.")
-            membership.member_role = MemberRole(role)
-            result = self._membership_to_domain(membership)
-            await self._session.commit()
-            return result
-        except BaseException:
-            await self._session.rollback()
-            raise
-
-    async def transfer_ownership(
-        self, *, group_id: str, current_owner_id: str, new_owner_id: str,
-    ) -> tuple[StudyGroupMembership, StudyGroupMembership]:
-        """Serialize transfers and commit both role changes and the pointer together."""
-        try:
-            group_uuid = self._uuid(group_id, "group_id")
-            old_uuid = self._uuid(current_owner_id, "current_owner_id")
-            new_uuid = self._uuid(new_owner_id, "new_owner_id")
-            if old_uuid == new_uuid:
-                raise InvalidStudyGroupError("Choose another active member as owner.")
-            group = await self._active_group(group_uuid, for_update=True)
-            if group is None:
-                raise LookupError("Study group not found.")
-            # Stable account-lock order also avoids opposite transfers deadlocking
-            # when the same two users belong to different groups.
-            locked = {uid: await self._locked_membership(group_uuid, uid)
-                      for uid in sorted((old_uuid, new_uuid))}
-            current, target = locked[old_uuid], locked[new_uuid]
-            if current is None or target is None:
-                raise StudyGroupMembershipNotFoundError("Both users must be active members.")
-            if current.member_role != MemberRole.OWNER:
-                raise StudyGroupPermissionDeniedError("Only the current owner can transfer ownership.")
-            if target.member_role not in (MemberRole.MEMBER, MemberRole.ADMIN):
-                raise InvalidStudyGroupError("The new owner must be a member or admin.")
-
-            # Free the unique owner slot before promotion. The deferred FK
-            # permits this temporary gap, but rejects it at commit on failure.
-            current.member_role = MemberRole.ADMIN
-            await self._session.flush()
-            target.member_role = MemberRole.OWNER
-            group.current_owner = new_uuid
-            group.last_updated_at = datetime.now(timezone.utc)
-            await self._session.flush()
-            result = (self._membership_to_domain(current), self._membership_to_domain(target))
-            await self._session.commit()
-            return result
-        except BaseException:
-            await self._session.rollback()
-            raise
-
-    async def _locked_membership(self, group_id: UUID, user_id: UUID) -> ORMMembership | None:
-        """Refresh and lock the membership and its active, non-deleted account."""
-        return await self._session.scalar(
-            select(ORMMembership).join(ORMUser, ORMUser.user_id == ORMMembership.user_id)
-            .where(
-                ORMMembership.group_id == group_id,
-                ORMMembership.user_id == user_id,
-                ORMUser.status == ActivityStatus.ACTIVE,
-                ORMUser.deleted_at.is_(None),
-            )
-            .with_for_update(of=(ORMMembership, ORMUser))
-            .execution_options(populate_existing=True)
-        )
-
     async def delete_membership(
         self,
         *,
@@ -938,28 +854,13 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
     ) -> bool:
         """Hard-delete an active membership when a user leaves."""
 
+        membership = await self._membership_row(
+            group_id=self._uuid(group_id, "group_id"),
+            user_id=self._uuid(user_id, "user_id"),
+        )
+        if membership is None:
+            return False
         try:
-            group_uuid = self._uuid(group_id, "group_id")
-            group = await self._session.scalar(
-                select(ORMGroup).where(
-                    ORMGroup.group_id == group_uuid,
-                    ORMGroup.group_type.in_((GroupType.PUBLIC, GroupType.PRIVATE)),
-                ).with_for_update().execution_options(populate_existing=True)
-            )
-            if group is None:
-                return False
-            membership = await self._session.scalar(
-                select(ORMMembership).where(
-                    ORMMembership.group_id == group_uuid,
-                    ORMMembership.user_id == self._uuid(user_id, "user_id"),
-                ).with_for_update().execution_options(populate_existing=True)
-            )
-            if membership is None:
-                return False
-            if membership.member_role == MemberRole.OWNER:
-                raise StudyGroupPermissionDeniedError("Transfer ownership before leaving.")
-            if group.deleted_at is not None:
-                return False
             await self._session.delete(membership)
             await self._session.commit()
         except Exception:
@@ -1006,7 +907,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             select(ORMMembership).where(
                 ORMMembership.group_id == group_id,
                 ORMMembership.user_id == user_id,
-            ).execution_options(populate_existing=True)
+            )
         )
 
     async def _count_members_uuid(self, group_id: UUID) -> int:
@@ -1039,7 +940,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             group=self._to_domain(group),
             member_count=await self._count_members_uuid(group.group_id),
             is_member=membership is not None,
-            is_owner=membership is not None and membership.member_role == MemberRole.OWNER,
+            is_owner=group.created_by == user_id,
             membership_role=(
                 StudyGroupMemberRole(membership.member_role.value)
                 if membership is not None
@@ -1059,8 +960,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             visibility=StudyGroupVisibility(group.group_type.value),
             description=group.description,
             created_by=str(group.created_by),
-            # Retain the legacy contract name; never use it for authorization.
-            current_admin_id=str(group.current_owner),
+            current_admin_id=str(group.current_admin),
             max_members=group.max_members,
             created_at=group.created_at,
             updated_at=group.last_updated_at or group.created_at,

@@ -107,7 +107,7 @@ async def test_registration_creates_personal_group_and_membership() -> None:
 
             assert personal_group is not None
             assert str(personal_group.created_by) == created_user.id
-            assert str(personal_group.current_owner) == created_user.id
+            assert str(personal_group.current_admin) == created_user.id
             assert personal_group.group_name == created_user.id
             assert personal_group.max_members == 1
 
