@@ -12,6 +12,7 @@ import UploadNotesPage from "./pages/UploadNotes/UploadNotesPage";
 import NotesPage from "./pages/Notes/NotesPage.jsx";
 import CompanionPage from "./pages/Companion/CompanionPage";
 import GroupStudyPage from "./pages/GroupStudy/GroupStudyPage";
+import KnowledgeGraphPage from "./pages/KnowledgeGraph/KnowledgeGraphPage.jsx";
 
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 
@@ -88,6 +89,15 @@ function App() {
           element={
             <ProtectedRoute>
              <GroupStudyPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/knowledge-graph"
+          element={
+            <ProtectedRoute>
+              <KnowledgeGraphPage />
             </ProtectedRoute>
           }
         />

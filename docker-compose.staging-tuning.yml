@@ -1,0 +1,24 @@
+# Extra staging settings for a CPU-only server. Layer this AFTER
+# docker-compose.staging.yml; scripts/staging.sh does that for you.
+#
+# Why these exist:
+#  * Embeddings run on the server's CPU through Ollama. More worker processes do
+#    not make that faster, they only fight over the same cores and memory, so
+#    the worker is limited to 2 concurrent documents. Extra uploads simply queue.
+#  * Ollama unloads a model after 5 idle minutes by default. Every question
+#    needs the embedding model, so the first question after a quiet period would
+#    pay a reload delay. Keeping it loaded removes that.
+name: spc-staging
+
+services:
+  ollama:
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    command: celery -A app.workers.celery_app:celery_app worker --loglevel=INFO --concurrency=2
