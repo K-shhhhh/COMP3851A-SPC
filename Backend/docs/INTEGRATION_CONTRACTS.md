@@ -995,12 +995,14 @@ All routes require `Authorization: Bearer <access_token>` and are prefixed by
 | `POST` | `/study-groups` | Create a public/private group |
 | `GET` | `/study-groups/{group_id}` | Read an accessible group |
 | `PUT` | `/study-groups/{group_id}` | Replace editable group details as owner/admin |
-| `DELETE` | `/study-groups/{group_id}` | Soft-delete a group as owner/admin |
+| `DELETE` | `/study-groups/{group_id}` | Soft-delete a group as owner only |
 | `POST` | `/study-groups/{group_id}/join` | Join an active public group |
 | `GET` | `/study-groups/{group_id}/members` | List members as a group member |
 | `POST` | `/study-groups/{group_id}/members` | Add a student by email as owner/admin |
 | `DELETE` | `/study-groups/{group_id}/members/{user_id}` | Remove an ordinary member as owner/admin |
-| `DELETE` | `/study-groups/{group_id}/members/me` | Leave a group as a non-admin member |
+| `PATCH` | `/study-groups/{group_id}/members/{user_id}/role` | Promote/demote a member as owner |
+| `POST` | `/study-groups/{group_id}/ownership/transfer` | Transfer ownership to an active member as owner |
+| `DELETE` | `/study-groups/{group_id}/members/me` | Leave as member/admin; owner must transfer first |
 | `GET` | `/study-groups/{group_id}/channels` | List active channels as a member |
 | `POST` | `/study-groups/{group_id}/channels` | Create an admin-named channel as owner/admin |
 | `GET` | `/study-groups/{group_id}/channels/{channel_id}` | Read a channel as a member |
@@ -1028,7 +1030,9 @@ The frontend presents two distinct views:
    `Owned` filters.
 
 The backend must derive membership and ownership from the access token. The
-frontend must not submit a user identifier to scope either list.
+frontend must not submit a user identifier to scope either list. Ownership is
+the active `owner` membership role; `groups.created_by` is immutable audit
+history and is not an authorization source.
 
 ## Group visibility and membership
 
@@ -1036,9 +1040,15 @@ frontend must not submit a user identifier to scope either list.
 - Private groups are visible only to members. For this sprint, an owner/admin
   adds an active student directly by email; a separate invitation workflow is
   deferred.
-- Every member may list the group's members. Only an owner/admin may add or
-  remove members, and an owner/admin membership cannot be removed.
-- Leaving a group removes its active membership.
+- Every member may list the group's members. An owner/admin may add and remove
+  ordinary members. Only the owner may promote/demote admins.
+- Every active group has exactly one owner and may have multiple admins.
+- Only the owner may transfer ownership. The target must already be an active
+  member; the previous owner becomes an admin atomically.
+- Members and admins may leave. The owner must transfer ownership before
+  leaving. Leaving removes the active membership but does not change the
+  historical `created_by` value.
+- Only the owner may delete the group.
 - Deleted groups, channels, messages, and accounts are excluded according to
   the shared soft-deletion rules.
 

@@ -207,7 +207,7 @@ class StudyGroupService:
     ) -> None:
         """Allow an owner/admin to remove an ordinary group member."""
 
-        group = await self._get_manageable_group(
+        await self._get_manageable_group(
             group_id=group_id,
             user_id=requester_user_id,
         )
@@ -219,11 +219,7 @@ class StudyGroupService:
             raise StudyGroupMembershipNotFoundError(
                 "That student is not a member of this study group."
             )
-        if (
-            target_user_id == group.group.created_by
-            or target_user_id == group.group.current_admin_id
-            or membership.role == StudyGroupMemberRole.ADMIN
-        ):
+        if membership.role != StudyGroupMemberRole.MEMBER:
             raise StudyGroupPermissionDeniedError(
                 "A group owner or administrator cannot be removed."
             )
@@ -236,6 +232,78 @@ class StudyGroupService:
             raise StudyGroupMembershipNotFoundError(
                 "That student is not a member of this study group."
             )
+
+    async def set_member_role(
+        self,
+        *,
+        group_id: str,
+        requester_user_id: str,
+        target_user_id: str,
+        role: StudyGroupMemberRole,
+    ) -> StudyGroupMembership:
+        """Allow only the owner to promote a member or demote an admin."""
+
+        await self._get_owner_group(
+            group_id=group_id,
+            user_id=requester_user_id,
+        )
+        if role == StudyGroupMemberRole.OWNER:
+            raise InvalidStudyGroupError(
+                "Use the ownership-transfer endpoint to assign an owner."
+            )
+
+        membership = await self._repository.get_membership(
+            group_id=group_id,
+            user_id=target_user_id,
+        )
+        if membership is None:
+            raise StudyGroupMembershipNotFoundError(
+                "That student is not a member of this study group."
+            )
+        if membership.role == StudyGroupMemberRole.OWNER:
+            raise StudyGroupPermissionDeniedError(
+                "The owner role must be transferred, not demoted."
+            )
+
+        return await self._repository.update_membership_role(
+            group_id=group_id,
+            user_id=target_user_id,
+            role=role,
+        )
+
+    async def transfer_ownership(
+        self,
+        *,
+        group_id: str,
+        requester_user_id: str,
+        target_user_id: str,
+    ) -> StudyGroupMembership:
+        """Transfer ownership to another active member of the group."""
+
+        await self._get_owner_group(
+            group_id=group_id,
+            user_id=requester_user_id,
+        )
+        if requester_user_id == target_user_id:
+            raise InvalidStudyGroupError(
+                "Choose another active member as the new owner."
+            )
+
+        target = await self._repository.get_membership(
+            group_id=group_id,
+            user_id=target_user_id,
+        )
+        if target is None:
+            raise StudyGroupMembershipNotFoundError(
+                "The new owner must be an active group member."
+            )
+
+        _, new_owner = await self._repository.transfer_ownership(
+            group_id=group_id,
+            current_owner_id=requester_user_id,
+            new_owner_id=target_user_id,
+        )
+        return new_owner
 
     async def list_channels(
         self,
@@ -619,7 +687,7 @@ class StudyGroupService:
         normalized_description = self._normalize_description(description)
         self._validate_max_members(max_members)
 
-        # The repository creates both the group and the creator's admin
+        # The repository creates both the group and the creator's owner
         # membership in one transaction.
         return await self._repository.create_group(
             name=normalized_name,
@@ -680,9 +748,9 @@ class StudyGroupService:
         group_id: str,
         user_id: str,
     ) -> None:
-        """Soft-delete a group after checking admin permission."""
+        """Soft-delete a group after checking owner permission."""
 
-        await self._get_manageable_group(
+        await self._get_owner_group(
             group_id=group_id,
             user_id=user_id,
         )
@@ -757,7 +825,7 @@ class StudyGroupService:
     ) -> None:
         """Remove the current student's active membership."""
 
-        group = await self.get_group(
+        await self.get_group(
             group_id=group_id,
             user_id=user_id,
         )
@@ -772,14 +840,11 @@ class StudyGroupService:
                 "You are not a member of this study group."
             )
 
-        # An administrator must transfer responsibility or delete the group.
-        if (
-            group.is_owner
-            or membership.role == StudyGroupMemberRole.ADMIN
-        ):
+        # The single owner must transfer ownership before leaving. Admins and
+        # ordinary members may leave freely.
+        if membership.role == StudyGroupMemberRole.OWNER:
             raise StudyGroupPermissionDeniedError(
-                "A group administrator cannot leave before transferring "
-                "administration or deleting the group."
+                "Transfer ownership to another active member before leaving."
             )
 
         deleted = await self._repository.delete_membership(
@@ -818,6 +883,26 @@ class StudyGroupService:
                 "You do not have permission to manage this study group."
             )
 
+        return group
+
+    async def _get_owner_group(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+    ) -> StudyGroupSummary:
+        """Return a group only when the user has its active owner role."""
+
+        group = await self._repository.get_group_for_user(
+            group_id=group_id,
+            user_id=user_id,
+        )
+        if group is None:
+            raise StudyGroupNotFoundError("Study group not found.")
+        if group.membership_role != StudyGroupMemberRole.OWNER:
+            raise StudyGroupPermissionDeniedError(
+                "Only the group owner can perform this action."
+            )
         return group
 
     async def _get_member_group(

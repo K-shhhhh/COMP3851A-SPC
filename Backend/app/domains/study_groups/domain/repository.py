@@ -122,9 +122,10 @@ class StudyGroupRepository(ABC):
         created_by: str,
         max_members: int,
     ) -> StudyGroupSummary:
-        """Create a group and its initial admin membership atomically.
+        """Create a group and its initial owner membership atomically.
 
-        The `created_by` student becomes both the owner and the first admin.
+        `created_by` remains historical data. The creator initially receives
+        the single active `owner` membership.
         """
 
         raise NotImplementedError
@@ -194,6 +195,36 @@ class StudyGroupRepository(ABC):
         user_id: str,
     ) -> bool:
         """Hard-delete an active membership when a student leaves."""
+
+        raise NotImplementedError
+
+    async def update_membership_role(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+        role: StudyGroupMemberRole,
+    ) -> StudyGroupMembership:
+        """Change an active member between `member` and `admin`.
+
+        The application layer reserves `owner` changes for
+        `transfer_ownership`, which must preserve exactly one owner.
+        """
+
+        raise NotImplementedError
+
+    async def transfer_ownership(
+        self,
+        *,
+        group_id: str,
+        current_owner_id: str,
+        new_owner_id: str,
+    ) -> tuple[StudyGroupMembership, StudyGroupMembership]:
+        """Atomically make the target owner and the previous owner an admin.
+
+        Both users must already have active memberships. Implementations must
+        leave the group with exactly one owner if the operation fails.
+        """
 
         raise NotImplementedError
 

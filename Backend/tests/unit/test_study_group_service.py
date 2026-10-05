@@ -26,6 +26,7 @@ from app.domains.study_groups.domain.exceptions import (
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
     StudyGroupAiMode,
+    StudyGroupMemberRole,
     StudyGroupVisibility,
 )
 from app.domains.study_groups.infrastructure.memory_repository import (
@@ -304,6 +305,111 @@ async def test_admin_cannot_add_inactive_user_or_remove_owner() -> None:
             requester_user_id=owner,
             target_user_id=owner,
         )
+
+
+@pytest.mark.asyncio
+async def test_owner_controls_roles_and_transfers_ownership() -> None:
+    """Keep creator history separate from active owner permissions."""
+
+    repository = InMemoryStudyGroupRepository()
+    service = StudyGroupService(repository)
+    creator = "11111111-1111-1111-1111-111111111111"
+    member = "22222222-2222-2222-2222-222222222222"
+    group = await service.create_group(
+        user_id=creator,
+        name="Role model",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    group_id = group.group.group_id
+    assert group.membership_role == StudyGroupMemberRole.OWNER
+    assert group.is_owner is True
+
+    await service.join_public_group(group_id=group_id, user_id=member)
+    promoted = await service.set_member_role(
+        group_id=group_id,
+        requester_user_id=creator,
+        target_user_id=member,
+        role=StudyGroupMemberRole.ADMIN,
+    )
+    assert promoted.role == StudyGroupMemberRole.ADMIN
+
+    new_owner = await service.transfer_ownership(
+        group_id=group_id,
+        requester_user_id=creator,
+        target_user_id=member,
+    )
+    assert new_owner.role == StudyGroupMemberRole.OWNER
+
+    creator_view = await service.get_group(
+        group_id=group_id,
+        user_id=creator,
+    )
+    member_view = await service.get_group(
+        group_id=group_id,
+        user_id=member,
+    )
+    assert creator_view.group.created_by == creator
+    assert creator_view.membership_role == StudyGroupMemberRole.ADMIN
+    assert creator_view.is_owner is False
+    assert member_view.is_owner is True
+
+    await service.leave_group(group_id=group_id, user_id=creator)
+    with pytest.raises(StudyGroupPermissionDeniedError):
+        await service.leave_group(group_id=group_id, user_id=member)
+
+
+@pytest.mark.asyncio
+async def test_admin_can_manage_group_but_cannot_control_owner_roles() -> None:
+    """Admins manage content and ordinary members, not ownership."""
+
+    repository = InMemoryStudyGroupRepository()
+    service = StudyGroupService(repository)
+    owner = "11111111-1111-1111-1111-111111111111"
+    admin = "22222222-2222-2222-2222-222222222222"
+    member = "33333333-3333-3333-3333-333333333333"
+    group = await service.create_group(
+        user_id=owner,
+        name="Admin boundaries",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    group_id = group.group.group_id
+    await service.join_public_group(group_id=group_id, user_id=admin)
+    await service.join_public_group(group_id=group_id, user_id=member)
+    await service.set_member_role(
+        group_id=group_id,
+        requester_user_id=owner,
+        target_user_id=admin,
+        role=StudyGroupMemberRole.ADMIN,
+    )
+
+    await service.update_group(
+        group_id=group_id,
+        user_id=admin,
+        name="Admin updated",
+        description=None,
+        visibility=StudyGroupVisibility.PUBLIC,
+        max_members=5,
+    )
+    await service.remove_member(
+        group_id=group_id,
+        requester_user_id=admin,
+        target_user_id=member,
+    )
+    with pytest.raises(StudyGroupPermissionDeniedError):
+        await service.set_member_role(
+            group_id=group_id,
+            requester_user_id=admin,
+            target_user_id=owner,
+            role=StudyGroupMemberRole.MEMBER,
+        )
+    with pytest.raises(StudyGroupPermissionDeniedError):
+        await service.delete_group(group_id=group_id, user_id=admin)
+
+    await service.leave_group(group_id=group_id, user_id=admin)
 
 
 @pytest.mark.asyncio

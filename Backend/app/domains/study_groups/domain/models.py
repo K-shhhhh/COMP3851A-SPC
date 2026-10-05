@@ -21,6 +21,7 @@ class StudyGroupVisibility(StrEnum):
 class StudyGroupMemberRole(StrEnum):
     """Permissions assigned through an active group membership."""
 
+    OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
 

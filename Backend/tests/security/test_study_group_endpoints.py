@@ -727,3 +727,88 @@ async def test_owner_adds_lists_and_removes_private_group_member(
         f"/api/v1/study-groups/{group_id}/members",
         headers=headers(member_token),
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_owner_role_and_transfer_endpoints(
+    member_management_context,
+) -> None:
+    """Verify owner-only role changes and historical creator identity."""
+
+    client = member_management_context.client
+    repository = member_management_context.repository
+    owner_token, owner_id = register_login_and_get_id(
+        client, "role-owner@example.com"
+    )
+    member_token, member_id = register_login_and_get_id(
+        client, "role-member@example.com"
+    )
+    await repository.seed_user(
+        user_id=owner_id,
+        full_name="Role Owner",
+        email="role-owner@example.com",
+    )
+    await repository.seed_user(
+        user_id=member_id,
+        full_name="Role Member",
+        email="role-member@example.com",
+    )
+
+    created = client.post(
+        "/api/v1/study-groups",
+        headers=headers(owner_token),
+        json={
+            "name": "Role transfer group",
+            "description": None,
+            "visibility": "private",
+            "max_members": 5,
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["membership_role"] == "owner"
+    group_id = created.json()["id"]
+
+    client.post(
+        f"/api/v1/study-groups/{group_id}/members",
+        headers=headers(owner_token),
+        json={"email": "role-member@example.com"},
+    )
+    promoted = client.patch(
+        f"/api/v1/study-groups/{group_id}/members/{member_id}/role",
+        headers=headers(owner_token),
+        json={"role": "admin"},
+    )
+    assert promoted.status_code == 200
+    assert promoted.json()["role"] == "admin"
+
+    forbidden = client.patch(
+        f"/api/v1/study-groups/{group_id}/members/{owner_id}/role",
+        headers=headers(member_token),
+        json={"role": "member"},
+    )
+    assert forbidden.status_code == 403
+
+    transferred = client.post(
+        f"/api/v1/study-groups/{group_id}/ownership/transfer",
+        headers=headers(owner_token),
+        json={"new_owner_user_id": member_id},
+    )
+    assert transferred.status_code == 200
+    assert transferred.json()["role"] == "owner"
+
+    group = client.get(
+        f"/api/v1/study-groups/{group_id}",
+        headers=headers(member_token),
+    ).json()
+    assert group["created_by"] == owner_id
+    assert group["is_owner"] is True
+    assert group["membership_role"] == "owner"
+
+    assert client.delete(
+        f"/api/v1/study-groups/{group_id}/members/me",
+        headers=headers(owner_token),
+    ).status_code == 204
+    assert client.delete(
+        f"/api/v1/study-groups/{group_id}/members/me",
+        headers=headers(member_token),
+    ).status_code == 403

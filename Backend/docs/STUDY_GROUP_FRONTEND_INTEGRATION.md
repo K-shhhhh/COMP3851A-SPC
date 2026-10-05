@@ -4,8 +4,8 @@
 
 The backend now supports Study Group discovery, the authenticated student's
 groups, public/private group creation, details, updates, soft deletion, public
-joining, owner/admin-managed membership, member listing, leaving, complete
-channel CRUD, structured human mentions, AI companion modes, normal
+joining, owner/admin-managed membership, member listing, role management,
+ownership transfer, leaving, complete channel CRUD, structured human mentions, AI companion modes, normal
 channel-message CRUD, and authenticated WebSocket delivery. The
 current frontend already calls the group, membership, channel, message, AI-mode,
 and WebSocket APIs through `Frontend/src/services/groupService.js`. The main
@@ -37,12 +37,14 @@ access token.
 | `POST` | `/study-groups` | Create group form |
 | `GET` | `/study-groups/{id}` | Open/refresh one group |
 | `PUT` | `/study-groups/{id}` | Owner/admin edit form |
-| `DELETE` | `/study-groups/{id}` | Owner/admin delete action |
+| `DELETE` | `/study-groups/{id}` | Owner-only delete action |
 | `POST` | `/study-groups/{id}/join` | Join a public group |
 | `GET` | `/study-groups/{id}/members?page=1&page_size=20` | List members as a group member |
 | `POST` | `/study-groups/{id}/members` | Add an active student by email as owner/admin |
 | `DELETE` | `/study-groups/{id}/members/{userId}` | Remove an ordinary member as owner/admin |
-| `DELETE` | `/study-groups/{id}/members/me` | Leave as a normal member |
+| `PATCH` | `/study-groups/{id}/members/{userId}/role` | Promote/demote a member as owner |
+| `POST` | `/study-groups/{id}/ownership/transfer` | Transfer ownership to an active member as owner |
+| `DELETE` | `/study-groups/{id}/members/me` | Leave as a member/admin; owner must transfer first |
 | `GET` | `/study-groups/{id}/channels?page=1&page_size=20` | List channels as a member |
 | `POST` | `/study-groups/{id}/channels` | Create an admin-named channel as owner/admin |
 | `GET` | `/study-groups/{id}/channels/{channelId}` | Read one channel as a member |
@@ -112,7 +114,7 @@ messages cannot be edited because their answer would no longer match.
   "description": "Weekly revision and shared notes.",
   "visibility": "public",
   "created_by": "owner-user-uuid",
-  "current_admin_id": "admin-user-uuid",
+  "current_admin_id": "legacy-admin-user-uuid",
   "max_members": 30,
   "member_count": 4,
   "is_member": true,
@@ -124,9 +126,13 @@ messages cannot be edited because their answer would no longer match.
 }
 ```
 
-Use `is_member` to show `Join` versus `Open/Joined`. Use `can_manage` to show
-edit/delete controls. These values help render the UI; the backend still checks
-authorization on every mutation.
+Use `is_member` to show `Join` versus `Open/Joined`. Use `can_manage` for the
+shared owner/admin management controls. Use `membership_role` for role-specific
+controls: only `owner` may delete the group, promote/demote members, or transfer
+ownership. `created_by` is immutable audit history and does not grant access or
+permissions after its user leaves. `current_admin_id` is a legacy compatibility
+field and must not be used for authorization. The backend still checks every
+mutation.
 
 ## `groupService.js` contract
 
@@ -142,6 +148,9 @@ Implement one exported function for each route:
 - `getStudyGroupMembers(groupId, { page, pageSize })`
 - `addStudyGroupMember(groupId, email)`
 - `removeStudyGroupMember(groupId, userId)`
+- `updateStudyGroupMemberRole(groupId, userId, role)` where `role` is `member`
+  or `admin`
+- `transferStudyGroupOwnership(groupId, newOwnerUserId)`
 - `leaveStudyGroup(groupId)`
 - `getStudyGroupChannels(groupId, { page, pageSize })`
 - `createStudyGroupChannel(groupId, payload)`
@@ -184,9 +193,11 @@ Add two remaining channel-attachment functions:
    as identifiers. For a companion selection, send `ai_mode` as `default`,
    `summarizer`, `quiz`, or `facilitator`. Omit `ai_mode` for a normal message.
    Render the returned `ai_response` directly for the synchronous version.
-6. In the member-management panel, allow every member to view the list, but
-   show Add/Remove controls only when `can_manage` is true. Add members using
-   an email address; never ask the administrator to enter a UUID.
+6. In the member-management panel, allow every member to view the list. Show
+   Add/Remove controls when `can_manage` is true, but never show Remove for an
+   owner or admin. When `membership_role === "owner"`, also show Promote,
+   Demote, and Transfer ownership controls. Add members using an email address;
+   never ask the administrator to enter a UUID.
 7. The channel attachment button must submit `multipart/form-data` to the
    channel attachment route using the `file` field and optional `title` field.
    Poll the returned attachment ID until its status is `ready` or `failed`.
@@ -221,7 +232,7 @@ The shared API client should expose these backend codes to the UI:
 | HTTP | Code | UI behavior |
 |---:|---|---|
 | `401` | `AUTHENTICATION_REQUIRED` | Return to login/session recovery |
-| `403` | `STUDY_GROUP_PERMISSION_DENIED` | Explain that owner/admin access is required |
+| `403` | `STUDY_GROUP_PERMISSION_DENIED` | Explain that the action requires owner or owner/admin access, as appropriate |
 | `403` | `PRIVATE_GROUP_INVITATION_REQUIRED` | Explain that private groups require an invitation |
 | `404` | `STUDY_GROUP_NOT_FOUND` | Remove stale item or return to the list |
 | `404` | `STUDY_GROUP_TARGET_USER_NOT_FOUND` | Explain that no active student uses that email |
@@ -246,9 +257,14 @@ The shared API client should expose these backend codes to the UI:
 - My Groups shows groups the authenticated student owns or joined.
 - Public Join changes the item to Joined/Open and updates member count.
 - Private groups cannot be joined directly.
-- Non-admin members cannot edit or delete groups.
-- A normal member can leave; an owner/admin must transfer administration or
-  delete the group instead.
+- Members cannot edit or delete groups. Admins may edit, but only the owner may
+  delete the group.
+- Members and admins may leave. The owner must transfer ownership first.
+- Every active group has exactly one owner membership and may have multiple
+  admins. The creator is historical metadata and may leave after transferring
+  ownership.
+- Only the owner can promote members to admin, demote admins, or transfer
+  ownership. Ownership transfer makes the previous owner an admin.
 - Refreshing the browser or restarting the backend preserves Study Group data
   in PostgreSQL.
 - Members can list/open channels, while only owners/admins see channel

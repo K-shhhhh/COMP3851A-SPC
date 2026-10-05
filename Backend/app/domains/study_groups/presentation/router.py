@@ -64,6 +64,7 @@ from app.domains.study_groups.domain.exceptions import (
 )
 from app.domains.study_groups.domain.models import (
     MyGroupsFilter,
+    StudyGroupMemberRole,
 )
 from app.domains.study_groups.presentation.schemas import (
     AddStudyGroupMemberRequest,
@@ -80,6 +81,8 @@ from app.domains.study_groups.presentation.schemas import (
     StudyGroupMembershipResponse,
     StudyGroupMemberResponse,
     StudyGroupResponse,
+    TransferStudyGroupOwnershipRequest,
+    UpdateStudyGroupMemberRoleRequest,
     UpdateStudyGroupRequest,
     UpdateStudyGroupChannelRequest,
     UpdateStudyGroupMessageRequest,
@@ -278,6 +281,58 @@ async def add_group_member(
             group_id=str(group_id),
             requester_user_id=current_user.id,
             email=str(payload.email),
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupMembershipResponse.from_membership(membership)
+
+
+@router.patch(
+    "/{group_id}/members/{target_user_id}/role",
+    response_model=StudyGroupMembershipResponse,
+)
+async def update_group_member_role(
+    group_id: UUID,
+    target_user_id: UUID,
+    payload: UpdateStudyGroupMemberRoleRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMembershipResponse:
+    """Promote a member or demote an admin as the group owner."""
+
+    try:
+        membership = await service.set_member_role(
+            group_id=str(group_id),
+            requester_user_id=current_user.id,
+            target_user_id=str(target_user_id),
+            role=StudyGroupMemberRole(payload.role),
+        )
+    except Exception as exc:
+        _raise_study_group_api_error(exc)
+        raise
+
+    return StudyGroupMembershipResponse.from_membership(membership)
+
+
+@router.post(
+    "/{group_id}/ownership/transfer",
+    response_model=StudyGroupMembershipResponse,
+)
+async def transfer_group_ownership(
+    group_id: UUID,
+    payload: TransferStudyGroupOwnershipRequest,
+    current_user: User = Depends(get_current_user),
+    service: StudyGroupService = Depends(get_study_group_service),
+) -> StudyGroupMembershipResponse:
+    """Transfer the single owner role to another active group member."""
+
+    try:
+        membership = await service.transfer_ownership(
+            group_id=str(group_id),
+            requester_user_id=current_user.id,
+            target_user_id=str(payload.new_owner_user_id),
         )
     except Exception as exc:
         _raise_study_group_api_error(exc)

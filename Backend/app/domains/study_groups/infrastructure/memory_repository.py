@@ -167,8 +167,11 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                     (group.group_id, user_id)
                 )
 
-                is_owner = group.created_by == user_id
                 is_member = membership is not None
+                is_owner = (
+                    membership is not None
+                    and membership.role == StudyGroupMemberRole.OWNER
+                )
 
                 if not is_owner and not is_member:
                     continue
@@ -230,13 +233,10 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                 (group_id, user_id)
             )
 
-            is_owner = group.created_by == user_id
-
             # Private groups must not be exposed to unrelated students.
             if (
                 group.visibility == StudyGroupVisibility.PRIVATE
                 and membership is None
-                and not is_owner
             ):
                 return None
 
@@ -264,7 +264,7 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
         created_by: str,
         max_members: int,
     ) -> StudyGroupSummary:
-        """Create a group and initial admin membership atomically."""
+        """Create a group and initial owner membership atomically."""
 
         async with self._lock:
             now = datetime.now(timezone.utc)
@@ -286,7 +286,7 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                 membership_id=next(self._membership_ids),
                 group_id=group_id,
                 user_id=created_by,
-                role=StudyGroupMemberRole.ADMIN,
+                role=StudyGroupMemberRole.OWNER,
                 joined_at=now,
             )
 
@@ -339,10 +339,15 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                 if membership.group_id == group_id
             ]
 
-            # Administrators appear first, followed by joining time.
+            # Owner appears first, then admins, then ordinary members.
+            role_order = {
+                StudyGroupMemberRole.OWNER: 0,
+                StudyGroupMemberRole.ADMIN: 1,
+                StudyGroupMemberRole.MEMBER: 2,
+            }
             memberships.sort(
                 key=lambda membership: (
-                    membership.role != StudyGroupMemberRole.ADMIN,
+                    role_order[membership.role],
                     membership.joined_at,
                     membership.membership_id,
                 )
@@ -510,6 +515,65 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
 
             del self._memberships[key]
             return True
+
+    async def update_membership_role(
+        self,
+        *,
+        group_id: str,
+        user_id: str,
+        role: StudyGroupMemberRole,
+    ) -> StudyGroupMembership:
+        """Change an active ordinary member or administrator role."""
+
+        if role == StudyGroupMemberRole.OWNER:
+            raise ValueError(
+                "Use transfer_ownership to assign the owner role."
+            )
+
+        async with self._lock:
+            key = (group_id, user_id)
+            membership = self._memberships.get(key)
+            if self._active_group(group_id) is None or membership is None:
+                raise LookupError("Study group membership not found.")
+            if membership.role == StudyGroupMemberRole.OWNER:
+                raise ValueError("The owner role must be transferred.")
+
+            updated = replace(membership, role=role)
+            self._memberships[key] = updated
+            return updated
+
+    async def transfer_ownership(
+        self,
+        *,
+        group_id: str,
+        current_owner_id: str,
+        new_owner_id: str,
+    ) -> tuple[StudyGroupMembership, StudyGroupMembership]:
+        """Atomically transfer the single owner role to an active member."""
+
+        async with self._lock:
+            if self._active_group(group_id) is None:
+                raise LookupError("Study group not found.")
+
+            current_key = (group_id, current_owner_id)
+            new_key = (group_id, new_owner_id)
+            current = self._memberships.get(current_key)
+            new = self._memberships.get(new_key)
+            if current is None or new is None:
+                raise LookupError("Study group membership not found.")
+            if current.role != StudyGroupMemberRole.OWNER:
+                raise ValueError("The current user is not the group owner.")
+            if current_owner_id == new_owner_id:
+                raise ValueError("The new owner must be another member.")
+
+            previous_owner = replace(
+                current,
+                role=StudyGroupMemberRole.ADMIN,
+            )
+            new_owner = replace(new, role=StudyGroupMemberRole.OWNER)
+            self._memberships[current_key] = previous_owner
+            self._memberships[new_key] = new_owner
+            return previous_owner, new_owner
 
     async def count_members(
         self,
@@ -901,7 +965,10 @@ class InMemoryStudyGroupRepository(StudyGroupRepository):
                 group.group_id
             ),
             is_member=membership is not None,
-            is_owner=group.created_by == user_id,
+            is_owner=(
+                membership is not None
+                and membership.role == StudyGroupMemberRole.OWNER
+            ),
             membership_role=(
                 membership.role
                 if membership is not None

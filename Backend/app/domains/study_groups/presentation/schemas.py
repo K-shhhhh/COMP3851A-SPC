@@ -69,6 +69,18 @@ class AddStudyGroupMemberRequest(BaseModel):
     email: EmailStr
 
 
+class UpdateStudyGroupMemberRoleRequest(BaseModel):
+    """Owner-selected role for an existing non-owner membership."""
+
+    role: Literal["member", "admin"]
+
+
+class TransferStudyGroupOwnershipRequest(BaseModel):
+    """Existing active member who should become the new owner."""
+
+    new_owner_user_id: UUID
+
+
 class CreateStudyGroupChannelRequest(BaseModel):
     """Administrator-supplied information for a new channel."""
 
