@@ -219,12 +219,30 @@ class InMemoryAttachmentRepository(AttachmentRepository):
             if attachment is None or attachment.deleted_at is not None:
                 return None
 
+            transition_time = datetime.now(timezone.utc)
+            processing_started_at = attachment.processing_started_at
+            processing_completed_at = attachment.processing_completed_at
+            if processing_status == NoteProcessingStatus.QUEUED:
+                processing_started_at = None
+                processing_completed_at = None
+            elif processing_status == NoteProcessingStatus.PROCESSING:
+                processing_started_at = processing_started_at or transition_time
+                processing_completed_at = None
+            elif processing_status in (
+                NoteProcessingStatus.READY,
+                NoteProcessingStatus.FAILED,
+            ):
+                processing_started_at = processing_started_at or transition_time
+                processing_completed_at = transition_time
+
             updated_attachment = replace(
                 attachment,
                 processing_status=processing_status,
                 processing_progress=processing_progress,
                 processing_error=processing_error,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=transition_time,
+                processing_started_at=processing_started_at,
+                processing_completed_at=processing_completed_at,
             )
 
             self._attachments[attachment_id] = updated_attachment

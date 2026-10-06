@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.domains.chats.infrastructure.retrieval import (
     PostgreSQLReadyNoteChunkRepository,
 )
+from app.domains.notes.domain.models import NoteProcessingStatus
+from app.domains.notes.infrastructure.repository import (
+    PostgreSQLAttachmentRepository,
+)
 from app.domains.study_groups.infrastructure.retrieval import (
     PostgreSQLStudyGroupReadyChunkRepository,
 )
@@ -80,6 +84,41 @@ async def _add_user(session, email: str) -> str:
     )
     await session.commit()
     return user_id
+
+
+@pytest.mark.asyncio
+async def test_attachment_processing_timestamps_cover_upload_to_ready(sessions):
+    """Persist the worker start and completion boundaries in PostgreSQL."""
+
+    async with sessions() as session:
+        user_id = await _add_user(session, "processing-time@example.com")
+        repository = PostgreSQLAttachmentRepository(session)
+        queued = await repository.create_attachment(
+            uploaded_by=user_id,
+            title="Timed PDF",
+            file_name="timed.pdf",
+            file_type="application/pdf",
+            file_size_bytes=10,
+            object_path="/private/timed.pdf",
+        )
+        processing = await repository.update_processing_status(
+            attachment_id=queued.attachment_id,
+            processing_status=NoteProcessingStatus.PROCESSING,
+            processing_progress=10,
+        )
+        ready = await repository.update_processing_status(
+            attachment_id=queued.attachment_id,
+            processing_status=NoteProcessingStatus.READY,
+            processing_progress=100,
+        )
+
+    assert processing is not None
+    assert processing.processing_started_at is not None
+    assert processing.processing_completed_at is None
+    assert ready is not None
+    assert ready.processing_started_at == processing.processing_started_at
+    assert ready.processing_completed_at is not None
+    assert ready.processing_completed_at >= ready.processing_started_at
 
 
 async def _add_attachment(

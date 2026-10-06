@@ -156,12 +156,28 @@ Status response:
   "progress": 60,
   "message": "Processing document",
   "error": null,
+  "uploaded_at": "2026-09-14T10:35:00Z",
+  "processing_started_at": "2026-09-14T10:35:02Z",
+  "processing_completed_at": null,
+  "elapsed_ms": 58000,
+  "total_duration_ms": null,
   "updated_at": "2026-09-14T10:36:00Z"
 }
 ```
 
 The upload/list responses use `processing_progress`; the dedicated status
 response uses `progress`. Keep this mapping explicit in frontend state.
+
+`elapsed_ms` is the current wall-clock time since the backend accepted the
+upload. It continues increasing while the note is queued or processing.
+`total_duration_ms` remains `null` until processing becomes `ready` or
+`failed`, then contains the final upload-to-terminal duration. The frontend
+can display a live elapsed timer and replace it with, for example,
+`Processed in 19.0 seconds` when the note becomes ready.
+
+These timestamps cover PDF extraction, chunking, embedding, and chunk
+persistence only. Knowledge-graph generation begins after the note is marked
+ready and is intentionally excluded.
 
 ### 5. Open and delete notes
 

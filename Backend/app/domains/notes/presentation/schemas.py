@@ -94,6 +94,11 @@ class NoteStatusResponse(BaseModel):
     progress: int
     message: str
     error: ProcessingFailureResponse | None
+    uploaded_at: datetime
+    processing_started_at: datetime | None
+    processing_completed_at: datetime | None
+    elapsed_ms: int
+    total_duration_ms: int | None
     updated_at: datetime
 
     @classmethod
@@ -120,11 +125,26 @@ class NoteStatusResponse(BaseModel):
                 ),
             )
 
+        now = datetime.now(attachment.uploaded_at.tzinfo)
+        elapsed_until = attachment.processing_completed_at or now
+        elapsed_ms = max(
+            0,
+            int((elapsed_until - attachment.uploaded_at).total_seconds() * 1000),
+        )
+        total_duration_ms = (
+            elapsed_ms if attachment.processing_completed_at is not None else None
+        )
+
         return cls(
             note_id=attachment.attachment_id,
             status=attachment.processing_status,
             progress=attachment.processing_progress,
             message=messages[attachment.processing_status],
             error=failure,
+            uploaded_at=attachment.uploaded_at,
+            processing_started_at=attachment.processing_started_at,
+            processing_completed_at=attachment.processing_completed_at,
+            elapsed_ms=elapsed_ms,
+            total_duration_ms=total_duration_ms,
             updated_at=attachment.updated_at,
         )

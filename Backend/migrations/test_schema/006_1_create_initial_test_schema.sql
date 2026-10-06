@@ -132,6 +132,8 @@ create table if not exists attachments (
 	processing_error text,
     show_in_library boolean default true not null,
     uploaded_at timestamptz not null,
+    processing_started_at timestamptz,
+    processing_completed_at timestamptz,
     last_updated_at timestamptz,
 	deleted_at timestamptz,
 

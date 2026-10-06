@@ -387,6 +387,12 @@ class Attachment(Base):
         Boolean, nullable=False, server_default=text("true"),
     )
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    processing_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

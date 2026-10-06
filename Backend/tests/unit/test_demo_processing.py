@@ -63,6 +63,9 @@ async def test_demo_processor_marks_note_ready_and_scopes_chunks_to_owner() -> N
     assert processed.processing_status is NoteProcessingStatus.READY
     assert processed.processing_progress == 100
     assert processed.processing_error is None
+    assert processed.processing_started_at is not None
+    assert processed.processing_completed_at is not None
+    assert processed.processing_completed_at >= processed.processing_started_at
 
     owner_chunks = await chunk_repository.list_ready_chunks_for_user(
         user_id="student-1"
@@ -106,6 +109,8 @@ async def test_demo_processor_marks_note_failed_when_extraction_fails() -> None:
     assert processed.processing_error == (
         "The temporary local processor could not extract text from this PDF."
     )
+    assert processed.processing_started_at is not None
+    assert processed.processing_completed_at is not None
     assert await chunk_repository.list_ready_chunks_for_user(
         user_id="student-1"
     ) == ()

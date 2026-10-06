@@ -56,6 +56,9 @@ class RedisAttachmentRepository(AttachmentRepository):
         data["processing_status"] = attachment.processing_status.value
         data["uploaded_at"] = attachment.uploaded_at.isoformat()
         data["updated_at"] = attachment.updated_at.isoformat()
+        for field_name in ("processing_started_at", "processing_completed_at"):
+            value = getattr(attachment, field_name)
+            data[field_name] = value.isoformat() if value is not None else None
         if attachment.deleted_at is not None:
             data["deleted_at"] = attachment.deleted_at.isoformat()
         else:
@@ -67,6 +70,9 @@ class RedisAttachmentRepository(AttachmentRepository):
         data["processing_status"] = NoteProcessingStatus(data["processing_status"])
         data["uploaded_at"] = datetime.fromisoformat(data["uploaded_at"])
         data["updated_at"] = datetime.fromisoformat(data["updated_at"])
+        for field_name in ("processing_started_at", "processing_completed_at"):
+            value = data.get(field_name)
+            data[field_name] = datetime.fromisoformat(value) if value else None
         if data["deleted_at"] is not None:
             data["deleted_at"] = datetime.fromisoformat(data["deleted_at"])
         return NoteAttachment(**data)
@@ -223,12 +229,30 @@ class RedisAttachmentRepository(AttachmentRepository):
 
         # NoteAttachment is frozen, so a changed copy is built with
         # dataclasses.replace() rather than mutating the original.
+        transition_time = datetime.now(timezone.utc)
+        processing_started_at = attachment.processing_started_at
+        processing_completed_at = attachment.processing_completed_at
+        if processing_status == NoteProcessingStatus.QUEUED:
+            processing_started_at = None
+            processing_completed_at = None
+        elif processing_status == NoteProcessingStatus.PROCESSING:
+            processing_started_at = processing_started_at or transition_time
+            processing_completed_at = None
+        elif processing_status in (
+            NoteProcessingStatus.READY,
+            NoteProcessingStatus.FAILED,
+        ):
+            processing_started_at = processing_started_at or transition_time
+            processing_completed_at = transition_time
+
         updated_attachment = replace(
             attachment,
             processing_status=processing_status,
             processing_progress=processing_progress,
             processing_error=processing_error,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=transition_time,
+            processing_started_at=processing_started_at,
+            processing_completed_at=processing_completed_at,
         )
 
         await self._redis.set(
