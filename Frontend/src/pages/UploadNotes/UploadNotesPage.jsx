@@ -42,6 +42,48 @@ const AUTH_ERROR_CODES = new Set([
   "TOKEN_REVOKED",
 ]);
 
+const NOTE_TIMINGS_STORAGE_KEY = "spc-upload-note-timings";
+
+function formatElapsedTime(seconds) {
+  const safeSeconds = Math.max(0, Math.floor(seconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (minutes === 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function loadStoredNoteTimings() {
+  try {
+    const raw = window.sessionStorage.getItem(
+      NOTE_TIMINGS_STORAGE_KEY,
+    );
+
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredNoteTimings(timings) {
+  try {
+    window.sessionStorage.setItem(
+      NOTE_TIMINGS_STORAGE_KEY,
+      JSON.stringify(timings),
+    );
+  } catch {
+    // Timing persistence is a UI enhancement only.
+  }
+}
+
 function UploadNotesPage() {
   const fileInputRef = useRef(null);
 
@@ -87,6 +129,80 @@ function UploadNotesPage() {
     recentUploads,
     setRecentUploads,
   ] = useState([]);
+
+  /*
+   * Keep processing timers by note ID so they survive
+   * navigation away from and back to Upload Notes.
+   */
+  const [noteTimings, setNoteTimings] =
+    useState(() => loadStoredNoteTimings());
+
+  const [timerNow, setTimerNow] =
+    useState(() => Date.now());
+
+  const [uploadStartedAt, setUploadStartedAt] =
+    useState(null);
+
+  useEffect(() => {
+    saveStoredNoteTimings(noteTimings);
+  }, [noteTimings]);
+
+  useEffect(() => {
+    const hasActiveNote = recentUploads.some(
+      (note) => ACTIVE_STATUSES.has(note.status),
+    );
+
+    if (!hasActiveNote && !isUploading) {
+      return undefined;
+    }
+
+    setTimerNow(Date.now());
+
+    const interval = window.setInterval(() => {
+      setTimerNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [recentUploads, isUploading]);
+
+  function setTimingForNote(noteId, timing) {
+    setNoteTimings((current) => {
+      const next = {
+        ...current,
+        [noteId]: {
+          ...(current[noteId] || {}),
+          ...timing,
+        },
+      };
+
+      saveStoredNoteTimings(next);
+      return next;
+    });
+  }
+
+  function getElapsedSeconds(note) {
+    const timing = noteTimings[note.id];
+
+    const fallbackStartedAt = note.created_at
+      ? new Date(note.created_at).getTime()
+      : null;
+
+    const startedAt =
+      timing?.startedAt || fallbackStartedAt;
+
+    if (!startedAt || Number.isNaN(startedAt)) {
+      return null;
+    }
+
+    const finishedAt = timing?.completedAt || timerNow;
+
+    return Math.max(
+      0,
+      Math.floor((finishedAt - startedAt) / 1000),
+    );
+  }
 
   /*
    * Stop the polling timer for one specific note.
@@ -199,6 +315,30 @@ function UploadNotesPage() {
        * Update only the note whose status
        * we just received.
        */
+      if (
+        result.status === "ready" ||
+        result.status === "failed"
+      ) {
+        setNoteTimings((current) => {
+          const existing = current[noteId] || {};
+
+          if (existing.completedAt) {
+            return current;
+          }
+
+          const next = {
+            ...current,
+            [noteId]: {
+              ...existing,
+              completedAt: Date.now(),
+            },
+          };
+
+          saveStoredNoteTimings(next);
+          return next;
+        });
+      }
+
       setRecentUploads(
         (currentNotes) =>
           currentNotes.map((note) =>
@@ -332,6 +472,39 @@ function UploadNotesPage() {
 
         const loadedNotes =
           result?.items ?? [];
+
+        setNoteTimings((current) => {
+          let changed = false;
+          const next = { ...current };
+
+          loadedNotes.forEach((note) => {
+            if (
+              ACTIVE_STATUSES.has(note.status) &&
+              !next[note.id]?.startedAt
+            ) {
+              const createdAt = note.created_at
+                ? new Date(note.created_at).getTime()
+                : Date.now();
+
+              next[note.id] = {
+                ...(next[note.id] || {}),
+                startedAt:
+                  Number.isNaN(createdAt)
+                    ? Date.now()
+                    : createdAt,
+              };
+
+              changed = true;
+            }
+          });
+
+          if (changed) {
+            saveStoredNoteTimings(next);
+            return next;
+          }
+
+          return current;
+        });
 
         setRecentUploads(
           loadedNotes,
@@ -557,6 +730,10 @@ function UploadNotesPage() {
       return;
     }
 
+    const startedAt = Date.now();
+    setUploadStartedAt(startedAt);
+    setTimerNow(startedAt);
+
     try {
       setIsUploading(true);
 
@@ -572,6 +749,17 @@ function UploadNotesPage() {
             title,
           },
         );
+
+      if (uploadedNote?.id) {
+        setTimingForNote(uploadedNote.id, {
+          startedAt,
+          completedAt:
+            uploadedNote.status === "ready" ||
+            uploadedNote.status === "failed"
+              ? Date.now()
+              : null,
+        });
+      }
 
       setSuccessMessage(
         "Your PDF was uploaded successfully and is now being processed.",
@@ -700,6 +888,7 @@ function UploadNotesPage() {
       }
     } finally {
       setIsUploading(false);
+      setUploadStartedAt(null);
     }
   }
 
@@ -770,44 +959,39 @@ function UploadNotesPage() {
    * display "Processing…" until the backend
    * reports another percentage or Ready.
    */
-  function formatProcessingStatus(
-    note,
-  ) {
+  function formatProcessingStatus(note) {
     const progress =
       note.processing_progress ?? 0;
 
-    if (
-      note.status === "queued"
-    ) {
-      return "Queued";
+    const elapsedSeconds =
+      getElapsedSeconds(note);
+
+    const elapsedLabel =
+      elapsedSeconds === null
+        ? ""
+        : ` · ${formatElapsedTime(elapsedSeconds)}`;
+
+    if (note.status === "queued") {
+      return `Queued${elapsedLabel}`;
     }
 
-    if (
-      note.status ===
-      "processing"
-    ) {
+    if (note.status === "processing") {
       if (progress <= 1) {
-        return "Processing…";
+        return `Processing…${elapsedLabel}`;
       }
 
-      return `Processing ${progress}%`;
+      return `Processing ${progress}%${elapsedLabel}`;
     }
 
-    if (
-      note.status === "ready"
-    ) {
-      return "Ready";
+    if (note.status === "ready") {
+      return `Ready${elapsedLabel}`;
     }
 
-    if (
-      note.status === "failed"
-    ) {
-      return "Failed";
+    if (note.status === "failed") {
+      return `Failed${elapsedLabel}`;
     }
 
-    return formatStatus(
-      note.status,
-    );
+    return formatStatus(note.status);
   }
 
   /*
@@ -1034,7 +1218,16 @@ function UploadNotesPage() {
                 <Upload size={18} />
 
                 {isUploading
-                  ? "Uploading..."
+                  ? `Uploading... ${formatElapsedTime(
+                      Math.max(
+                        0,
+                        Math.floor(
+                          (timerNow -
+                            (uploadStartedAt || timerNow)) /
+                            1000,
+                        ),
+                      ),
+                    )}`
                   : "Upload PDF"}
               </button>
             </section>

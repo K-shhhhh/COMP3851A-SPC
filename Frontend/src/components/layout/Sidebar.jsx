@@ -25,6 +25,10 @@ import {
 function Sidebar() {
   const location = useLocation();
 
+  const isNotesPage =
+    location.pathname === "/notes" ||
+    location.pathname.startsWith("/notes/");
+
   const isGroupsPage =
     location.pathname === "/groups";
 
@@ -34,9 +38,20 @@ function Sidebar() {
     ).get("view") || "public";
 
   const [
+    notesOpen,
+    setNotesOpen,
+  ] = useState(isNotesPage);
+
+  const [
     groupsOpen,
     setGroupsOpen,
   ] = useState(isGroupsPage);
+
+  useEffect(() => {
+    if (isNotesPage) {
+      setNotesOpen(true);
+    }
+  }, [isNotesPage]);
 
   useEffect(() => {
     if (isGroupsPage) {
@@ -75,7 +90,27 @@ function Sidebar() {
         {/* NOTES */}
 
         <div className="sidebar-section">
-          <div className="sidebar-section-title">
+          <button
+            type="button"
+            className="sidebar-section-title"
+            aria-expanded={notesOpen}
+            onClick={() =>
+              setNotesOpen(
+                (current) =>
+                  !current,
+              )
+            }
+            style={{
+              width: "100%",
+              border: 0,
+              background: "transparent",
+              cursor: "pointer",
+              textAlign: "left",
+              color: isNotesPage
+                ? "var(--spc-purple)"
+                : "var(--spc-muted)",
+            }}
+          >
             <div>
               <BookOpen size={19} />
               <span>Notes</span>
@@ -83,10 +118,18 @@ function Sidebar() {
 
             <ChevronDown
               size={16}
+              style={{
+                transform: notesOpen
+                  ? "rotate(180deg)"
+                  : "rotate(0deg)",
+                transition:
+                  "transform 0.2s ease",
+              }}
             />
-          </div>
+          </button>
 
-          <div className="sidebar-submenu">
+          {notesOpen && (
+            <div className="sidebar-submenu">
             <NavLink
               to="/notes/upload"
               className={({
@@ -127,7 +170,8 @@ function Sidebar() {
                 My Notes
               </span>
             </NavLink>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* AI ASSISTANT */}
