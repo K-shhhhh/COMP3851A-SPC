@@ -45,7 +45,7 @@ async def sessions():
         schema_sql = (
             Path(__file__).resolve().parents[2]
             / "migrations"
-            / "006_create_initial_test_schema.sql"
+            / "006_1_create_initial_test_schema.sql"
         ).read_text()
         schema_sql = schema_sql.replace("create extension if not exists vector;", "")
         async with engine.begin() as connection:
@@ -231,7 +231,7 @@ async def test_group_search_never_crosses_channel_scope(sessions):
                 """
                 INSERT INTO groups (
                     group_id, group_name, group_type, created_by,
-                    current_admin, max_members, created_at
+                    current_owner, max_members, created_at
                 ) VALUES
                     (CAST(:group_id AS uuid), 'Target', 'public',
                      CAST(:owner_id AS uuid), CAST(:owner_id AS uuid), 20, now()),
@@ -265,6 +265,11 @@ async def test_group_search_never_crosses_channel_scope(sessions):
                 "owner_id": owner_id,
             },
         )
+        await session.execute(text("""
+            INSERT INTO memberships (user_id, group_id, member_role, joined_at) VALUES
+                (CAST(:owner AS uuid), CAST(:group AS uuid), 'owner', now()),
+                (CAST(:owner AS uuid), CAST(:other AS uuid), 'owner', now())
+        """), {"owner": owner_id, "group": group_id, "other": other_group_id})
         await session.commit()
         target = await _add_attachment(
             session,
