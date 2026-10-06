@@ -153,9 +153,8 @@ class StudyGroupResponse(BaseModel):
 
         group = summary.group
 
-        can_manage = (
-            summary.is_owner
-            or summary.membership_role == StudyGroupMemberRole.ADMIN
+        can_manage = summary.is_member and summary.membership_role in (
+            StudyGroupMemberRole.OWNER, StudyGroupMemberRole.ADMIN,
         )
 
         return cls(

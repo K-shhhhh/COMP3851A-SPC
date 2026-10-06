@@ -77,3 +77,10 @@ def test_failed_attachment_requires_safe_error() -> None:
             processing_status=NoteProcessingStatus.FAILED,
             processing_progress=30,
         )
+
+
+def test_processing_completion_requires_start_timestamp() -> None:
+    now = datetime.now(timezone.utc)
+
+    with pytest.raises(ValueError, match="requires processing_started_at"):
+        make_attachment(processing_completed_at=now)

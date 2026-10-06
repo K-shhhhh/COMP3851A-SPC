@@ -114,14 +114,25 @@ async def test_worker_can_update_processing_state() -> None:
     repository = InMemoryAttachmentRepository()
     attachment = await create_attachment(repository)
 
+    processing = await repository.update_processing_status(
+        attachment_id=attachment.attachment_id,
+        processing_status=NoteProcessingStatus.PROCESSING,
+        processing_progress=10,
+    )
     updated = await repository.update_processing_status(
         attachment_id=attachment.attachment_id,
         processing_status=NoteProcessingStatus.READY,
         processing_progress=100,
     )
 
+    assert processing is not None
+    assert processing.processing_started_at is not None
+    assert processing.processing_completed_at is None
     assert updated is not None
     assert updated.processing_status == NoteProcessingStatus.READY
+    assert updated.processing_started_at == processing.processing_started_at
+    assert updated.processing_completed_at is not None
+    assert updated.processing_completed_at >= updated.processing_started_at
 
 
 async def test_soft_deleted_attachment_is_no_longer_returned() -> None:

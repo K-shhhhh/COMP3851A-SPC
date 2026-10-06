@@ -63,6 +63,8 @@ file_size_bytes
 object_path
 processing_status
 processing_progress
+processing_started_at nullable
+processing_completed_at nullable
 uploaded_at
 updated_at
 channel_id       nullable
@@ -90,6 +92,8 @@ Recommended table rules:
 | `processing_progress` | `INTEGER NOT NULL DEFAULT 0 CHECK (0 <= value AND value <= 100)` |
 | `processing_error` | Nullable safe worker error text |
 | `uploaded_at` | `TIMESTAMPTZ NOT NULL DEFAULT now()` |
+| `processing_started_at` | Nullable `TIMESTAMPTZ`; set on the first transition to `processing` |
+| `processing_completed_at` | Nullable `TIMESTAMPTZ`; set when processing becomes `ready` or `failed` |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT now()` |
 | `channel_id` | Nullable foreign key to `channels(channel_id)` |
 | `message_id` | Nullable foreign key to `messages(message_id)` |
@@ -189,9 +193,11 @@ queued -> processing -> ready
 queued -> processing -> failed
 ```
 
-Update `processing_status`, `processing_progress`, `processing_error`, and
-`updated_at` atomically. Return the updated row or `None` when the attachment no
-longer exists.
+Update `processing_status`, `processing_progress`, `processing_error`, the
+processing timestamps, and `updated_at` atomically. Set
+`processing_started_at` on the first transition to `processing`; preserve it
+through completion. Set `processing_completed_at` on `ready` or `failed`.
+Return the updated row or `None` when the attachment no longer exists.
 
 Consistency rules:
 

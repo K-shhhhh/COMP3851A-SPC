@@ -463,23 +463,6 @@ function LoginPage() {
                 : "Sign in"}
             </button>
 
-            <div className="auth-divider">
-              <span>
-                or continue with
-              </span>
-            </div>
-
-            <button
-              type="button"
-              className="auth-google-button"
-            >
-              <span className="google-letter">
-                G
-              </span>
-
-              Continue with Google
-            </button>
-
           </form>
 
           <p className="auth-switch">

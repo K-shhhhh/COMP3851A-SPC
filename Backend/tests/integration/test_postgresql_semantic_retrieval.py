@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.domains.chats.infrastructure.retrieval import (
     PostgreSQLReadyNoteChunkRepository,
 )
+from app.domains.notes.domain.models import NoteProcessingStatus
+from app.domains.notes.infrastructure.repository import (
+    PostgreSQLAttachmentRepository,
+)
 from app.domains.study_groups.infrastructure.retrieval import (
     PostgreSQLStudyGroupReadyChunkRepository,
 )
@@ -45,7 +49,7 @@ async def sessions():
         schema_sql = (
             Path(__file__).resolve().parents[2]
             / "migrations"
-            / "006_create_initial_test_schema.sql"
+            / "006_1_create_initial_test_schema.sql"
         ).read_text()
         schema_sql = schema_sql.replace("create extension if not exists vector;", "")
         async with engine.begin() as connection:
@@ -80,6 +84,41 @@ async def _add_user(session, email: str) -> str:
     )
     await session.commit()
     return user_id
+
+
+@pytest.mark.asyncio
+async def test_attachment_processing_timestamps_cover_upload_to_ready(sessions):
+    """Persist the worker start and completion boundaries in PostgreSQL."""
+
+    async with sessions() as session:
+        user_id = await _add_user(session, "processing-time@example.com")
+        repository = PostgreSQLAttachmentRepository(session)
+        queued = await repository.create_attachment(
+            uploaded_by=user_id,
+            title="Timed PDF",
+            file_name="timed.pdf",
+            file_type="application/pdf",
+            file_size_bytes=10,
+            object_path="/private/timed.pdf",
+        )
+        processing = await repository.update_processing_status(
+            attachment_id=queued.attachment_id,
+            processing_status=NoteProcessingStatus.PROCESSING,
+            processing_progress=10,
+        )
+        ready = await repository.update_processing_status(
+            attachment_id=queued.attachment_id,
+            processing_status=NoteProcessingStatus.READY,
+            processing_progress=100,
+        )
+
+    assert processing is not None
+    assert processing.processing_started_at is not None
+    assert processing.processing_completed_at is None
+    assert ready is not None
+    assert ready.processing_started_at == processing.processing_started_at
+    assert ready.processing_completed_at is not None
+    assert ready.processing_completed_at >= ready.processing_started_at
 
 
 async def _add_attachment(
@@ -231,7 +270,7 @@ async def test_group_search_never_crosses_channel_scope(sessions):
                 """
                 INSERT INTO groups (
                     group_id, group_name, group_type, created_by,
-                    current_admin, max_members, created_at
+                    current_owner, max_members, created_at
                 ) VALUES
                     (CAST(:group_id AS uuid), 'Target', 'public',
                      CAST(:owner_id AS uuid), CAST(:owner_id AS uuid), 20, now()),
@@ -265,6 +304,11 @@ async def test_group_search_never_crosses_channel_scope(sessions):
                 "owner_id": owner_id,
             },
         )
+        await session.execute(text("""
+            INSERT INTO memberships (user_id, group_id, member_role, joined_at) VALUES
+                (CAST(:owner AS uuid), CAST(:group AS uuid), 'owner', now()),
+                (CAST(:owner AS uuid), CAST(:other AS uuid), 'owner', now())
+        """), {"owner": owner_id, "group": group_id, "other": other_group_id})
         await session.commit()
         target = await _add_attachment(
             session,

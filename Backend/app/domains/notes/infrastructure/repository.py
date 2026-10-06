@@ -55,6 +55,8 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
             processing_progress=attachment.processing_progress,
             uploaded_at=attachment.uploaded_at,
             updated_at=attachment.last_updated_at or attachment.uploaded_at,
+            processing_started_at=attachment.processing_started_at,
+            processing_completed_at=attachment.processing_completed_at,
             show_in_library=attachment.show_in_library,
             channel_id=(
                 str(attachment.channel_id)
@@ -254,18 +256,38 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
             return None
         # Validate a detached domain value before making the ORM row dirty.
         # A later query/commit therefore cannot autoflush a rejected state.
+        transition_time = datetime.now(timezone.utc)
+        processing_started_at = attachment.processing_started_at
+        processing_completed_at = attachment.processing_completed_at
+        if processing_status == NoteProcessingStatus.QUEUED:
+            processing_started_at = None
+            processing_completed_at = None
+        elif processing_status == NoteProcessingStatus.PROCESSING:
+            processing_started_at = processing_started_at or transition_time
+            processing_completed_at = None
+        elif processing_status in (
+            NoteProcessingStatus.READY,
+            NoteProcessingStatus.FAILED,
+        ):
+            processing_started_at = processing_started_at or transition_time
+            processing_completed_at = transition_time
+
         validated = replace(
             self._to_domain(attachment),
             processing_status=processing_status,
             processing_progress=processing_progress,
             processing_error=processing_error,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=transition_time,
+            processing_started_at=processing_started_at,
+            processing_completed_at=processing_completed_at,
         )
         attachment.processing_status = AttachmentStatus(
             validated.processing_status.value
         )
         attachment.processing_progress = validated.processing_progress
         attachment.processing_error = validated.processing_error
+        attachment.processing_started_at = validated.processing_started_at
+        attachment.processing_completed_at = validated.processing_completed_at
         attachment.last_updated_at = validated.updated_at
         try:
             await self.session.commit()

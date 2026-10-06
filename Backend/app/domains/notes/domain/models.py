@@ -44,6 +44,8 @@ class NoteAttachment:
         processing_progress: Processing percentage between zero and 100.
         uploaded_at: Time at which the attachment was created.
         updated_at: Time at which the attachment was last changed.
+        processing_started_at: Time at which a worker began PDF processing.
+        processing_completed_at: Time at which processing became ready or failed.
         show_in_library: Whether the attachment appears in My Notes.
         channel_id: Conversation or group-channel identifier, when applicable.
         message_id: Message containing the attachment, when applicable.
@@ -62,6 +64,8 @@ class NoteAttachment:
     processing_progress: int
     uploaded_at: datetime
     updated_at: datetime
+    processing_started_at: datetime | None = None
+    processing_completed_at: datetime | None = None
     show_in_library: bool = True
     channel_id: str | None = None
     message_id: int | None = None
@@ -101,6 +105,7 @@ class NoteAttachment:
 
         self._validate_attachment_relationships()
         self._validate_processing_state()
+        self._validate_processing_timestamps()
 
     @property
     def appears_in_my_notes(self) -> bool:
@@ -167,3 +172,24 @@ class NoteAttachment:
             raise ValueError(
                 "only a failed attachment may include a processing error"
             )
+
+    def _validate_processing_timestamps(self) -> None:
+        """Ensure recorded worker timestamps form a valid timeline."""
+
+        if (
+            self.processing_started_at is not None
+            and self.processing_started_at < self.uploaded_at
+        ):
+            raise ValueError(
+                "processing_started_at must not be earlier than uploaded_at"
+            )
+
+        if self.processing_completed_at is not None:
+            if self.processing_started_at is None:
+                raise ValueError(
+                    "processing_completed_at requires processing_started_at"
+                )
+            if self.processing_completed_at < self.processing_started_at:
+                raise ValueError(
+                    "processing_completed_at must not be earlier than processing_started_at"
+                )
