@@ -87,6 +87,18 @@ const AI_MODES = [
    HELPERS
    ========================================================= */
 
+
+function formatElapsedTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes === 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 function initials(name = "?") {
   return name
     .split(/\s+/)
@@ -327,25 +339,121 @@ function GroupStudyPage() {
   const [sendingMessage, setSendingMessage] =
     useState(false);
 
+  const [aiWaitSeconds, setAiWaitSeconds] =
+    useState(0);
+
+  const [aiWaiting, setAiWaiting] =
+    useState(false);
+
+  const [aiWaitingMessageId, setAiWaitingMessageId] =
+    useState(null);
+
   /* -------------------------------------------------------
      CHANNEL ATTACHMENT
      ------------------------------------------------------- */
 
-  const [attachment, setAttachment] =
-    useState(null);
+  const ATTACHMENT_JOBS_STORAGE_KEY = "spc.studyGroupAttachmentJobs";
 
-  const [attachmentUploading, setAttachmentUploading] =
-    useState(false);
+  const readStoredAttachmentJobs = () => {
+    try {
+      const raw = window.sessionStorage.getItem(ATTACHMENT_JOBS_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const writeStoredAttachmentJobs = (jobs) => {
+    try {
+      window.sessionStorage.setItem(
+        ATTACHMENT_JOBS_STORAGE_KEY,
+        JSON.stringify(jobs),
+      );
+    } catch {
+      // sessionStorage may be unavailable in restricted browser modes.
+    }
+  };
+
+  const [attachmentJobs, setAttachmentJobs] =
+    useState(() => readStoredAttachmentJobs());
+
+  const [attachmentClock, setAttachmentClock] =
+    useState(() => Date.now());
 
   const attachmentInputRef = useRef(null);
-  const attachmentPollRef = useRef(null);
-  const attachmentPollKeyRef = useRef(0);
+  const attachmentPollRefs = useRef({});
+
+  const currentAttachmentKey =
+    selectedGroup?.id && selectedChannel?.id
+      ? `${selectedGroup.id}:${selectedChannel.id}`
+      : null;
+
+  const attachment = currentAttachmentKey
+    ? attachmentJobs[currentAttachmentKey] || null
+    : null;
+
+  const attachmentUploading =
+    attachment?.status === "uploading";
+
+  const attachmentElapsedSeconds = attachment?.startedAt
+    ? Math.max(
+        0,
+        Math.floor(
+          ((attachment.finishedAt || attachmentClock) -
+            attachment.startedAt) /
+            1000,
+        ),
+      )
+    : 0;
 
   const [editingMessage, setEditingMessage] =
     useState(null);
 
   const [editingMessageValue, setEditingMessageValue] =
     useState("");
+
+  /* -------------------------------------------------------
+     RESPONSE TIMERS
+     ------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!aiWaiting) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setAiWaitSeconds((current) => current + 1);
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [aiWaiting]);
+
+  useEffect(() => {
+    writeStoredAttachmentJobs(attachmentJobs);
+
+    const hasActiveAttachment = Object.values(attachmentJobs).some(
+      (job) =>
+        job.status === "uploading" ||
+        job.status === "queued" ||
+        job.status === "processing",
+    );
+
+    if (!hasActiveAttachment) {
+      return undefined;
+    }
+
+    setAttachmentClock(Date.now());
+
+    const interval = window.setInterval(() => {
+      setAttachmentClock(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [attachmentJobs]);
 
   /* -------------------------------------------------------
      MENTIONS / AI
@@ -716,6 +824,21 @@ function GroupStudyPage() {
                     return;
                   }
 
+                  if (updated.ai_response?.content) {
+                    setAiWaitingMessageId(
+                      (waitingMessageId) => {
+                        if (
+                          waitingMessageId === updated.id
+                        ) {
+                          setAiWaiting(false);
+                          return null;
+                        }
+
+                        return waitingMessageId;
+                      },
+                    );
+                  }
+
                   setMessages(
                     (current) =>
                       current.map(
@@ -811,7 +934,7 @@ function GroupStudyPage() {
         block: "end",
       });
     });
-  }, [messages]);
+  }, [messages, aiWaiting]);
 
   /* =======================================================
      CREATE / EDIT GROUP
@@ -1251,28 +1374,66 @@ function GroupStudyPage() {
      CHANNEL ATTACHMENTS
      ======================================================= */
 
-  function stopAttachmentPolling() {
-    attachmentPollKeyRef.current += 1;
+  function persistAttachmentJobs(updater) {
+    setAttachmentJobs((current) => {
+      const next =
+        typeof updater === "function" ? updater(current) : updater;
+      writeStoredAttachmentJobs(next);
+      return next;
+    });
+  }
 
-    if (attachmentPollRef.current) {
-      window.clearTimeout(
-        attachmentPollRef.current,
-      );
+  function stopAttachmentPolling(jobKey) {
+    const timeoutId = attachmentPollRefs.current[jobKey];
 
-      attachmentPollRef.current = null;
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      delete attachmentPollRefs.current[jobKey];
     }
+  }
+
+  function updateAttachmentJob(jobKey, updater) {
+    persistAttachmentJobs((current) => {
+      const existing = current[jobKey];
+      if (!existing) return current;
+
+      const updated =
+        typeof updater === "function"
+          ? updater(existing)
+          : { ...existing, ...updater };
+
+      return { ...current, [jobKey]: updated };
+    });
+  }
+
+  function dismissAttachment(jobKey) {
+    if (!jobKey) return;
+    stopAttachmentPolling(jobKey);
+
+    persistAttachmentJobs((current) => {
+      const next = { ...current };
+      delete next[jobKey];
+      return next;
+    });
   }
 
   useEffect(() => {
     return () => {
-      stopAttachmentPolling();
+      Object.values(attachmentPollRefs.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      attachmentPollRefs.current = {};
     };
   }, []);
 
+  /*
+   * Channel navigation only changes which job is displayed.
+   * It never clears or cancels another channel's PDF job.
+   */
   useEffect(() => {
-    stopAttachmentPolling();
-    setAttachment(null);
-    setAttachmentUploading(false);
+    setAiWaiting(false);
+    setAiWaitSeconds(0);
+    setAiWaitingMessageId(null);
 
     if (attachmentInputRef.current) {
       attachmentInputRef.current.value = "";
@@ -1283,30 +1444,21 @@ function GroupStudyPage() {
     groupId,
     channelId,
     attachmentId,
-    pollKey,
+    jobKey,
   ) {
     try {
-      const result =
-        await getStudyGroupAttachmentStatus(
-          accessToken,
-          groupId,
-          channelId,
-          attachmentId,
-        );
+      const result = await getStudyGroupAttachmentStatus(
+        accessToken,
+        groupId,
+        channelId,
+        attachmentId,
+      );
 
-      if (
-        attachmentPollKeyRef.current !== pollKey
-      ) {
-        return;
-      }
+      const finished =
+        result.status === "ready" || result.status === "failed";
 
-      setAttachment((current) => {
-        if (
-          !current ||
-          current.id !== attachmentId
-        ) {
-          return current;
-        }
+      updateAttachmentJob(jobKey, (current) => {
+        if (current.id !== attachmentId) return current;
 
         return {
           ...current,
@@ -1314,64 +1466,62 @@ function GroupStudyPage() {
           progress: result.progress ?? 0,
           message: result.message || "",
           error: result.error || null,
+          finishedAt: finished
+            ? current.finishedAt || Date.now()
+            : null,
         };
       });
 
-      if (
-        result.status === "ready" ||
-        result.status === "failed"
-      ) {
-        attachmentPollRef.current = null;
+      if (finished) {
+        delete attachmentPollRefs.current[jobKey];
         return;
       }
 
-      attachmentPollRef.current =
-        window.setTimeout(
-          () => {
-            pollAttachmentStatus(
-              groupId,
-              channelId,
-              attachmentId,
-              pollKey,
-            );
-          },
-          2000,
-        );
+      attachmentPollRefs.current[jobKey] = window.setTimeout(() => {
+        pollAttachmentStatus(groupId, channelId, attachmentId, jobKey);
+      }, 2000);
     } catch (error) {
-      if (
-        attachmentPollKeyRef.current !== pollKey
-      ) {
-        return;
-      }
-
-      setAttachment((current) => {
-        if (
-          !current ||
-          current.id !== attachmentId
-        ) {
-          return current;
-        }
-
-        return {
-          ...current,
-          status: "failed",
-          error: {
-            message: apiMessage(error),
-          },
-        };
-      });
-
-      attachmentPollRef.current = null;
+      updateAttachmentJob(jobKey, (current) => ({
+        ...current,
+        status: "failed",
+        error: { message: apiMessage(error) },
+        finishedAt: current.finishedAt || Date.now(),
+      }));
+      delete attachmentPollRefs.current[jobKey];
     }
   }
 
-  async function handleAttachmentChange(event) {
-    const file =
-      event.target.files?.[0];
+  /*
+   * Re-start polling after returning to Study Groups or after a remount.
+   * The backend keeps processing; sessionStorage lets the UI reconnect to it.
+   */
+  useEffect(() => {
+    if (!accessToken) return;
 
-    if (!file) {
-      return;
-    }
+    Object.entries(attachmentJobs).forEach(([jobKey, job]) => {
+      const inProgress =
+        job.status === "queued" || job.status === "processing";
+
+      if (
+        inProgress &&
+        job.id &&
+        job.groupId &&
+        job.channelId &&
+        !attachmentPollRefs.current[jobKey]
+      ) {
+        pollAttachmentStatus(
+          job.groupId,
+          job.channelId,
+          job.id,
+          jobKey,
+        );
+      }
+    });
+  }, [accessToken]);
+
+  async function handleAttachmentChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
     if (
       file.type !== "application/pdf" &&
@@ -1380,108 +1530,112 @@ function GroupStudyPage() {
       setPageError(
         "Only PDF files can be uploaded to a Study Group channel.",
       );
-
       event.target.value = "";
       return;
     }
 
-    if (
-      !selectedGroup ||
-      !selectedChannel ||
-      !accessToken
-    ) {
+    if (!selectedGroup || !selectedChannel || !accessToken) {
       event.target.value = "";
       return;
     }
 
-    stopAttachmentPolling();
-    const pollKey =
-      attachmentPollKeyRef.current;
+    const groupId = selectedGroup.id;
+    const channelId = selectedChannel.id;
+    const jobKey = `${groupId}:${channelId}`;
+    const startedAt = Date.now();
 
-    setAttachmentUploading(true);
+    stopAttachmentPolling(jobKey);
     setPageError("");
 
-    setAttachment({
+    const initialJob = {
       id: null,
+      groupId,
+      channelId,
       fileName: file.name,
       status: "uploading",
       progress: 0,
       message: "Uploading PDF...",
       error: null,
-    });
+      startedAt,
+      finishedAt: null,
+    };
+
+    persistAttachmentJobs((current) => ({
+      ...current,
+      [jobKey]: initialJob,
+    }));
 
     try {
-      const result =
-        await uploadStudyGroupAttachment(
-          accessToken,
-          selectedGroup.id,
-          selectedChannel.id,
-          file,
-        );
+      const result = await uploadStudyGroupAttachment(
+        accessToken,
+        groupId,
+        channelId,
+        file,
+      );
 
-      if (
-        attachmentPollKeyRef.current !== pollKey
-      ) {
-        return;
-      }
-
-      const attachmentId =
-        result?.id;
-
+      const attachmentId = result?.id;
       if (!attachmentId) {
-        throw new Error(
-          "The backend did not return an attachment ID.",
-        );
+        throw new Error("The backend did not return an attachment ID.");
       }
 
-      setAttachment({
+      const finished =
+        result.status === "ready" || result.status === "failed";
+
+      /*
+       * Read storage again here because this async callback can finish
+       * after the user has navigated away and the component has unmounted.
+       */
+      const storedJobs = readStoredAttachmentJobs();
+      const completedUploadJob = {
+        ...(storedJobs[jobKey] || initialJob),
         id: attachmentId,
-        fileName:
-          result.file_name || file.name,
-        status:
-          result.status || "queued",
-        progress:
-          result.processing_progress ?? 0,
+        groupId,
+        channelId,
+        fileName: result.file_name || file.name,
+        status: result.status || "queued",
+        progress: result.processing_progress ?? 0,
         message:
           result.status === "ready"
             ? "PDF is ready for AI questions."
             : "PDF uploaded. Processing...",
         error: null,
+        startedAt: storedJobs[jobKey]?.startedAt || startedAt,
+        finishedAt: finished ? Date.now() : null,
+      };
+
+      writeStoredAttachmentJobs({
+        ...storedJobs,
+        [jobKey]: completedUploadJob,
       });
 
-      if (
-        result.status !== "ready" &&
-        result.status !== "failed"
-      ) {
-        pollAttachmentStatus(
-          selectedGroup.id,
-          selectedChannel.id,
-          attachmentId,
-          pollKey,
-        );
+      persistAttachmentJobs((current) => ({
+        ...current,
+        [jobKey]: completedUploadJob,
+      }));
+
+      if (!finished) {
+        pollAttachmentStatus(groupId, channelId, attachmentId, jobKey);
       }
     } catch (error) {
-      if (
-        attachmentPollKeyRef.current === pollKey
-      ) {
-        setAttachment({
-          id: null,
-          fileName: file.name,
-          status: "failed",
-          progress: 0,
-          message: "PDF upload failed.",
-          error: {
-            message: apiMessage(error),
-          },
-        });
-      }
-    } finally {
-      if (
-        attachmentPollKeyRef.current === pollKey
-      ) {
-        setAttachmentUploading(false);
-      }
+      const storedJobs = readStoredAttachmentJobs();
+      const failedJob = {
+        ...(storedJobs[jobKey] || initialJob),
+        status: "failed",
+        progress: 0,
+        message: "PDF upload failed.",
+        error: { message: apiMessage(error) },
+        finishedAt: Date.now(),
+      };
 
+      writeStoredAttachmentJobs({
+        ...storedJobs,
+        [jobKey]: failedJob,
+      });
+      persistAttachmentJobs((current) => ({
+        ...current,
+        [jobKey]: failedJob,
+      }));
+    } finally {
       event.target.value = "";
     }
   }
@@ -1588,8 +1742,17 @@ function GroupStudyPage() {
     const content =
       message.trim();
 
+    const requestedAiMode =
+      selectedAiMode;
+
     setSendingMessage(true);
     setPageError("");
+
+    if (requestedAiMode) {
+      setAiWaitSeconds(0);
+      setAiWaiting(true);
+      setAiWaitingMessageId(null);
+    }
 
     try {
       const result =
@@ -1604,24 +1767,35 @@ function GroupStudyPage() {
               selectedMentionIds,
 
             aiMode:
-              selectedAiMode,
+              requestedAiMode,
 
             responseFormat:
-              selectedAiMode
+              requestedAiMode
                 ? responseFormat
                 : null,
           },
         );
 
-      /*
-       * Add returned message immediately.
-       * WebSocket deduplication below prevents
-       * the same ID appearing twice.
-       */
       const createdMessage =
         result?.message ||
         result?.user_message ||
         result;
+
+      if (
+        requestedAiMode &&
+        createdMessage?.id
+      ) {
+        setAiWaitingMessageId(
+          createdMessage.id,
+        );
+
+        if (
+          createdMessage.ai_response?.content
+        ) {
+          setAiWaiting(false);
+          setAiWaitingMessageId(null);
+        }
+      }
 
       if (createdMessage?.id) {
         setMessages((current) => {
@@ -1648,6 +1822,11 @@ function GroupStudyPage() {
       setSelectedAiMode(null);
       setShowMentionMenu(false);
     } catch (error) {
+      if (requestedAiMode) {
+        setAiWaiting(false);
+        setAiWaitingMessageId(null);
+      }
+
       setPageError(apiMessage(error));
     } finally {
       setSendingMessage(false);
@@ -2609,6 +2788,23 @@ function GroupStudyPage() {
 
                         <div className="group-composer">
 
+                          {aiWaiting && (
+                            <div
+                              className="ai-waiting-indicator"
+                              role="status"
+                              aria-live="polite"
+                            >
+                              <Bot size={16} />
+
+                              <span>
+                                AI Companion is analyzing your question...{" "}
+                                {formatElapsedTime(
+                                  aiWaitSeconds,
+                                )}
+                              </span>
+                            </div>
+                          )}
+
                           {attachment && (
                             <div
                               className={`channel-attachment-status ${attachment.status}`}
@@ -2622,21 +2818,33 @@ function GroupStudyPage() {
 
                                 <span>
                                   {attachment.status === "uploading" &&
-                                    "Uploading PDF..."}
+                                    `Uploading PDF... · ${formatElapsedTime(
+                                      attachmentElapsedSeconds,
+                                    )}`}
 
                                   {attachment.status === "queued" &&
-                                    "PDF queued for processing..."}
+                                    `PDF queued for processing... · ${formatElapsedTime(
+                                      attachmentElapsedSeconds,
+                                    )}`}
 
                                   {attachment.status === "processing" &&
-                                    `Processing PDF... ${attachment.progress ?? 0}%`}
+                                    `Processing PDF... ${attachment.progress ?? 0}% · ${formatElapsedTime(
+                                      attachmentElapsedSeconds,
+                                    )}`}
 
                                   {attachment.status === "ready" &&
-                                    "PDF ready for AI questions."}
+                                    `PDF ready for AI questions · ${formatElapsedTime(
+                                      attachmentElapsedSeconds,
+                                    )}`}
 
                                   {attachment.status === "failed" &&
-                                    (attachment.error?.message ||
+                                    `${
+                                      attachment.error?.message ||
                                       attachment.message ||
-                                      "PDF processing failed.")}
+                                      "PDF processing failed."
+                                    } · ${formatElapsedTime(
+                                      attachmentElapsedSeconds,
+                                    )}`}
                                 </span>
                               </div>
 
@@ -2647,7 +2855,9 @@ function GroupStudyPage() {
                                     type="button"
                                     className="attachment-dismiss"
                                     onClick={() =>
-                                      setAttachment(null)
+                                      dismissAttachment(
+                                        currentAttachmentKey,
+                                      )
                                     }
                                     aria-label="Dismiss attachment status"
                                   >

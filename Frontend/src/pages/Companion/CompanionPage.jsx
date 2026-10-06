@@ -100,6 +100,21 @@ function CompanionPage() {
     setIsSending,
   ] = useState(false);
 
+  /*
+   * Show how long the user has been waiting for the current
+   * AI response. sendChatMessage resolves only after the backend
+   * returns the assistant message, so this timer represents the
+   * actual response wait for this page.
+   */
+  const [aiWaitSeconds, setAiWaitSeconds] =
+    useState(0);
+
+  const [aiWaiting, setAiWaiting] =
+    useState(false);
+
+  const aiWaitStartedAtRef =
+    useRef(null);
+
   const [
     editingChatId,
     setEditingChatId,
@@ -158,6 +173,44 @@ function CompanionPage() {
        */
     }
   }
+
+  /*
+   * Keep the AI wait timer accurate even if the browser delays
+   * interval callbacks while the tab is in the background.
+   */
+  useEffect(() => {
+    if (!aiWaiting) {
+      return undefined;
+    }
+
+    const updateElapsedTime = () => {
+      if (!aiWaitStartedAtRef.current) {
+        return;
+      }
+
+      setAiWaitSeconds(
+        Math.max(
+          0,
+          Math.floor(
+            (Date.now() -
+              aiWaitStartedAtRef.current) /
+              1000,
+          ),
+        ),
+      );
+    };
+
+    updateElapsedTime();
+
+    const timerId = window.setInterval(
+      updateElapsedTime,
+      1000,
+    );
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [aiWaiting]);
 
   /*
    * =========================================================
@@ -437,6 +490,7 @@ function CompanionPage() {
   }, [
     messages,
     isLoadingMessages,
+    aiWaiting,
   ]);
 
   /*
@@ -1140,6 +1194,17 @@ function CompanionPage() {
     try {
       setIsSending(true);
 
+      /*
+       * Start immediately when the user submits the question.
+       * Do not stop this timer until sendChatMessage has either
+       * returned the real assistant response or failed.
+       */
+      aiWaitStartedAtRef.current =
+        Date.now();
+
+      setAiWaitSeconds(0);
+      setAiWaiting(true);
+
       setError("");
 
       let chatId =
@@ -1216,10 +1281,20 @@ function CompanionPage() {
             result.assistant_message,
           ],
         );
+
+        /*
+         * The real AI answer has arrived.
+         */
+        setAiWaiting(false);
+        aiWaitStartedAtRef.current =
+          null;
       }
 
       setMessage("");
     } catch (err) {
+      setAiWaiting(false);
+      aiWaitStartedAtRef.current = null;
+
       console.error(
         "Unable to send message:",
         err.code,
@@ -1300,6 +1375,13 @@ function CompanionPage() {
         );
       }
     } finally {
+      /*
+       * Normally aiWaiting is cleared when assistant_message is
+       * received above. This also prevents a stuck indicator if
+       * the backend returns an unexpected successful payload.
+       */
+      setAiWaiting(false);
+      aiWaitStartedAtRef.current = null;
       setIsSending(false);
     }
   }
@@ -1966,6 +2048,23 @@ function CompanionPage() {
                   </button>
                 )}
 
+              </div>
+            )}
+
+            {/* AI RESPONSE WAIT STATUS */}
+
+            {aiWaiting && (
+              <div
+                className="chat-ai-waiting-status"
+                role="status"
+                aria-live="polite"
+              >
+                <Sparkles size={15} />
+
+                <span>
+                  AI Assistant is analyzing your
+                  question... {aiWaitSeconds}s
+                </span>
               </div>
             )}
 
