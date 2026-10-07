@@ -6,7 +6,6 @@ import {
   Copy,
   FileText,
   Lightbulb,
-  Mic,
   Paperclip,
   Pencil,
   Plus,
@@ -19,6 +18,9 @@ import {
 } from "lucide-react";
 
 import AppShell from "../../components/layout/AppShell.jsx";
+import {
+  useConfirmModal,
+} from "../../components/common/ConfirmModal.jsx";
 import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 
@@ -59,6 +61,11 @@ const suggestedPrompts = [
 
 function CompanionPage() {
   const { accessToken, logout } = useAuth();
+
+  const {
+    requestConfirmation,
+    confirmModal,
+  } = useConfirmModal();
 
   const [message, setMessage] = useState("");
 
@@ -733,9 +740,13 @@ function CompanionPage() {
     conversation,
   ) {
     const confirmed =
-      window.confirm(
-        `Delete "${conversation.title || "New chat"}"? This cannot be undone.`,
-      );
+      await requestConfirmation({
+        title: "Delete conversation?",
+        message:
+          `Delete "${conversation.title || "New chat"}"? This cannot be undone.`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
 
     if (
       !confirmed ||
@@ -1480,7 +1491,7 @@ function CompanionPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell contentClassName="companion-page-content">
       <div className="companion-layout">
 
         {/* ==============================
@@ -2175,16 +2186,6 @@ function CompanionPage() {
                   />
                 </button>
 
-                <button
-                  type="button"
-                  className="chat-tool-button"
-                  aria-label="Voice input"
-                >
-                  <Mic
-                    size={18}
-                  />
-                </button>
-
               </div>
 
               <button
@@ -2215,6 +2216,7 @@ function CompanionPage() {
         </section>
 
       </div>
+      {confirmModal}
     </AppShell>
   );
 }
