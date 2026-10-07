@@ -1,5 +1,6 @@
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -14,9 +15,11 @@ import {
   Edit3,
   Hash,
   Lock,
+  MoreHorizontal,
   Paperclip,
   Plus,
   Search,
+  Settings,
   Send,
   Trash2,
   UserMinus,
@@ -53,14 +56,17 @@ import {
   joinStudyGroup,
   leaveStudyGroup,
   removeStudyGroupMember,
+  transferStudyGroupOwnership,
   updateGroupMessage,
   updateStudyGroup,
   updateStudyGroupChannel,
+  updateStudyGroupMemberRole,
   uploadStudyGroupAttachment,
 } from "../../services/groupService.js";
 
 import "./groupStudy.css";
 import "./groupStudyPanels.css";
+import "./groupStudyBrowse.css";
 
 /* =========================================================
    CONSTANTS
@@ -83,6 +89,16 @@ const AI_MODES = [
     label: "Facilitator",
     value: "facilitator",
   },
+];
+
+
+const DISCOVER_FILTERS = [
+  { label: "All", value: "all" },
+  { label: "AI", value: "AI" },
+  { label: "Web", value: "Web" },
+  { label: "DB", value: "DB" },
+  { label: "CS Theory", value: "CS Theory" },
+  { label: "Systems", value: "Systems" },
 ];
 
 
@@ -245,7 +261,7 @@ function GroupStudyPage() {
      ------------------------------------------------------- */
 
   const [activeView, setActiveView] =
-    useState("discover");
+    useState("mine");
 
   const [discoverGroups, setDiscoverGroups] =
     useState([]);
@@ -259,6 +275,9 @@ function GroupStudyPage() {
   const [search, setSearch] =
     useState("");
 
+  const [discoverCategory, setDiscoverCategory] =
+    useState("all");
+
   const [selectedGroup, setSelectedGroup] =
     useState(null);
 
@@ -270,6 +289,30 @@ function GroupStudyPage() {
 
   const [mutationLoading, setMutationLoading] =
     useState(false);
+
+  const [groupSettingsOpen, setGroupSettingsOpen] =
+    useState(false);
+
+  const [groupDetailsTab, setGroupDetailsTab] =
+    useState("overview");
+
+  const [groupDetailsMemberSearch, setGroupDetailsMemberSearch] =
+    useState("");
+
+  const [groupDetailsMemberFilter, setGroupDetailsMemberFilter] =
+    useState("all");
+
+  const [groupDetailsMemberMenuId, setGroupDetailsMemberMenuId] =
+    useState(null);
+
+  const [detailsForm, setDetailsForm] =
+    useState({
+      name: "",
+      description: "",
+    });
+
+  const [messageSearch, setMessageSearch] =
+    useState("");
 
   const [
     groupsPanelCollapsed,
@@ -309,6 +352,9 @@ function GroupStudyPage() {
   const [memberEmail, setMemberEmail] =
     useState("");
 
+  const [addMemberModalOpen, setAddMemberModalOpen] =
+    useState(false);
+
   /* -------------------------------------------------------
      CHANNELS
      ------------------------------------------------------- */
@@ -323,6 +369,9 @@ function GroupStudyPage() {
     useState(null);
 
   const [channelModal, setChannelModal] =
+    useState(null);
+
+  const [channelActionMenuId, setChannelActionMenuId] =
     useState(null);
 
   const [channelForm, setChannelForm] =
@@ -489,20 +538,28 @@ function GroupStudyPage() {
     searchParams.get("view");
 
   useEffect(() => {
-    if (
-      requestedGroupView ===
-      "private"
-    ) {
+    if (requestedGroupView === "mine") {
+      setActiveView("mine");
+      setMyFilter("all");
+      setSelectedGroup(null);
+      return;
+    }
+
+    if (requestedGroupView === "public") {
+      setActiveView("mine");
+      setMyFilter("public");
+      setSelectedGroup(null);
+      return;
+    }
+
+    if (requestedGroupView === "private") {
       setActiveView("mine");
       setMyFilter("private");
       setSelectedGroup(null);
       return;
     }
 
-    if (
-      requestedGroupView ===
-      "public"
-    ) {
+    if (requestedGroupView === "discover") {
       setActiveView("discover");
       setSelectedGroup(null);
     }
@@ -1050,6 +1107,68 @@ function GroupStudyPage() {
     }
   }
 
+  function openGroupDetails() {
+    if (!selectedGroup) {
+      return;
+    }
+
+    setGroupDetailsTab("overview");
+    setGroupDetailsMemberSearch("");
+    setGroupDetailsMemberFilter("all");
+    setGroupDetailsMemberMenuId(null);
+    setDetailsForm({
+      name: selectedGroup.name || "",
+      description: selectedGroup.description || "",
+    });
+    setAddMemberModalOpen(false);
+    setGroupSettingsOpen(true);
+  }
+
+  async function handleSaveGroupDetails(event) {
+    event.preventDefault();
+
+    if (
+      !selectedGroup ||
+      !selectedGroup.can_manage ||
+      !accessToken ||
+      !detailsForm.name.trim()
+    ) {
+      return;
+    }
+
+    setMutationLoading(true);
+    setPageError("");
+
+    try {
+      const updated = await updateStudyGroup(
+        accessToken,
+        selectedGroup.id,
+        {
+          name: detailsForm.name.trim(),
+          description: detailsForm.description.trim(),
+          visibility: selectedGroup.visibility || "public",
+          max_members: selectedGroup.max_members || 30,
+        },
+      );
+
+      const updatedGroup = updated?.group || updated;
+
+      if (updatedGroup?.id) {
+        setSelectedGroup(updatedGroup);
+        setDetailsForm({
+          name: updatedGroup.name || "",
+          description: updatedGroup.description || "",
+        });
+      }
+
+      await refreshGroupLists();
+    } catch (error) {
+      setPageError(apiMessage(error));
+    } finally {
+      setMutationLoading(false);
+    }
+  }
+
   /* =======================================================
      DELETE GROUP
      ======================================================= */
@@ -1203,6 +1322,7 @@ function GroupStudyPage() {
 
       await loadMembers();
       await refreshGroupLists();
+      setAddMemberModalOpen(false);
     } catch (error) {
       setPageError(apiMessage(error));
     } finally {
@@ -1252,6 +1372,147 @@ function GroupStudyPage() {
 
       await loadMembers();
       await refreshGroupLists();
+    } catch (error) {
+      setPageError(apiMessage(error));
+    } finally {
+      setMutationLoading(false);
+    }
+  }
+
+  /* =======================================================
+     MEMBER ROLES / OWNERSHIP
+     ======================================================= */
+
+  async function handlePromoteMember(member) {
+    if (
+      !selectedGroup ||
+      !selectedGroup.is_owner ||
+      !accessToken ||
+      member.role !== "member"
+    ) {
+      return;
+    }
+
+    const name =
+      member.full_name ||
+      member.email ||
+      "this member";
+
+    if (!window.confirm(`Promote ${name} to admin?`)) {
+      return;
+    }
+
+    setMutationLoading(true);
+    setPageError("");
+
+    try {
+      await updateStudyGroupMemberRole(
+        accessToken,
+        selectedGroup.id,
+        member.user_id,
+        "admin",
+      );
+
+      await loadMembers();
+      await refreshGroupLists();
+    } catch (error) {
+      setPageError(apiMessage(error));
+    } finally {
+      setMutationLoading(false);
+    }
+  }
+
+  async function handleDemoteAdmin(member) {
+    if (
+      !selectedGroup ||
+      !selectedGroup.is_owner ||
+      !accessToken ||
+      member.role !== "admin"
+    ) {
+      return;
+    }
+
+    const name =
+      member.full_name ||
+      member.email ||
+      "this admin";
+
+    if (!window.confirm(`Demote ${name} to member?`)) {
+      return;
+    }
+
+    setMutationLoading(true);
+    setPageError("");
+
+    try {
+      await updateStudyGroupMemberRole(
+        accessToken,
+        selectedGroup.id,
+        member.user_id,
+        "member",
+      );
+
+      await loadMembers();
+      await refreshGroupLists();
+    } catch (error) {
+      setPageError(apiMessage(error));
+    } finally {
+      setMutationLoading(false);
+    }
+  }
+
+  async function handleTransferOwnership(member) {
+    if (
+      !selectedGroup ||
+      !selectedGroup.is_owner ||
+      !accessToken ||
+      member.role === "owner"
+    ) {
+      return;
+    }
+
+    const name =
+      member.full_name ||
+      member.email ||
+      "this member";
+
+    const confirmed = window.confirm(
+      `Transfer ownership of "${selectedGroup.name}" to ${name}?\n\nYou will become an admin.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setMutationLoading(true);
+    setPageError("");
+
+    try {
+      await transferStudyGroupOwnership(
+        accessToken,
+        selectedGroup.id,
+        member.user_id,
+      );
+
+      const result = await getMyGroups(accessToken, {
+        filter: "all",
+        page: 1,
+        pageSize: 20,
+      });
+
+      const updatedGroups = extractItems(result);
+      setMyGroups(updatedGroups);
+
+      const updatedGroup = updatedGroups.find(
+        (group) => group.id === selectedGroup.id,
+      );
+
+      if (updatedGroup) {
+        setSelectedGroup(updatedGroup);
+      }
+
+      await loadMembers(updatedGroup || selectedGroup);
+      await loadDiscover();
     } catch (error) {
       setPageError(apiMessage(error));
     } finally {
@@ -1347,6 +1608,7 @@ function GroupStudyPage() {
 
   async function handleDeleteChannel(
     channel,
+    skipConfirm = false,
   ) {
     if (
       !selectedGroup ||
@@ -1355,19 +1617,22 @@ function GroupStudyPage() {
       return;
     }
 
-    const confirmed =
-      await requestConfirmation({
-        title: "Delete channel?",
-        message:
-          `Delete channel "${channel.name}"? This cannot be undone.`,
-        confirmLabel: "Delete channel",
-        tone: "danger",
-      });
+    if (!skipConfirm) {
+      const confirmed =
+        await requestConfirmation({
+          title: "Delete channel?",
+          message:
+            `Delete channel "${channel.name}"? This cannot be undone.`,
+          confirmLabel: "Delete channel",
+          tone: "danger",
+        });
 
-    if (!confirmed) {
-      return;
+      if (!confirmed) {
+        return;
+      }
     }
 
+    setChannelActionMenuId(null);
     setMutationLoading(true);
     setPageError("");
 
@@ -1982,6 +2247,55 @@ function GroupStudyPage() {
       myGroups,
     ]);
 
+  const browseDiscoverGroups = useMemo(() => {
+    if (discoverCategory === "all") {
+      return discoverGroups;
+    }
+
+    return discoverGroups.filter((group) => {
+      const category = String(group.category || "").trim().toLowerCase();
+      return category === discoverCategory.toLowerCase();
+    });
+  }, [discoverGroups, discoverCategory]);
+
+  function showMyGroupsBrowse() {
+    setSearchParams({ view: "mine" });
+    setActiveView("mine");
+    setMyFilter("all");
+    setSelectedGroup(null);
+  }
+
+  function showDiscoverBrowse() {
+    setSearchParams({ view: "discover" });
+    setActiveView("discover");
+    setDiscoverCategory("all");
+    setSelectedGroup(null);
+  }
+
+  const filteredMessages = useMemo(() => {
+    const query = messageSearch.trim().toLowerCase();
+
+    if (!query) {
+      return messages;
+    }
+
+    return messages.filter((item) => {
+      const member = members.find(
+        (groupMember) => groupMember.user_id === item.author_id,
+      );
+
+      const sender =
+        member?.full_name || member?.email || "Student";
+
+      const aiContent = item.ai_response?.content || "";
+
+      return [sender, item.content || "", aiContent]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [messageSearch, messages, members]);
+
   /* =======================================================
      RENDER
      ======================================================= */
@@ -1990,6 +2304,8 @@ function GroupStudyPage() {
     <AppShell>
       <div
         className={`group-study-page ${
+          !selectedGroup ? "sg-browse-mode" : "sg-workspace-mode"
+        } ${
           groupsPanelCollapsed
             ? "groups-panel-collapsed"
             : ""
@@ -2000,6 +2316,164 @@ function GroupStudyPage() {
         }`}
       >
 
+        {!selectedGroup && (
+          <section className="sg-browse">
+            <div className="sg-browse-topbar">
+              <div className="sg-browse-tabs">
+                <button
+                  type="button"
+                  className={activeView === "mine" ? "active" : ""}
+                  onClick={showMyGroupsBrowse}
+                >
+                  My Groups
+                  {myGroups.length > 0 && (
+                    <span>{myGroups.length}</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className={activeView === "discover" ? "active" : ""}
+                  onClick={showDiscoverBrowse}
+                >
+                  Discover
+                </button>
+              </div>
+
+              <button
+                className="sg-browse-create"
+                type="button"
+                onClick={openCreateGroup}
+              >
+                <Plus size={16} />
+                Create Group
+              </button>
+            </div>
+
+            {pageError && (
+              <div className="sg-error">{pageError}</div>
+            )}
+
+            {activeView === "discover" && (
+              <div className="sg-discover-controls">
+                <label className="sg-browse-search">
+                  <Search size={17} />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search groups..."
+                  />
+                </label>
+
+                <div className="sg-category-tabs">
+                  {DISCOVER_FILTERS.map((filter) => (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      className={discoverCategory === filter.value ? "active" : ""}
+                      onClick={() => setDiscoverCategory(filter.value)}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {groupsLoading ? (
+              <div className="sg-browse-empty">Loading groups...</div>
+            ) : activeView === "mine" ? (
+              myGroups.length === 0 ? (
+                <div className="sg-browse-empty">You have not joined any study groups yet.</div>
+              ) : (
+                <div className="sg-my-groups-list">
+                  {myGroups.map((group) => (
+                    <button
+                      key={group.id}
+                      type="button"
+                      className="sg-my-group-row"
+                      onClick={() => openGroup(group)}
+                    >
+                      <div className="sg-group-avatar">{initials(group.name)}</div>
+                      <div className="sg-my-group-copy">
+                        <div className="sg-group-title-line">
+                          <strong>{group.name}</strong>
+                          {group.membership_role && (
+                            <span className={`sg-role-badge ${group.membership_role}`}>
+                              {group.membership_role}
+                            </span>
+                          )}
+                          {group.visibility && (
+                            <span className={`sg-visibility-badge ${group.visibility}`}>
+                              {group.visibility}
+                            </span>
+                          )}
+                        </div>
+                        <div className="sg-group-meta">
+                          {group.subject || group.course || group.description || null}
+                          {(group.subject || group.course || group.description) && group.member_count != null ? " · " : ""}
+                          {group.member_count != null ? `${group.member_count} members` : ""}
+                          {group.online_count != null ? ` · ${group.online_count} online` : ""}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : browseDiscoverGroups.length === 0 ? (
+              <div className="sg-browse-empty">No public groups found.</div>
+            ) : (
+              <div className="sg-discover-grid">
+                {browseDiscoverGroups.map((group) => (
+                  <article className="sg-discover-card" key={group.id}>
+                    <div className="sg-discover-card-head">
+                      <div className="sg-group-avatar">{initials(group.name)}</div>
+                      {group.category && (
+                        <span className="sg-category-badge">{group.category}</span>
+                      )}
+                    </div>
+
+                    <strong className="sg-discover-name">{group.name}</strong>
+                    {(group.subject || group.course) && (
+                      <span className="sg-discover-subject">
+                        {group.subject || group.course}
+                      </span>
+                    )}
+                    {group.description && (
+                      <p>{group.description}</p>
+                    )}
+
+                    <div className="sg-discover-footer">
+                      <span>
+                        {group.member_count != null
+                          ? `${group.member_count} ${group.member_count === 1 ? "member" : "members"}`
+                          : ""}
+                        {group.online_count != null ? ` · ${group.online_count} online` : ""}
+                      </span>
+
+                      {group.is_member ? (
+                        <button type="button" onClick={() => openGroup(group)}>
+                          Open
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={mutationLoading}
+                          onClick={() => handleJoin(group)}
+                        >
+                          Join
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {selectedGroup && (
+          <>
         {/* HEADER */}
 
         <div className="group-study-header">
@@ -2031,31 +2505,27 @@ function GroupStudyPage() {
           </div>
         )}
 
-        {/* PUBLIC / PRIVATE + GROUP PANEL COLLAPSE */}
+        {/* DISCOVER PUBLIC / MY GROUPS + GROUP PANEL COLLAPSE */}
 
         <div className="group-view-tabs">
           <div className="group-view-tab-buttons">
             <button
               type="button"
               className={
-                activeView ===
-                "discover"
+                activeView === "discover"
                   ? "active"
                   : ""
               }
               onClick={() => {
                 setSearchParams({
-                  view: "public",
+                  view: "discover",
                 });
 
-                setActiveView(
-                  "discover",
-                );
-
+                setActiveView("discover");
                 setSelectedGroup(null);
               }}
             >
-              Public
+              Discover Public
             </button>
 
             <button
@@ -2067,15 +2537,14 @@ function GroupStudyPage() {
               }
               onClick={() => {
                 setSearchParams({
-                  view: "private",
+                  view: "mine",
                 });
 
                 setActiveView("mine");
-                setMyFilter("private");
                 setSelectedGroup(null);
               }}
             >
-              Private
+              My Groups
             </button>
           </div>
 
@@ -2110,10 +2579,9 @@ function GroupStudyPage() {
           </button>
         </div>
 
-        {/* SEARCH / PRIVATE LABEL */}
+        {/* DISCOVER SEARCH / MY GROUPS FILTERS */}
 
-        {activeView ===
-        "discover" ? (
+        {activeView === "discover" ? (
           <div className="discover-toolbar">
             <div className="group-search">
               <Search size={18} />
@@ -2130,8 +2598,31 @@ function GroupStudyPage() {
             </div>
           </div>
         ) : (
-          <div className="private-groups-label">
-            My Private Groups
+          <div className="discover-toolbar">
+            <div className="group-view-tab-buttons">
+              {[
+                ["all", "All"],
+                ["public", "Public"],
+                ["private", "Private"],
+                ["owned", "Owned"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={
+                    myFilter === value
+                      ? "active"
+                      : ""
+                  }
+                  onClick={() => {
+                    setMyFilter(value);
+                    setSelectedGroup(null);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -2306,54 +2797,29 @@ function GroupStudyPage() {
                     </p>
                   </div>
 
-                  <div className="workspace-actions">
+                  <div className="workspace-tools">
+                    <label className="workspace-message-search">
+                      <Search size={15} />
+                      <input
+                        type="search"
+                        value={messageSearch}
+                        onChange={(event) =>
+                          setMessageSearch(event.target.value)
+                        }
+                        placeholder="Search messages..."
+                        aria-label="Search messages"
+                      />
+                    </label>
 
-                    {selectedGroup.can_manage && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={
-                            openEditGroup
-                          }
-                        >
-                          <Edit3
-                            size={16}
-                          />
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          className="danger"
-                          disabled={
-                            mutationLoading
-                          }
-                          onClick={
-                            handleDeleteGroup
-                          }
-                        >
-                          <Trash2
-                            size={16}
-                          />
-                          Delete
-                        </button>
-                      </>
-                    )}
-
-                    {selectedGroup.is_member &&
-                      !selectedGroup.can_manage && (
-                        <button
-                          type="button"
-                          disabled={
-                            mutationLoading
-                          }
-                          onClick={
-                            handleLeave
-                          }
-                        >
-                          Leave
-                        </button>
-                      )}
+                    <button
+                      type="button"
+                      className="workspace-settings-button"
+                      title="Group settings"
+                      aria-label="Group settings"
+                      onClick={openGroupDetails}
+                    >
+                      <Settings size={17} />
+                    </button>
                   </div>
 
                   <button
@@ -2392,6 +2858,39 @@ function GroupStudyPage() {
                   {/* CHANNEL / MEMBER SIDEBAR */}
 
                   <aside className="channel-sidebar">
+
+                    <button
+                      type="button"
+                      className="workspace-back-button"
+                      onClick={() => {
+                        setSelectedGroup(null);
+                        setSelectedChannel(null);
+                        setChannels([]);
+                        setMembers([]);
+                        setMessages([]);
+                      }}
+                    >
+                      <ChevronLeft size={15} />
+                      All Groups
+                    </button>
+
+                    <div className="workspace-sidebar-group">
+                      <div className="workspace-sidebar-avatar">
+                        {initials(selectedGroup.name)}
+                      </div>
+
+                      <div className="workspace-sidebar-copy">
+                        <div className="workspace-sidebar-name">
+                          {selectedGroup.name}
+                        </div>
+                        <div className="workspace-sidebar-meta">
+                          {selectedGroup.member_count ?? members.length} members
+                          {selectedGroup.membership_role
+                            ? ` · ${selectedGroup.membership_role}`
+                            : ""}
+                        </div>
+                      </div>
+                    </div>
 
                     <div className="channel-heading">
                       <span>
@@ -2439,11 +2938,14 @@ function GroupStudyPage() {
                             <button
                               type="button"
                               className="channel-select"
-                              onClick={() =>
+                              onClick={() => {
                                 setSelectedChannel(
                                   channel,
-                                )
-                              }
+                                );
+                                setChannelActionMenuId(
+                                  null,
+                                );
+                              }}
                             >
                               <Hash
                                 size={16}
@@ -2457,43 +2959,99 @@ function GroupStudyPage() {
                             </button>
 
                             {selectedGroup.can_manage && (
-                              <div className="channel-admin-actions">
+                              <div className="channel-row-menu">
                                 <button
                                   type="button"
-                                  title="Edit channel"
-                                  onClick={() =>
-                                    openEditChannel(
-                                      channel,
-                                    )
-                                  }
+                                  className="channel-more-button"
+                                  aria-label={`Channel options for ${channel.name}`}
+                                  title="Channel options"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setChannelActionMenuId(
+                                      (current) =>
+                                        current === channel.id
+                                          ? null
+                                          : channel.id,
+                                    );
+                                  }}
                                 >
-                                  <Edit3
-                                    size={
-                                      14
-                                    }
-                                  />
+                                  <MoreHorizontal size={16} />
                                 </button>
 
-                                <button
-                                  type="button"
-                                  title="Delete channel"
-                                  onClick={() =>
-                                    handleDeleteChannel(
-                                      channel,
-                                    )
-                                  }
-                                >
-                                  <Trash2
-                                    size={
-                                      14
-                                    }
-                                  />
-                                </button>
+                                {channelActionMenuId === channel.id && (
+                                  <div className="channel-inline-actions">
+                                    <button
+                                      type="button"
+                                      className="danger"
+                                      disabled={mutationLoading}
+                                      onClick={() =>
+                                        handleDeleteChannel(
+                                          channel,
+                                          true,
+                                        )
+                                      }
+                                    >
+                                      Delete
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setChannelActionMenuId(
+                                          null,
+                                        )
+                                      }
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
+
                           </div>
                         ),
                       )
+                    )}
+
+                    {channelModal === "create" && (
+                      <form
+                        className="inline-channel-create"
+                        onSubmit={submitChannel}
+                      >
+                        <input
+                          autoFocus
+                          value={channelForm.name}
+                          onChange={(event) =>
+                            setChannelForm((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder="new-channel"
+                          maxLength={100}
+                          required
+                        />
+
+                        <div className="inline-channel-create-actions">
+                          <button
+                            type="submit"
+                            className="primary"
+                            disabled={mutationLoading || !channelForm.name.trim()}
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChannelModal(null);
+                              setChannelForm({ name: "", description: "" });
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
                     )}
 
                     {/* MEMBERS */}
@@ -2547,71 +3105,15 @@ function GroupStudyPage() {
                                 </small>
                               </div>
 
-                              {selectedGroup.can_manage &&
-                                role ===
-                                  "member" && (
-                                  <button
-                                    type="button"
-                                    className="remove-member"
-                                    title="Remove member"
-                                    onClick={() =>
-                                      handleRemoveMember(
-                                        member,
-                                      )
-                                    }
-                                  >
-                                    <UserMinus
-                                      size={
-                                        15
-                                      }
-                                    />
-                                  </button>
-                                )}
+                              <span className={`member-role-badge ${role}`}>
+                                {role}
+                              </span>
                             </div>
                           );
                         },
                       )
                     )}
 
-                    {/* ADD MEMBER — PRIVATE ONLY */}
-
-                    {selectedGroup.can_manage &&
-                      selectedGroup.visibility ===
-                        "private" && (
-                        <form
-                          className="add-member-form"
-                          onSubmit={
-                            handleAddMember
-                          }
-                        >
-                          <input
-                            type="email"
-                            value={
-                              memberEmail
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              setMemberEmail(
-                                event
-                                  .target
-                                  .value,
-                              )
-                            }
-                            placeholder="Student email"
-                            required
-                          />
-
-                          <button
-                            type="submit"
-                            disabled={
-                              mutationLoading
-                            }
-                          >
-                            Add Member
-                          </button>
-                        </form>
-                      )}
                   </aside>
 
                   {/* CHAT */}
@@ -2663,15 +3165,15 @@ function GroupStudyPage() {
                               Loading
                               messages...
                             </div>
-                          ) : messages.length ===
+                          ) : filteredMessages.length ===
                             0 ? (
                             <div className="sg-empty">
-                              No messages
-                              yet. Start the
-                              conversation.
+                              {messageSearch.trim()
+                                ? "No messages match your search."
+                                : "No messages yet. Start the conversation."}
                             </div>
                           ) : (
-                            messages.map(
+                            filteredMessages.map(
                               (item) => {
                                 const member =
                                   members.find(
@@ -2707,76 +3209,79 @@ function GroupStudyPage() {
                                   !item.ai_mode_used;
 
                                 return (
-                                  <div
-                                    className="group-message"
-                                    key={
-                                      item.id
-                                    }
+                                  <Fragment
+                                    key={item.id}
                                   >
-                                    <div className="message-avatar">
-                                      {initials(
-                                        sender,
-                                      )}
-                                    </div>
-
-                                    <div className="message-main">
-
-                                      <div className="message-meta">
-                                        <strong>
-                                          {
-                                            sender
-                                          }
-                                        </strong>
-
-                                        <span>
-                                          {timeLabel(
-                                            item.sent_at,
-                                          )}
-                                        </span>
+                                    <div
+                                      className={`group-message ${
+                                        isOwnMessage
+                                          ? "own-message"
+                                          : ""
+                                      }`}
+                                    >
+                                      <div className="message-avatar">
+                                        {initials(
+                                          sender,
+                                        )}
                                       </div>
 
-                                      <p className="message-content">
-                                        {
-                                          item.content
-                                        }
-                                      </p>
+                                      <div className="message-main">
+                                        <div className="message-meta">
+                                          <strong>
+                                            {sender}
+                                          </strong>
 
-                                      {(canEdit ||
-                                        isOwnMessage) && (
-                                        <div className="message-actions">
-
-                                          {canEdit && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                beginEditMessage(
-                                                  item,
-                                                )
-                                              }
-                                            >
-                                              Edit
-                                            </button>
-                                          )}
-
-                                          {isOwnMessage && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                handleDeleteMessage(
-                                                  item,
-                                                )
-                                              }
-                                            >
-                                              Delete
-                                            </button>
-                                          )}
+                                          <span>
+                                            {timeLabel(
+                                              item.sent_at,
+                                            )}
+                                          </span>
                                         </div>
-                                      )}
 
-                                      {/* AI RESPONSE */}
+                                        <p className="message-content">
+                                          {item.content}
+                                        </p>
 
-                                      {aiResponse?.content && (
-                                        <div className="ai-message">
+                                        {(canEdit ||
+                                          isOwnMessage) && (
+                                          <div className="message-actions">
+                                            {canEdit && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  beginEditMessage(
+                                                    item,
+                                                  )
+                                                }
+                                              >
+                                                Edit
+                                              </button>
+                                            )}
+
+                                            {isOwnMessage && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleDeleteMessage(
+                                                    item,
+                                                  )
+                                                }
+                                              >
+                                                Delete
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {aiResponse?.content && (
+                                      <div className="group-message ai-response-message">
+                                        <div className="message-avatar ai-avatar">
+                                          <Bot size={16} />
+                                        </div>
+
+                                        <div className="message-main">
                                           <div className="message-meta">
                                             <strong>
                                               AI Companion
@@ -2791,15 +3296,15 @@ function GroupStudyPage() {
                                             )}
                                           </div>
 
-                                          <SimpleMarkdown>
-                                            {
-                                              aiResponse.content
-                                            }
-                                          </SimpleMarkdown>
+                                          <div className="ai-message">
+                                            <SimpleMarkdown>
+                                              {aiResponse.content}
+                                            </SimpleMarkdown>
+                                          </div>
                                         </div>
-                                      )}
-                                    </div>
-                                  </div>
+                                      </div>
+                                    )}
+                                  </Fragment>
                                 );
                               },
                             )
@@ -3114,8 +3619,568 @@ function GroupStudyPage() {
               </>
             )}
           </section>
-        </div>
+          </div>
+          </>
+        )}
+
       </div>
+
+      {/* ===================================================
+          GROUP DETAILS DRAWER
+          =================================================== */}
+
+      {groupSettingsOpen && selectedGroup && (
+        <aside
+          className="group-details-drawer"
+          aria-label="Group details"
+        >
+          <div className="group-details-head">
+            <h2>Group Details</h2>
+
+            <button
+              type="button"
+              className="group-details-close"
+              onClick={() => {
+                setAddMemberModalOpen(false);
+                setGroupSettingsOpen(false);
+              }}
+              aria-label="Close group details"
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="group-details-tabs">
+            {[
+              ["overview", "Overview"],
+              ["members", `Members (${members.length})`],
+              ["settings", "Settings"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={
+                  groupDetailsTab === value
+                    ? "active"
+                    : ""
+                }
+                onClick={() => {
+                  setGroupDetailsTab(value);
+                  setGroupDetailsMemberMenuId(null);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="group-details-body">
+            {groupDetailsTab === "overview" && (() => {
+              const owner =
+                members.find((member) => member.role === "owner");
+
+              const founder =
+                members.find(
+                  (member) =>
+                    member.user_id === selectedGroup.created_by,
+                );
+
+              const createdDate = selectedGroup.created_at
+                ? new Date(selectedGroup.created_at).toLocaleDateString(
+                    undefined,
+                    {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    },
+                  )
+                : null;
+
+              return (
+                <div className="group-overview">
+                  <div className="group-overview-identity">
+                    <div className="group-overview-avatar">
+                      {initials(selectedGroup.name)}
+                    </div>
+
+                    <h3>{selectedGroup.name}</h3>
+
+                    <div className="group-overview-badges">
+                      <span className="group-visibility-badge">
+                        {selectedGroup.visibility === "private"
+                          ? "Private"
+                          : "Public"}
+                      </span>
+
+                      {selectedGroup.membership_role && (
+                        <span
+                          className={`member-role-badge ${selectedGroup.membership_role}`}
+                        >
+                          {selectedGroup.membership_role}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="group-overview-description">
+                    <span>Description</span>
+                    <p>
+                      {selectedGroup.description ||
+                        "No description provided."}
+                    </p>
+                  </div>
+
+                  <div className="group-overview-facts">
+                    {createdDate && (
+                      <div>
+                        <span>Created</span>
+                        <strong>{createdDate}</strong>
+                      </div>
+                    )}
+
+                    {founder && (
+                      <div>
+                        <span>Founded by</span>
+                        <strong>
+                          {founder.full_name ||
+                            founder.email ||
+                            "Member"}
+                        </strong>
+                      </div>
+                    )}
+
+                    {owner && (
+                      <div>
+                        <span>Current owner</span>
+                        <strong>
+                          {owner.full_name ||
+                            owner.email ||
+                            "Owner"}
+                        </strong>
+                      </div>
+                    )}
+
+                    <div>
+                      <span>Members</span>
+                      <strong>
+                        {selectedGroup.member_count ??
+                          members.length}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {groupDetailsTab === "members" && (
+              <div className="group-details-members">
+                <label className="group-details-search">
+                  <Search size={15} />
+                  <input
+                    type="search"
+                    value={groupDetailsMemberSearch}
+                    onChange={(event) =>
+                      setGroupDetailsMemberSearch(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Search members..."
+                  />
+                </label>
+
+                <div className="group-member-toolbar">
+                  <div className="group-member-filters">
+                    {["all", "owner", "admin", "member"].map(
+                      (role) => (
+                        <button
+                          key={role}
+                          type="button"
+                          className={
+                            groupDetailsMemberFilter === role
+                              ? "active"
+                              : ""
+                          }
+                          onClick={() =>
+                            setGroupDetailsMemberFilter(role)
+                          }
+                        >
+                          {role === "all"
+                            ? "All"
+                            : role[0].toUpperCase() + role.slice(1)}
+                        </button>
+                      ),
+                    )}
+                  </div>
+
+                  {selectedGroup.can_manage && (
+                    <button
+                      type="button"
+                      className="group-member-add-label"
+                      onClick={() => {
+                        setMemberEmail("");
+                        setAddMemberModalOpen(true);
+                      }}
+                    >
+                      <Plus size={13} />
+                      Add
+                    </button>
+                  )}
+                </div>
+
+                <div className="group-details-member-list">
+                  {members
+                    .filter((member) => {
+                      const role = member.role || "member";
+
+                      if (
+                        groupDetailsMemberFilter !== "all" &&
+                        role !== groupDetailsMemberFilter
+                      ) {
+                        return false;
+                      }
+
+                      const query =
+                        groupDetailsMemberSearch
+                          .trim()
+                          .toLowerCase();
+
+                      if (!query) {
+                        return true;
+                      }
+
+                      return [
+                        member.full_name,
+                        member.email,
+                        role,
+                      ]
+                        .filter(Boolean)
+                        .some((value) =>
+                          String(value)
+                            .toLowerCase()
+                            .includes(query),
+                        );
+                    })
+                    .map((member) => {
+                      const name =
+                        member.full_name ||
+                        member.email ||
+                        "Student";
+
+                      const role =
+                        member.role ||
+                        "member";
+
+                      const isCurrentUser =
+                        Boolean(
+                          user?.id &&
+                            member.user_id === user.id,
+                        );
+
+                      const canOpenActions =
+                        selectedGroup.can_manage &&
+                        role !== "owner" &&
+                        !isCurrentUser;
+
+                      return (
+                        <div
+                          className="group-details-member"
+                          key={member.user_id}
+                        >
+                          <div className="group-details-member-avatar">
+                            {initials(name)}
+                          </div>
+
+                          <div className="group-details-member-info">
+                            <div>
+                              <strong>{name}</strong>
+
+                              {isCurrentUser && (
+                                <small className="member-you">
+                                  (you)
+                                </small>
+                              )}
+
+                              <span
+                                className={`member-role-badge ${role}`}
+                              >
+                                {role}
+                              </span>
+                            </div>
+
+                            {member.email && (
+                              <small>{member.email}</small>
+                            )}
+                          </div>
+
+                          {canOpenActions && (
+                            <div className="group-member-menu-wrap">
+                              <button
+                                type="button"
+                                className="group-member-menu-button"
+                                onClick={() =>
+                                  setGroupDetailsMemberMenuId(
+                                    (current) =>
+                                      current === member.user_id
+                                        ? null
+                                        : member.user_id,
+                                  )
+                                }
+                                aria-label={`Manage ${name}`}
+                              >
+                                <MoreHorizontal size={17} />
+                              </button>
+
+                              {groupDetailsMemberMenuId ===
+                                member.user_id && (
+                                <div className="group-member-menu">
+                                  {selectedGroup.is_owner &&
+                                    role === "member" && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          setGroupDetailsMemberMenuId(null);
+                                          await handlePromoteMember(member);
+                                        }}
+                                      >
+                                        Make admin
+                                      </button>
+                                    )}
+
+                                  {selectedGroup.is_owner &&
+                                    role === "admin" && (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          setGroupDetailsMemberMenuId(null);
+                                          await handleDemoteAdmin(member);
+                                        }}
+                                      >
+                                        Make member
+                                      </button>
+                                    )}
+
+                                  {selectedGroup.is_owner && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        setGroupDetailsMemberMenuId(null);
+                                        await handleTransferOwnership(member);
+                                      }}
+                                    >
+                                      Transfer ownership
+                                    </button>
+                                  )}
+
+                                  {role === "member" && (
+                                    <button
+                                      type="button"
+                                      className="danger"
+                                      onClick={async () => {
+                                        setGroupDetailsMemberMenuId(null);
+                                        await handleRemoveMember(member);
+                                      }}
+                                    >
+                                      Remove member
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {groupDetailsTab === "settings" && (
+              <div className="group-details-settings">
+                {selectedGroup.can_manage && (
+                  <form
+                    className="group-information-card"
+                    onSubmit={handleSaveGroupDetails}
+                  >
+                    <h3>Group Information</h3>
+
+                    <label>
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        value={detailsForm.name}
+                        onChange={(event) =>
+                          setDetailsForm((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      <span>Description</span>
+                      <textarea
+                        value={detailsForm.description}
+                        onChange={(event) =>
+                          setDetailsForm((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        rows={4}
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      className="group-details-primary"
+                      disabled={mutationLoading}
+                    >
+                      Save Changes
+                    </button>
+                  </form>
+                )}
+
+                {!selectedGroup.can_manage && (
+                  <div className="group-information-card">
+                    <h3>Group Information</h3>
+                    <p className="group-settings-readonly">
+                      Group information can only be edited by
+                      the owner or an administrator.
+                    </p>
+                  </div>
+                )}
+
+                {selectedGroup.is_member &&
+                  !selectedGroup.is_owner && (
+                    <div className="group-danger-card">
+                      <h3>Leave Group</h3>
+                      <p>
+                        You will lose access to all channels and
+                        messages.
+                      </p>
+
+                      <button
+                        type="button"
+                        className="group-details-danger-outline"
+                        disabled={mutationLoading}
+                        onClick={async () => {
+                          setGroupSettingsOpen(false);
+                          await handleLeave();
+                        }}
+                      >
+                        Leave Group
+                      </button>
+                    </div>
+                  )}
+
+                {selectedGroup.is_owner && (
+                  <>
+                    <div className="group-information-card">
+                      <h3>Ownership</h3>
+                      <p className="group-settings-readonly">
+                        Transfer ownership to another member from
+                        the Members tab before leaving this group.
+                      </p>
+                    </div>
+
+                    <div className="group-danger-card">
+                      <h3>Delete Group</h3>
+                      <p>
+                        Permanently delete this study group and
+                        its access.
+                      </p>
+
+                      <button
+                        type="button"
+                        className="group-details-danger-outline"
+                        disabled={mutationLoading}
+                        onClick={async () => {
+                          setGroupSettingsOpen(false);
+                          await handleDeleteGroup();
+                        }}
+                      >
+                        Delete Group
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </aside>
+      )}
+
+      {addMemberModalOpen && selectedGroup && (
+        <div
+          className="sg-add-member-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setAddMemberModalOpen(false);
+            }
+          }}
+        >
+          <section
+            className="sg-add-member-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sg-add-member-title"
+          >
+            <div className="sg-add-member-modal-head">
+              <div>
+                <h3 id="sg-add-member-title">Add Member</h3>
+                <p>{selectedGroup.name}</p>
+              </div>
+
+              <button
+                type="button"
+                className="sg-add-member-close"
+                onClick={() => setAddMemberModalOpen(false)}
+                aria-label="Close add member dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form
+              className="sg-add-member-modal-body"
+              onSubmit={handleAddMember}
+            >
+              <label htmlFor="sg-member-email">Email address</label>
+              <input
+                id="sg-member-email"
+                type="email"
+                value={memberEmail}
+                onChange={(event) => setMemberEmail(event.target.value)}
+                placeholder="student@nus.edu.sg"
+                autoFocus
+                required
+              />
+
+              <div className="sg-add-member-modal-actions">
+                <button
+                  type="button"
+                  className="sg-add-member-cancel"
+                  onClick={() => setAddMemberModalOpen(false)}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="sg-add-member-send"
+                  disabled={mutationLoading || !memberEmail.trim()}
+                >
+                  {mutationLoading ? "Adding..." : "Add Member"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {/* ===================================================
           GROUP MODAL
@@ -3264,7 +4329,7 @@ function GroupStudyPage() {
           CHANNEL MODAL
           =================================================== */}
 
-      {channelModal && (
+      {channelModal === "edit" && (
         <Modal
           title={
             channelModal === "create"
@@ -3415,5 +4480,4 @@ function GroupStudyPage() {
     </AppShell>
   );
 }
-
 export default GroupStudyPage;

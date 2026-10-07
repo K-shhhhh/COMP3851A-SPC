@@ -70,11 +70,6 @@ function CompanionPage() {
   const [message, setMessage] = useState("");
 
   const [
-    responseFormat,
-    setResponseFormat,
-  ] = useState("paragraph");
-
-  const [
     conversations,
     setConversations,
   ] = useState([]);
@@ -1251,7 +1246,6 @@ function CompanionPage() {
           accessToken,
           chatId,
           content,
-          responseFormat,
         );
 
       /*
@@ -2078,50 +2072,6 @@ function CompanionPage() {
                 </span>
               </div>
             )}
-
-            {/* RESPONSE FORMAT */}
-
-            <div className="response-format-control">
-
-              <span className="response-format-label">
-                Response format:
-              </span>
-
-              <select
-                className="response-format-select"
-                value={
-                  responseFormat
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setResponseFormat(
-                    event
-                      .target
-                      .value,
-                  )
-                }
-                disabled={
-                  isSending
-                }
-                aria-label="Select AI response format"
-              >
-
-                <option value="paragraph">
-                  Paragraph
-                </option>
-
-                <option value="bullet_points">
-                  Bullet points
-                </option>
-
-                <option value="table">
-                  Table
-                </option>
-
-              </select>
-
-            </div>
 
             {/* HIDDEN PDF INPUT */}
 
