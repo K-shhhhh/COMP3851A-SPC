@@ -519,6 +519,11 @@ function GroupStudyPage() {
   const [showMentionMenu, setShowMentionMenu] =
     useState(false);
 
+  const [
+    activeMentionIndex,
+    setActiveMentionIndex,
+  ] = useState(0);
+
   const [selectedMentionIds, setSelectedMentionIds] =
     useState([]);
 
@@ -529,6 +534,124 @@ function GroupStudyPage() {
     useState("paragraph");
 
   const messagesEndRef = useRef(null);
+
+  const mentionPickerRef =
+    useRef(null);
+
+  const mentionMatch =
+    message.match(
+      /(?:^|\s)@([^\s@]*)$/,
+    );
+
+  const mentionQuery =
+    (mentionMatch?.[1] || "")
+      .trim()
+      .toLowerCase();
+
+  const filteredAiModes =
+    useMemo(
+      () =>
+        AI_MODES.filter((ai) =>
+          ai.label
+            .toLowerCase()
+            .startsWith(
+              mentionQuery,
+            ),
+        ),
+      [mentionQuery],
+    );
+
+  const filteredMentionMembers =
+    useMemo(
+      () =>
+        members.filter((member) => {
+          const name =
+            member.full_name || "";
+
+          const email =
+            member.email || "";
+
+          return (
+            name
+              .toLowerCase()
+              .startsWith(
+                mentionQuery,
+              ) ||
+            email
+              .toLowerCase()
+              .startsWith(
+                mentionQuery,
+              )
+          );
+        }),
+      [
+        members,
+        mentionQuery,
+      ],
+    );
+
+  const mentionOptions =
+    useMemo(
+      () => [
+        ...filteredAiModes.map(
+          (ai) => ({
+            type: "ai",
+            item: ai,
+          }),
+        ),
+        ...filteredMentionMembers.map(
+          (member) => ({
+            type: "member",
+            item: member,
+          }),
+        ),
+      ],
+      [
+        filteredAiModes,
+        filteredMentionMembers,
+      ],
+    );
+
+  const hasMentionMatches =
+    mentionOptions.length > 0;
+
+  useEffect(() => {
+    setActiveMentionIndex(0);
+  }, [
+    mentionQuery,
+    showMentionMenu,
+  ]);
+
+  useEffect(() => {
+    if (!showMentionMenu) {
+      return undefined;
+    }
+
+    function handleOutsidePointer(
+      event,
+    ) {
+      if (
+        mentionPickerRef.current &&
+        !mentionPickerRef.current.contains(
+          event.target,
+        )
+      ) {
+        setShowMentionMenu(false);
+      }
+    }
+
+    document.addEventListener(
+      "pointerdown",
+      handleOutsidePointer,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "pointerdown",
+        handleOutsidePointer,
+      );
+    };
+  }, [showMentionMenu]);
 
   /* =======================================================
      SIDEBAR / URL VIEW SYNC
@@ -1948,8 +2071,44 @@ function GroupStudyPage() {
         /(?:^|\s)@([^\s@]*)$/,
       );
 
+    if (!match) {
+      setShowMentionMenu(false);
+      return;
+    }
+
+    const query =
+      (match[1] || "")
+        .trim()
+        .toLowerCase();
+
+    const hasAiMatch =
+      AI_MODES.some((ai) =>
+        ai.label
+          .toLowerCase()
+          .startsWith(query),
+      );
+
+    const hasMemberMatch =
+      members.some((member) => {
+        const name =
+          member.full_name || "";
+
+        const email =
+          member.email || "";
+
+        return (
+          name
+            .toLowerCase()
+            .startsWith(query) ||
+          email
+            .toLowerCase()
+            .startsWith(query)
+        );
+      });
+
     setShowMentionMenu(
-      Boolean(match),
+      hasAiMatch ||
+      hasMemberMatch,
     );
   }
 
@@ -2564,12 +2723,18 @@ function GroupStudyPage() {
             aria-expanded={
               !groupsPanelCollapsed
             }
-            onClick={() =>
+            onClick={() => {
+              const nextCollapsed =
+                !groupsPanelCollapsed;
+
               setGroupsPanelCollapsed(
-                (current) =>
-                  !current,
-              )
-            }
+                nextCollapsed,
+              );
+
+              setDetailsPanelCollapsed(
+                nextCollapsed,
+              );
+            }}
           >
             {groupsPanelCollapsed ? (
               <ChevronRight size={17} />
@@ -3488,24 +3653,37 @@ function GroupStudyPage() {
                               <Paperclip size={18} />
                             </button>
 
-                            <div className="message-input-wrap">
+                            <div
+                              className="message-input-wrap"
+                              ref={mentionPickerRef}
+                            >
 
                               {/* @ PICKER */}
 
-                              {showMentionMenu && (
+                              {showMentionMenu &&
+                                hasMentionMatches && (
                                 <div className="mention-menu">
 
-                                  <div className="mention-section-title">
-                                    AI
-                                    Companions
-                                  </div>
-
-                                  {AI_MODES.map(
-                                    (ai) => (
+                                  {filteredAiModes.map(
+                                    (
+                                      ai,
+                                      aiIndex,
+                                    ) => (
                                       <button
                                         type="button"
                                         key={
                                           ai.value
+                                        }
+                                        className={
+                                          activeMentionIndex ===
+                                          aiIndex
+                                            ? "active"
+                                            : ""
+                                        }
+                                        onMouseEnter={() =>
+                                          setActiveMentionIndex(
+                                            aiIndex,
+                                          )
                                         }
                                         onClick={() =>
                                           selectAiMention(
@@ -3528,13 +3706,15 @@ function GroupStudyPage() {
                                     ),
                                   )}
 
-                                  <div className="mention-section-title">
-                                    Group
-                                    Members
-                                  </div>
+                                  {filteredMentionMembers.map(
+                                    (
+                                      member,
+                                      memberIndex,
+                                    ) => {
+                                      const optionIndex =
+                                        filteredAiModes.length +
+                                        memberIndex;
 
-                                  {members.map(
-                                    (member) => {
                                       const name =
                                         member.full_name ||
                                         member.email ||
@@ -3545,6 +3725,17 @@ function GroupStudyPage() {
                                           type="button"
                                           key={
                                             member.user_id
+                                          }
+                                          className={
+                                            activeMentionIndex ===
+                                            optionIndex
+                                              ? "active"
+                                              : ""
+                                          }
+                                          onMouseEnter={() =>
+                                            setActiveMentionIndex(
+                                              optionIndex,
+                                            )
                                           }
                                           onClick={() =>
                                             selectHumanMention(
@@ -3580,6 +3771,77 @@ function GroupStudyPage() {
                                 onKeyDown={(
                                   event,
                                 ) => {
+                                  if (
+                                    showMentionMenu &&
+                                    hasMentionMatches
+                                  ) {
+                                    if (
+                                      event.key ===
+                                      "ArrowDown"
+                                    ) {
+                                      event.preventDefault();
+
+                                      setActiveMentionIndex(
+                                        (current) =>
+                                          (
+                                            current +
+                                            1
+                                          ) %
+                                          mentionOptions.length,
+                                      );
+
+                                      return;
+                                    }
+
+                                    if (
+                                      event.key ===
+                                      "ArrowUp"
+                                    ) {
+                                      event.preventDefault();
+
+                                      setActiveMentionIndex(
+                                        (current) =>
+                                          (
+                                            current -
+                                            1 +
+                                            mentionOptions.length
+                                          ) %
+                                          mentionOptions.length,
+                                      );
+
+                                      return;
+                                    }
+
+                                    if (
+                                      event.key ===
+                                      "Enter"
+                                    ) {
+                                      const option =
+                                        mentionOptions[
+                                          activeMentionIndex
+                                        ];
+
+                                      if (option) {
+                                        event.preventDefault();
+
+                                        if (
+                                          option.type ===
+                                          "ai"
+                                        ) {
+                                          selectAiMention(
+                                            option.item,
+                                          );
+                                        } else {
+                                          selectHumanMention(
+                                            option.item,
+                                          );
+                                        }
+
+                                        return;
+                                      }
+                                    }
+                                  }
+
                                   if (
                                     event.key ===
                                     "Escape"

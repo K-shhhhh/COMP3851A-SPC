@@ -7,6 +7,7 @@ import {
   FolderOpen,
   LayoutDashboard,
   Lock,
+  Menu,
   Settings,
   User,
   Users,
@@ -22,7 +23,10 @@ import {
   useState,
 } from "react";
 
-function Sidebar() {
+function Sidebar({
+  collapsed = false,
+  onToggle,
+}) {
   const location = useLocation();
 
   const isNotesPage =
@@ -60,8 +64,22 @@ function Sidebar() {
   }, [isGroupsPage]);
 
   return (
-    <aside className="sidebar">
+    <aside
+      className={`sidebar ${
+        collapsed ? "collapsed" : ""
+      }`}
+    >
       <div className="sidebar-brand">
+        <button
+          type="button"
+          className="sidebar-collapse-button"
+          onClick={onToggle}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+        >
+          <Menu size={21} />
+        </button>
+
         <div className="sidebar-logo">
           SPC
         </div>
