@@ -611,6 +611,19 @@ button {
   background: var(--spc-bg);
 }
 
+/*
+ * Personal AI uses the full workspace below the top bar.
+ * Other pages keep the normal application padding.
+ */
+.app-shell-content.companion-page-content {
+  height: calc(100vh - 76px);
+  height: calc(100dvh - 76px);
+
+  padding: 0;
+
+  overflow: hidden;
+}
+
 /* =========================================================
    SHARED INTERACTION POLISH
    ========================================================= */
