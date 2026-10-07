@@ -2,7 +2,17 @@ import Sidebar from "./Sidebar.jsx";
 import TopBar from "./TopBar.jsx";
 import "./appShell.css";
 
-function AppShell({ children }) {
+function AppShell({
+  children,
+  contentClassName = "",
+}) {
+  const contentClasses = [
+    "app-shell-content",
+    contentClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div className="app-shell">
       <Sidebar />
@@ -10,7 +20,7 @@ function AppShell({ children }) {
       <div className="app-shell-main">
         <TopBar />
 
-        <main className="app-shell-content">
+        <main className={contentClasses}>
           {children}
         </main>
       </div>

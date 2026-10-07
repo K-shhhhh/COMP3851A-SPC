@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 
 import AppShell from "../../components/layout/AppShell.jsx";
+import {
+  useConfirmModal,
+} from "../../components/common/ConfirmModal.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 
 import {
@@ -52,6 +55,11 @@ function NotesPage() {
     accessToken,
     logout,
   } = useAuth();
+
+  const {
+    requestConfirmation,
+    confirmModal,
+  } = useConfirmModal();
 
   const [notes, setNotes] = useState([]);
 
@@ -452,9 +460,14 @@ function NotesPage() {
    * The UI removes the note only after DELETE succeeds.
    */
   async function handleDelete(note) {
-    const confirmed = window.confirm(
-      `Delete "${note.title}"? This cannot be undone.`,
-    );
+    const confirmed =
+      await requestConfirmation({
+        title: "Delete note?",
+        message:
+          `Delete "${note.title}"? This cannot be undone.`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
 
     if (!confirmed) {
       return;
@@ -1006,6 +1019,7 @@ function NotesPage() {
           </div>
         </div>
       )}
+      {confirmModal}
     </AppShell>
   );
 }

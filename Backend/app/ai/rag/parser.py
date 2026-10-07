@@ -7,6 +7,8 @@
 
 import logging
 import os
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv, find_dotenv
 
 # loads the repo-root .env even when this module is imported from elsewhere
@@ -30,6 +32,26 @@ _detector = NudeDetector()
 # produce pollute search results. Real diagrams and charts are far larger.
 MIN_IMAGE_DIMENSION_PX = 100
 
+
+def _env_int(name: str, default: int, minimum: int) -> int:
+    """Read a whole number setting from the environment, falling back safely."""
+
+    try:
+        value = int(os.environ.get(name, default))
+    except ValueError:
+        return default
+    return max(minimum, value)
+
+
+# Describing a picture costs one slow vision model call (10 to 20 seconds on the
+# free tier). A slide deck with 30 figures used to take about 7 minutes and kept
+# a worker busy the whole time, so every other upload queued behind it. Only the
+# largest pictures, which carry the most information, are described.
+MAX_CAPTIONED_IMAGES = _env_int("MAX_CAPTIONED_IMAGES", 8, 0)
+
+# The descriptions are network bound, so a few can run at the same time.
+CAPTION_WORKERS = _env_int("CAPTION_WORKERS", 3, 1)
+
 UNSAFE_LABELS = {
     "EXPOSED_BREAST_F",
     "EXPOSED_GENITALIA_F",
@@ -42,16 +64,24 @@ CONFIDENCE_THRESHOLD = 0.5
 _client = OpenAI(
     base_url=os.environ.get("INFERENCE_API_URL") or "https://openrouter.ai/api/v1",
     api_key=os.environ.get("INFERENCE_API_KEY"),
+    # One slow call must not hold a worker for minutes. caption_image retries
+    # by itself, so the client does not retry on top of that.
+    timeout=45.0,
+    max_retries=0,
 )
 VISION_MODEL = "openrouter/free"  # auto-picks an available free vision model
 
 
 def is_image_safe(image_bytes: bytes) -> bool:
-    temp_path = "/tmp/_nudenet_check.jpg"
-    with open(temp_path, "wb") as f:
-        f.write(image_bytes)
-    detections = _detector.detect(temp_path)
-    os.remove(temp_path)
+    # Every check gets its own temp file. Worker processes run side by side, and
+    # one fixed file name let them overwrite and delete each other's images.
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as handle:
+        handle.write(image_bytes)
+        temp_path = handle.name
+    try:
+        detections = _detector.detect(temp_path)
+    finally:
+        os.remove(temp_path)
     for det in detections:
         if det["class"] in UNSAFE_LABELS and det["score"] >= CONFIDENCE_THRESHOLD:
             return False
@@ -81,7 +111,14 @@ def caption_image(image_bytes: bytes, max_retries: int = 3) -> str:
                     ],
                 }],
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content and content.strip():
+                return content.strip()
+            # Some free models answer with no text at all. Returning that would
+            # crash the text splitter later, so treat it as a failed attempt.
+            last_error = ValueError("the vision model returned an empty description")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
@@ -92,21 +129,37 @@ def caption_image(image_bytes: bytes, max_retries: int = 3) -> str:
     return "[An image appears on this page. It could not be automatically captioned due to a temporary AI service error.]"
 
 
+def _image_area(candidate: Dict) -> int:
+    return candidate["area"]
+
+
+def _page_then_xref(candidate: Dict):
+    return (candidate["page_num"], candidate["xref"])
+
+
+def _page_number(entry: Dict) -> int:
+    return entry["page_num"]
+
+
 def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[Dict]:
     """
     Extracts text, tables, and images (captioned) from a PDF, one page at a time.
 
     image_mode="strict": one unsafe image anywhere rejects the whole PDF (raises ValueError).
     image_mode="lenient": unsafe images are skipped and logged; the rest of the PDF still processes.
+
+    EVERY distinct image gets the safety check, whatever its size or rank. Only the
+    AI description is limited to the MAX_CAPTIONED_IMAGES largest safe images,
+    and those descriptions are requested a few at a time.
     """
     assert image_mode in ("strict", "lenient")
     doc = fitz.open(file_path)
     pages_out = []
     flagged_images = []
+    candidates = []
     seen_xrefs = set()
     skipped_duplicate = 0
     skipped_small = 0
-    captioned = 0
 
     for page_index, page in enumerate(doc):
         page_num = page_index + 1
@@ -142,20 +195,50 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
                 skipped_small += 1
                 continue
 
-            image_bytes = doc.extract_image(xref)["image"]
-            if not is_image_safe(image_bytes):
-                if image_mode == "strict":
-                    raise ValueError(f"Unsafe image detected on page {page_num} -- PDF rejected entirely.")
-                else:
-                    flagged_images.append({"page_num": page_num, "xref": xref})
-                    continue
-            caption = caption_image(image_bytes)
-            captioned += 1
-            pages_out.append({"page_num": page_num, "content": caption, "type": "image"})
+            candidates.append({"page_num": page_num, "xref": xref, "area": width * height})
+
+    # Safety check on every candidate: fast, local, one at a time.
+    safe_candidates = []
+    for candidate in sorted(candidates, key=_page_then_xref):
+        image_bytes = doc.extract_image(candidate["xref"])["image"]
+        if not is_image_safe(image_bytes):
+            if image_mode == "strict":
+                raise ValueError(f"Unsafe image detected on page {candidate['page_num']} -- PDF rejected entirely.")
+            flagged_images.append({"page_num": candidate["page_num"], "xref": candidate["xref"]})
+            continue
+        safe_candidates.append(candidate)
+
+    # Describe only the largest ones: they carry the most information.
+    skipped_over_limit = 0
+    if len(safe_candidates) > MAX_CAPTIONED_IMAGES:
+        largest_first = sorted(safe_candidates, key=_image_area, reverse=True)
+        chosen = largest_first[:MAX_CAPTIONED_IMAGES]
+        skipped_over_limit = len(safe_candidates) - len(chosen)
+    else:
+        chosen = list(safe_candidates)
+    chosen.sort(key=_page_then_xref)
+
+    # The descriptions are network bound, so a few run at the same time.
+    captioned = 0
+    if chosen:
+        with ThreadPoolExecutor(max_workers=CAPTION_WORKERS) as pool:
+            futures = []
+            for candidate in chosen:
+                image_bytes = doc.extract_image(candidate["xref"])["image"]
+                futures.append(pool.submit(caption_image, image_bytes))
+            for candidate, future in zip(chosen, futures):
+                pages_out.append({"page_num": candidate["page_num"], "content": future.result(), "type": "image"})
+                captioned += 1
+
+    # Stable sort: a page's text and tables stay in front of its pictures.
+    pages_out.sort(key=_page_number)
 
     logger.info(
-        "Image processing: %d captioned, %d skipped as duplicates, %d skipped as too small",
+        "Image processing: %d captioned, %d skipped to stay within the limit of %d, "
+        "%d skipped as duplicates, %d skipped as too small",
         captioned,
+        skipped_over_limit,
+        MAX_CAPTIONED_IMAGES,
         skipped_duplicate,
         skipped_small,
     )

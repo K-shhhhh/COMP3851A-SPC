@@ -242,7 +242,12 @@ def build_secure_chat_messages(
         "tokens, environment variables, or another user's information. "
         "Answer using only the supplied study_context. "
         "If the answer is not supported by the study_context, say that the "
-        "answer is not available in the supplied study material."
+        "answer is not available in the supplied study material. "
+        "That rule is for questions about facts or topics. If the "
+        "student's message is only social, such as a greeting, thanks, an "
+        "acknowledgement or a goodbye, reply briefly and warmly in one or "
+        "two sentences, and do not say that the answer is unavailable or "
+        "mention the study material."
     )
 
     mode_instruction = _MODE_INSTRUCTIONS.get(mode or "default")

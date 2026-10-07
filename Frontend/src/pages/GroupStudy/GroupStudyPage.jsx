@@ -32,6 +32,9 @@ import {
 } from "react-router-dom";
 
 import AppShell from "../../components/layout/AppShell.jsx";
+import {
+  useConfirmModal,
+} from "../../components/common/ConfirmModal.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
 
@@ -247,6 +250,11 @@ function GroupStudyPage() {
     accessToken,
     user,
   } = useAuth();
+
+  const {
+    requestConfirmation,
+    confirmModal,
+  } = useConfirmModal();
 
   /* -------------------------------------------------------
      GROUP LIST STATE
@@ -1174,9 +1182,13 @@ function GroupStudyPage() {
     }
 
     const confirmed =
-      window.confirm(
-        `Delete "${selectedGroup.name}"?`,
-      );
+      await requestConfirmation({
+        title: "Delete study group?",
+        message:
+          `Delete "${selectedGroup.name}"? This cannot be undone.`,
+        confirmLabel: "Delete group",
+        tone: "danger",
+      });
 
     if (!confirmed) {
       return;
@@ -1245,9 +1257,13 @@ function GroupStudyPage() {
     }
 
     const confirmed =
-      window.confirm(
-        `Leave "${selectedGroup.name}"?`,
-      );
+      await requestConfirmation({
+        title: "Leave study group?",
+        message:
+          `Leave "${selectedGroup.name}"?`,
+        confirmLabel: "Leave group",
+        tone: "danger",
+      });
 
     if (!confirmed) {
       return;
@@ -1332,9 +1348,13 @@ function GroupStudyPage() {
       "this member";
 
     const confirmed =
-      window.confirm(
-        `Remove ${name}?`,
-      );
+      await requestConfirmation({
+        title: "Remove member?",
+        message:
+          `Remove ${name} from this study group?`,
+        confirmLabel: "Remove",
+        tone: "danger",
+      });
 
     if (!confirmed) {
       return;
@@ -1599,9 +1619,13 @@ function GroupStudyPage() {
 
     if (!skipConfirm) {
       const confirmed =
-        window.confirm(
-          `Delete channel "${channel.name}"?`,
-        );
+        await requestConfirmation({
+          title: "Delete channel?",
+          message:
+            `Delete channel "${channel.name}"? This cannot be undone.`,
+          confirmLabel: "Delete channel",
+          tone: "danger",
+        });
 
       if (!confirmed) {
         return;
@@ -2169,9 +2193,13 @@ function GroupStudyPage() {
     item,
   ) {
     const confirmed =
-      window.confirm(
-        "Delete this message?",
-      );
+      await requestConfirmation({
+        title: "Delete message?",
+        message:
+          "Delete this message? This cannot be undone.",
+        confirmLabel: "Delete message",
+        tone: "danger",
+      });
 
     if (!confirmed) {
       return;
@@ -4448,6 +4476,7 @@ function GroupStudyPage() {
           </form>
         </Modal>
       )}
+      {confirmModal}
     </AppShell>
   );
 }

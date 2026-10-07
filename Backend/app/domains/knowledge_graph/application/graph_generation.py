@@ -21,6 +21,7 @@ should do itself.
 
 import json
 import os
+from dataclasses import replace
 
 from dotenv import load_dotenv, find_dotenv
 
@@ -147,6 +148,11 @@ def _build_graph_extraction_messages(chunks: list[dict]) -> list[dict[str, str]]
         "Also state that value in each item's own description, for example "
         "Grade: High Distinction (HD). Keep every description under 20 "
         "words. "
+        "Use at most 8 topics for the whole document. A topic is a broad "
+        "theme that several concepts share, such as Courses, Grades or "
+        "Rules, written as a short name of one to three words, and every "
+        "topic should hold at least two concepts. Never give each concept "
+        "its own topic. "
         "Scale the number of nodes to the amount of study material: a short "
         "passage should produce only 3 to 6 nodes, and a long document "
         "may produce up to 40. "
@@ -297,6 +303,14 @@ MAX_DESCRIPTION_CHARS = 400
 # Small models ignore the "how many nodes" instruction, so the limit is also
 # enforced in code. Nodes that take part in the most relationships are kept.
 MAX_NODES = 40
+
+# The mind map groups concepts under topics. A topic per concept is useless,
+# so the number of topics is limited too: first by the prompt, then (when the
+# model ignores it) by regrouping, and finally by folding small topics into
+# "Other".
+MAX_TOPICS = 8
+OTHER_TOPIC = "Other"
+REGROUP_MAX_OUTPUT_TOKENS = 2048
 
 
 def _is_meaningful_title(title: str) -> bool:
@@ -476,6 +490,156 @@ def _resolve_graph_titles_to_nodes(
     return nodes, edges
 
 
+def _topic_key(topic: str) -> str:
+    """Spelling insensitive key, so "Course", "course" and " Course " match."""
+
+    return " ".join(topic.lower().split())
+
+
+def _unify_topic_spellings(nodes: list[KnowledgeNode]) -> list[KnowledgeNode]:
+    """Give every spelling of the same topic the first spelling that appeared."""
+
+    first_spelling: dict[str, str] = {}
+    unified: list[KnowledgeNode] = []
+    for node in nodes:
+        key = _topic_key(node.topic)
+        if key not in first_spelling:
+            first_spelling[key] = " ".join(node.topic.split())
+        unified.append(replace(node, topic=first_spelling[key]))
+    return unified
+
+
+def _distinct_topics(nodes: list[KnowledgeNode]) -> list[str]:
+    seen: list[str] = []
+    for node in nodes:
+        if node.topic not in seen:
+            seen.append(node.topic)
+    return seen
+
+
+def _fold_small_topics(nodes: list[KnowledgeNode]) -> list[KnowledgeNode]:
+    """Last resort: keep the largest topics and fold the rest into "Other".
+
+    Only topics that hold at least two concepts can stay as they are, and
+    only the largest MAX_TOPICS - 1 of those survive (ties keep the order in
+    which they first appeared). A topic with a single concept is never worth
+    a box of its own, so it joins "Other". The result therefore never has
+    more than MAX_TOPICS topics.
+    """
+
+    order = _distinct_topics(nodes)
+    sizes: dict[str, int] = {}
+    for node in nodes:
+        sizes[node.topic] = sizes.get(node.topic, 0) + 1
+
+    ranked = sorted(range(len(order)), key=lambda i: (-sizes[order[i]], i))
+    keep: set[str] = set()
+    for index in ranked:
+        if len(keep) >= MAX_TOPICS - 1:
+            break
+        if sizes[order[index]] >= 2:
+            keep.add(order[index])
+
+    folded: list[KnowledgeNode] = []
+    for node in nodes:
+        if node.topic in keep:
+            folded.append(node)
+        else:
+            folded.append(replace(node, topic=OTHER_TOPIC))
+    return folded
+
+
+def _regroup_topics_with_model(
+    nodes: list[KnowledgeNode],
+    model: str,
+) -> dict[str, str] | None:
+    """Ask the model to group the concept titles into a few topics.
+
+    Only titles and current topics are sent, so this is a small, cheap call.
+    Returns {lowercased title: topic}, or None when the answer is unusable.
+    """
+
+    concepts = []
+    for node in nodes:
+        concepts.append({"title": node.title, "current_topic": node.topic})
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You organise concepts from a study document into a small "
+                "number of topics. Reply with JSON only, with no markdown, "
+                "in exactly this shape: "
+                '{"topics": {"<concept title exactly as given>": "<topic name>"}}. '
+                f"Use at most {MAX_TOPICS} topics in total. A topic is a broad "
+                "theme that several concepts share, written as a short name "
+                "of one to three words, and every topic should hold at least "
+                "two concepts. Prefer reusing the existing topic names when "
+                "they fit. Every concept must appear exactly once."
+            ),
+        },
+        {"role": "user", "content": json.dumps({"concepts": concepts})},
+    ]
+
+    response = _client.chat.completions.create(
+        model=model,
+        messages=messages,
+        max_tokens=REGROUP_MAX_OUTPUT_TOKENS,
+        temperature=GRAPH_TEMPERATURE,
+    )
+    raw_text = response.choices[0].message.content or ""
+
+    try:
+        parsed = json.loads(_extract_json_substring(raw_text))
+    except (json.JSONDecodeError, GraphGenerationError):
+        parsed = _repair_truncated_json(raw_text[raw_text.find("{"):])
+
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("topics"), dict):
+        return None
+
+    mapping: dict[str, str] = {}
+    for title, topic in parsed["topics"].items():
+        if isinstance(title, str) and isinstance(topic, str) and topic.strip():
+            mapping[" ".join(title.lower().split())] = " ".join(topic.split())[:40]
+    return mapping or None
+
+
+def _limit_topics(nodes: list[KnowledgeNode], model: str) -> list[KnowledgeNode]:
+    """Make sure the graph has at most MAX_TOPICS topics.
+
+    Never raises: a problem here must not cost the student a graph that is
+    otherwise good.
+    """
+
+    nodes = _unify_topic_spellings(nodes)
+    if len(_distinct_topics(nodes)) <= MAX_TOPICS:
+        return nodes
+
+    logger.warning(
+        "Knowledge graph has %d topics, regrouping into at most %d",
+        len(_distinct_topics(nodes)),
+        MAX_TOPICS,
+    )
+
+    try:
+        mapping = _regroup_topics_with_model(nodes, model)
+    except Exception as error:  # noqa: BLE001 - see the docstring
+        logger.warning("Topic regrouping failed: %s", error)
+        mapping = None
+
+    if mapping:
+        regrouped: list[KnowledgeNode] = []
+        for node in nodes:
+            new_topic = mapping.get(" ".join(node.title.lower().split()))
+            regrouped.append(replace(node, topic=new_topic) if new_topic else node)
+        nodes = _unify_topic_spellings(regrouped)
+
+    if len(_distinct_topics(nodes)) > MAX_TOPICS:
+        nodes = _fold_small_topics(nodes)
+
+    return nodes
+
+
 def generate_graph_for_attachment(
     attachment_id: int,
     chunks: list[dict],
@@ -520,9 +684,10 @@ def generate_graph_for_attachment(
                 )
 
             parsed = _parse_and_validate_graph_response(choice.message.content or "")
-            return _resolve_graph_titles_to_nodes(
+            nodes, edges = _resolve_graph_titles_to_nodes(
                 parsed, attachment_id, valid_chunk_ids
             )
+            return _limit_topics(nodes, model), edges
         except GraphGenerationError as error:
             last_error = error
             logger.warning(
