@@ -264,6 +264,59 @@ export function removeStudyGroupMember(
 }
 
 /**
+ * Promote or demote an existing non-owner member.
+ *
+ * Only the current group owner may change roles.
+ *
+ * PATCH /study-groups/{groupId}/members/{userId}/role
+ *
+ * role:
+ * "admin" | "member"
+ */
+export function updateStudyGroupMemberRole(
+  accessToken,
+  groupId,
+  userId,
+  role,
+) {
+  return apiRequest(
+    `/study-groups/${groupId}/members/${userId}/role`,
+    {
+      method: "PATCH",
+      accessToken,
+      body: JSON.stringify({
+        role,
+      }),
+    },
+  );
+}
+
+/**
+ * Transfer group ownership to another active member.
+ *
+ * Only the current owner may transfer ownership.
+ * The previous owner becomes an admin.
+ *
+ * POST /study-groups/{groupId}/ownership/transfer
+ */
+export function transferStudyGroupOwnership(
+  accessToken,
+  groupId,
+  newOwnerUserId,
+) {
+  return apiRequest(
+    `/study-groups/${groupId}/ownership/transfer`,
+    {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify({
+        new_owner_user_id: newOwnerUserId,
+      }),
+    },
+  );
+}
+
+/**
  * Leave a study group.
  *
  * DELETE /study-groups/{groupId}/members/me
@@ -459,7 +512,6 @@ export function getStudyGroupAttachmentStatus(
     },
   );
 }
-
 
 /*
  * =========================================================

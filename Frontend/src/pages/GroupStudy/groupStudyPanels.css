@@ -1,261 +1,2124 @@
-/*
- * Study Groups — collapsible Figma-style workspace panels
- * Imported after groupStudy.css so these rules are intentionally overrides.
- */
+/* =========================================================
+   STUDY GROUP — OPEN WORKSPACE
+   Browse mode remains controlled by groupStudyBrowse.css.
+   ========================================================= */
 
 @media (min-width: 851px) {
-  .group-study-page {
-    --sg-groups-width: 300px;
-    --sg-details-width: 240px;
-
-    grid-template-columns:
-      var(--sg-groups-width)
-      var(--sg-details-width)
-      minmax(0, 1fr);
-
-    transition:
-      grid-template-columns 0.2s ease;
+  .group-study-page.sg-workspace-mode {
+    display: block !important;
+    width: auto;
+    height: calc(100vh - 76px);
+    min-height: 620px;
+    margin: -30px -32px -40px;
+    overflow: hidden;
+    background: #fff;
   }
 
-  .group-study-page.groups-panel-collapsed {
-    --sg-groups-width: 40px;
-  }
-
-  .group-study-page.details-panel-collapsed {
-    --sg-details-width: 40px;
-  }
-
-  /* =======================================================
-     FIRST PANEL — PUBLIC / PRIVATE + GROUP LIST
-     ======================================================= */
-
-  .group-view-tabs {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-
-    padding:
-      12px
-      12px
-      9px
-      18px;
-  }
-
-  .group-view-tab-buttons {
-    display: flex;
-    flex: 1;
-    min-width: 0;
-    gap: 4px;
-  }
-
-  .group-view-tab-buttons > button {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .group-panel-collapse-toggle {
-    width: 28px !important;
-    height: 28px;
-    min-height: 28px !important;
-    flex: 0 0 28px !important;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    padding: 0 !important;
-
-    border: 1px solid var(--spc-border) !important;
-    border-radius: 8px !important;
-
-    background: var(--spc-surface) !important;
-    color: var(--spc-muted) !important;
-  }
-
-  .group-panel-collapse-toggle:hover {
-    background: var(--spc-surface-hover) !important;
-    color: var(--spc-purple) !important;
-  }
-
-  .private-groups-label {
-    grid-column: 1;
-    grid-row: 3;
-
-    display: flex;
-    align-items: center;
-
-    min-height: 42px;
-
-    padding:
-      0
-      18px
-      12px;
-
-    border-right: 1px solid var(--spc-border);
-
-    background: var(--spc-surface);
-    color: var(--spc-muted);
-
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  /* Collapsed first panel becomes a slim rail */
-  .groups-panel-collapsed .group-view-tabs {
-    grid-column: 1;
-    grid-row: 1 / 5;
-
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-
-    padding: 12px 5px;
-
-    border-right: 1px solid var(--spc-border);
-    border-bottom: 0;
-  }
-
-  .groups-panel-collapsed
-    .group-view-tab-buttons,
-  .groups-panel-collapsed
-    .create-group-button,
-  .groups-panel-collapsed
-    .discover-toolbar,
-  .groups-panel-collapsed
-    .private-groups-label,
-  .groups-panel-collapsed
-    .group-list-panel {
+  .sg-workspace-mode > .group-study-header,
+  .sg-workspace-mode > .group-view-tabs,
+  .sg-workspace-mode > .discover-toolbar,
+  .sg-workspace-mode > .private-groups-label {
     display: none !important;
   }
 
-  .groups-panel-collapsed
-    .group-panel-collapse-toggle {
-    width: 30px !important;
-    height: 30px;
-    min-height: 30px !important;
-    flex-basis: 30px !important;
+  .sg-workspace-mode > .sg-error {
+    position: fixed;
+    z-index: 60;
+    top: 78px;
+    right: 18px;
+    width: min(420px, calc(100vw - 36px));
+    margin: 0;
   }
 
-  /* =======================================================
-     SECOND PANEL — GROUP / CHANNELS / MEMBERS
-     ======================================================= */
-
-  .workspace-header {
-    position: relative;
-
-    padding-right: 44px;
+  .sg-workspace-mode > .study-group-layout {
+    display: block !important;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
   }
 
-  .details-panel-collapse-toggle {
-    position: absolute;
-    top: 14px;
-    right: 11px;
+  .sg-workspace-mode .study-group-layout > .group-list-panel {
+    display: none !important;
+  }
 
-    width: 28px;
-    height: 28px;
+  .sg-workspace-mode .group-workspace {
+    display: grid !important;
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: 76px minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+  }
 
+  .sg-workspace-mode .workspace-header {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+    min-height: 76px;
+    padding: 12px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--spc-border);
+    background: #fff;
+  }
+
+  .sg-workspace-mode .workspace-title {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+  }
 
-    padding: 0;
+  .sg-workspace-mode .workspace-header h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 750;
+  }
 
-    border: 1px solid var(--spc-border);
-    border-radius: 8px;
-
-    background: var(--spc-surface);
+  .sg-workspace-mode .workspace-header p {
+    max-width: 620px;
+    margin: 3px 0 0;
+    overflow: hidden;
     color: var(--spc-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
+  .sg-workspace-mode .details-panel-collapse-toggle {
+    display: none !important;
+  }
+
+  /* The wrapper must not become a third visual panel. */
+  .sg-workspace-mode .workspace-body {
+    display: contents !important;
+  }
+
+  /* LEFT SIDEBAR */
+  .sg-workspace-mode .channel-sidebar {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    display: block !important;
+    min-width: 0;
+    min-height: 0;
+    padding: 0 10px 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-right: 1px solid var(--spc-border);
+    border-bottom: 0;
+    background: #fff;
+  }
+
+  .workspace-back-button {
+    display: flex;
+    width: calc(100% + 20px);
+    min-height: 42px;
+    align-items: center;
+    gap: 5px;
+    margin: 0 -10px;
+    padding: 0 14px;
+    border: 0;
+    border-bottom: 1px solid var(--spc-border);
+    background: #fff;
+    color: var(--spc-muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    text-align: left;
     cursor: pointer;
   }
 
-  .details-panel-collapse-toggle:hover {
+  .workspace-back-button:hover {
     background: var(--spc-surface-hover);
     color: var(--spc-purple);
   }
 
-  /*
-   * When collapsed, the workspace header itself becomes the slim
-   * rail. The channels/members body disappears and the chat expands.
-   */
-  .details-panel-collapsed .workspace-header {
-    grid-column: 2;
-    grid-row: 1 / 5;
-
-    min-height: 0;
-
+  .workspace-sidebar-group {
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
-
-    padding: 12px 5px;
-
-    border-right: 1px solid var(--spc-border);
-    border-bottom: 0;
-
-    background: var(--spc-surface-soft);
-  }
-
-  .details-panel-collapsed
-    .workspace-header > div {
-    display: none !important;
-  }
-
-  .details-panel-collapsed
-    .details-panel-collapse-toggle {
-    position: static;
-
-    width: 30px;
-    height: 30px;
-
-    flex: 0 0 30px;
-  }
-
-  .details-panel-collapsed
-    .channel-sidebar {
-    display: none !important;
-  }
-
-  /* =======================================================
-     CHAT — ALWAYS THE MAIN AREA
-     ======================================================= */
-
-  .channel-chat {
+    align-items: center;
+    gap: 10px;
     min-width: 0;
-
-    transition:
-      width 0.2s ease;
+    padding: 13px 5px;
+    border-bottom: 1px solid var(--spc-border);
   }
 
-  .group-message-list {
-    max-width: none;
+  .workspace-sidebar-avatar {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--spc-purple);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
   }
 
-  .message-main {
-    max-width:
-      min(
-        1050px,
-        calc(100% - 50px)
-      );
+  .workspace-sidebar-copy { min-width: 0; }
+
+  .workspace-sidebar-name {
+    overflow: hidden;
+    color: var(--spc-heading);
+    font-size: 12px;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workspace-sidebar-meta {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--spc-muted);
+    font-size: 9px;
+    text-overflow: ellipsis;
+    text-transform: capitalize;
+    white-space: nowrap;
+  }
+
+  .sg-workspace-mode .channel-heading,
+  .sg-workspace-mode .members-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 14px 6px 7px;
+    color: var(--spc-muted);
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+  }
+
+  .sg-workspace-mode .channel-heading button {
+    display: grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--spc-muted);
+    cursor: pointer;
+  }
+
+  .sg-workspace-mode .channel-heading button:hover {
+    background: var(--spc-surface-hover);
+    color: var(--spc-purple);
+  }
+
+  .sg-workspace-mode .channel-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 3px;
+    border-radius: 8px;
+  }
+
+  .sg-workspace-mode .channel-row:hover,
+  .sg-workspace-mode .channel-row.active {
+    background: var(--spc-surface-hover);
+  }
+
+  .sg-workspace-mode .channel-select {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--spc-text);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .sg-workspace-mode .channel-row.active .channel-select {
+    color: var(--spc-purple);
+    font-weight: 700;
+  }
+
+  .sg-workspace-mode .channel-select span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .inline-channel-create {
+    margin: 5px 5px 10px;
+  }
+
+  .inline-channel-create input {
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--spc-purple);
+    border-radius: 9px;
+    outline: 0;
+    background: #fff;
+    color: var(--spc-text);
+    font: inherit;
+    font-size: 11px;
+  }
+
+  .inline-channel-create-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .inline-channel-create-actions button {
+    min-height: 30px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--spc-surface-hover);
+    color: var(--spc-text);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .inline-channel-create-actions button.primary {
+    background: var(--spc-purple);
+    color: #fff;
+  }
+
+  .sg-workspace-mode .members-heading {
+    margin-top: 12px;
+    border-top: 1px solid var(--spc-border);
+  }
+
+  .sg-workspace-mode .member-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    padding: 5px 6px;
+    border-radius: 8px;
+  }
+
+  .sg-workspace-mode .member-avatar {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(124, 58, 237, .12);
+    color: var(--spc-purple);
+    font-size: 9px;
+    font-weight: 750;
+  }
+
+  .sg-workspace-mode .member-info {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .sg-workspace-mode .member-info span {
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sg-workspace-mode .member-info small {
+    margin-top: 1px;
+    color: var(--spc-muted);
+    font-size: 9px;
+    text-transform: capitalize;
+  }
+
+  .sg-workspace-mode .member-role-badge {
+    flex: 0 0 auto;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--spc-surface-hover);
+    color: var(--spc-muted);
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: capitalize;
+    pointer-events: none;
+  }
+
+  .sg-workspace-mode .member-role-badge.owner,
+  .sg-workspace-mode .member-role-badge.admin {
+    background: rgba(124, 58, 237, .10);
+    color: var(--spc-purple);
+  }
+
+  /* RIGHT CHAT */
+  .sg-workspace-mode .channel-chat {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex !important;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #f5f8fc;
+  }
+
+  .sg-workspace-mode .channel-chat-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-height: 46px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--spc-border);
+    background: #fff;
+  }
+
+  .sg-workspace-mode .channel-chat-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .sg-workspace-mode .group-message-list {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 18px 20px;
+    overflow-y: auto;
+  }
+
+  .sg-workspace-mode .group-composer {
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0 14px 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--spc-border);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+  }
+
+  .sg-workspace-mode .message-form {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sg-workspace-mode .attachment-file-input { display: none !important; }
+
+  .sg-workspace-mode .attachment-button,
+  .sg-workspace-mode .send-group-message {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  .sg-workspace-mode .attachment-button {
+    background: transparent;
+    color: var(--spc-muted);
+  }
+
+  .sg-workspace-mode .attachment-button:hover { background: var(--spc-surface-hover); }
+
+  .sg-workspace-mode .message-input-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .sg-workspace-mode .message-input-wrap > input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    outline: 0;
+    background: transparent;
+    color: var(--spc-text);
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .sg-workspace-mode .message-input-wrap > input:focus {
+    border-color: rgba(124, 58, 237, .35);
+    background: #fff;
+  }
+
+  .sg-workspace-mode .send-group-message {
+    background: var(--spc-purple);
+    color: #fff;
+  }
+
+  .sg-workspace-mode .send-group-message:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+
+  .sg-workspace-mode .channel-chat > .group-placeholder {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    place-content: center;
+    text-align: center;
+    background: #f5f8fc;
   }
 }
 
-/* Keep the existing stacked mobile/tablet layout */
+/* =========================================================
+   WORKSPACE SEARCH / SETTINGS
+   ========================================================= */
+.workspace-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.workspace-message-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 220px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  background: var(--spc-surface-hover);
+  color: var(--spc-muted);
+}
+
+.workspace-message-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--spc-text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.workspace-settings-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--spc-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--spc-muted);
+  cursor: pointer;
+}
+
+.workspace-settings-button:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-purple);
+}
+
+/* =========================================================
+   GROUP SETTINGS MODAL
+   ========================================================= */
+.group-settings-modal { display: grid; gap: 18px; }
+.group-settings-section + .group-settings-section { padding-top: 16px; border-top: 1px solid var(--spc-border); }
+.group-settings-section h3 { margin: 0; font-size: 13px; }
+.group-settings-section > p { margin: 5px 0 10px; color: var(--spc-muted); font-size: 12px; }
+.group-settings-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
+.group-settings-section-head span { color: var(--spc-muted); font-size: 11px; }
+.group-settings-actions, .settings-member-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-settings-actions button, .settings-member-actions button {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 9px;
+  border: 1px solid var(--spc-border); border-radius: 7px; background: #fff; color: var(--spc-text);
+  font: inherit; font-size: 10px; cursor: pointer;
+}
+.group-settings-actions button:hover, .settings-member-actions button:hover { background: var(--spc-surface-hover); }
+.group-settings-actions button.danger, .settings-member-actions button.danger { color: #dc2626; }
+.settings-member-list, .settings-channel-list { display: grid; gap: 5px; }
+.settings-member-row {
+  display: grid; grid-template-columns: 30px minmax(0,1fr) auto auto; align-items: center; gap: 8px;
+  padding: 7px; border: 1px solid var(--spc-border); border-radius: 9px;
+}
+.settings-channel-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px; border: 1px solid var(--spc-border); border-radius: 9px;
+}
+.settings-channel-name { display: flex; min-width: 0; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; }
+.settings-channel-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 850px) {
-  .group-panel-collapse-toggle,
-  .details-panel-collapse-toggle {
-    display: none;
+  .workspace-tools { width: 100%; }
+  .workspace-message-search { flex: 1; width: auto; }
+  .settings-member-row { grid-template-columns: 30px minmax(0,1fr) auto; }
+  .settings-member-actions { grid-column: 2 / -1; justify-content: flex-start; }
+  .inline-channel-create { margin: 6px 0 10px; }
+}
+
+/* =========================================================
+   EMPTY STATES + COMPACT MESSAGE ACTIONS
+   ========================================================= */
+
+/* Empty channel list in the left sidebar */
+.sg-workspace-mode .channel-sidebar .sg-small-empty {
+  margin: 8px 2px 12px;
+  padding: 12px 10px;
+  border: 1px dashed var(--spc-border);
+  border-radius: 10px;
+  background: var(--spc-surface-hover);
+  color: var(--spc-muted);
+  font-size: 10px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* Empty conversation / no search results */
+.sg-workspace-mode .group-message-list > .sg-empty {
+  display: flex;
+  width: fit-content;
+  max-width: 420px;
+  margin: 36px auto 0;
+  padding: 11px 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--spc-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--spc-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .03);
+}
+
+/*
+ * Edit / Delete under the user's own message.
+ * Keep them intentionally quiet, Discord-style secondary actions.
+ */
+.sg-workspace-mode .message-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.sg-workspace-mode .message-actions button {
+  appearance: none;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--spc-muted);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.35;
+  cursor: pointer;
+  opacity: .72;
+  transition:
+    color .15s ease,
+    opacity .15s ease;
+}
+
+.sg-workspace-mode .message-actions button:hover {
+  background: transparent;
+  color: var(--spc-purple);
+  opacity: 1;
+}
+
+.sg-workspace-mode .message-actions button:last-child:hover {
+  color: #dc2626;
+}
+
+/* =========================================================
+   CHANNEL THREE-DOT ACTION MENU
+   ========================================================= */
+
+.sg-workspace-mode .channel-row {
+  position: relative;
+}
+
+.sg-workspace-mode .channel-row .channel-select {
+  padding-right: 32px;
+}
+
+.sg-workspace-mode .channel-row-menu {
+  position: absolute;
+  z-index: 8;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+}
+
+.sg-workspace-mode .channel-more-button {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--spc-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background .15s ease,
+    color .15s ease,
+    opacity .15s ease;
+}
+
+.sg-workspace-mode .channel-row:hover .channel-more-button,
+.sg-workspace-mode .channel-row.active .channel-more-button,
+.sg-workspace-mode .channel-more-button:focus-visible {
+  opacity: 1;
+}
+
+.sg-workspace-mode .channel-more-button:hover {
+  background: rgba(124, 58, 237, .10);
+  color: var(--spc-purple);
+}
+
+.sg-workspace-mode .channel-inline-actions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .12);
+  white-space: nowrap;
+}
+
+.sg-workspace-mode .channel-inline-actions button {
+  min-height: 27px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--spc-muted);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sg-workspace-mode .channel-inline-actions button:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-text);
+}
+
+.sg-workspace-mode .channel-inline-actions button.danger {
+  color: #dc2626;
+}
+
+.sg-workspace-mode .channel-inline-actions button.danger:hover {
+  background: rgba(220, 38, 38, .08);
+  color: #b91c1c;
+}
+
+/* =========================================================
+   MESSAGE BUBBLES
+   ========================================================= */
+
+.sg-workspace-mode .group-message {
+  margin-bottom: 14px;
+}
+
+.sg-workspace-mode .message-main {
+  display: flex;
+  min-width: 0;
+  max-width: min(720px, calc(100% - 52px));
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.sg-workspace-mode .message-meta {
+  margin: 0 4px 4px;
+}
+
+.sg-workspace-mode .message-content {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 9px 13px;
+  border: 1px solid var(--spc-border);
+  border-radius: 13px;
+  background: #fff;
+  color: var(--spc-text);
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+}
+
+/* The current user's messages match the purple right-side bubble
+   from the supplied reference. */
+.sg-workspace-mode .group-message.own-message {
+  justify-content: flex-end;
+}
+
+.sg-workspace-mode .group-message.own-message > .message-avatar {
+  display: none;
+}
+
+.sg-workspace-mode .group-message.own-message .message-main {
+  align-items: flex-end;
+  max-width: min(720px, 72%);
+}
+
+.sg-workspace-mode .group-message.own-message .message-meta {
+  justify-content: flex-end;
+  margin-right: 4px;
+}
+
+.sg-workspace-mode .group-message.own-message .message-content {
+  border-color: transparent;
+  background: var(--spc-purple);
+  color: #fff;
+  box-shadow: none;
+}
+
+.sg-workspace-mode .group-message.own-message .message-actions {
+  justify-content: flex-end;
+  margin-right: 4px;
+}
+
+/* AI answers remain a distinct soft-purple study card. */
+.sg-workspace-mode .ai-message {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 10px 13px;
+  border: 1px solid rgba(124, 58, 237, .12);
+  border-radius: 12px;
+  background: rgba(124, 58, 237, .055);
+}
+
+@media (max-width: 850px) {
+  .sg-workspace-mode .channel-more-button {
+    opacity: 1;
   }
 
-  .private-groups-label {
-    margin-bottom: 12px;
-
-    color: var(--spc-muted);
-
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
+  .sg-workspace-mode .group-message.own-message .message-main {
+    max-width: 84%;
   }
+}
+
+
+
+/* =========================================================
+   FINAL PROTOTYPE MESSAGE LAYOUT
+   ========================================================= */
+
+/* Conversation spacing from the prototype */
+.sg-workspace-mode .group-message-list {
+  padding: 18px 20px 24px;
+}
+
+/* Base message: other users and AI stay on the left */
+.sg-workspace-mode .group-message,
+.sg-workspace-mode .group-message.ai-response-message {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.sg-workspace-mode .group-message .message-avatar {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 17px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--spc-purple);
+  font-size: 10px;
+  font-weight: 750;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+
+.sg-workspace-mode .group-message .message-main {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  max-width: min(720px, calc(100% - 50px));
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.sg-workspace-mode .group-message .message-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 7px;
+  margin: 0 4px 4px;
+}
+
+.sg-workspace-mode .group-message .message-meta strong {
+  color: var(--spc-heading);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.sg-workspace-mode .group-message .message-meta span {
+  color: var(--spc-muted);
+  font-size: 9px;
+}
+
+/* White bubble for everyone else */
+.sg-workspace-mode .group-message .message-content {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 9px 13px;
+  border: 1px solid var(--spc-border);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--spc-text);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+}
+
+/* Current user: prototype-style purple bubble on the RIGHT */
+.sg-workspace-mode .group-message.own-message {
+  justify-content: flex-end;
+  padding-left: 25%;
+}
+
+.sg-workspace-mode .group-message.own-message > .message-avatar {
+  display: none;
+}
+
+.sg-workspace-mode .group-message.own-message .message-main {
+  width: auto;
+  max-width: min(720px, 75%);
+  align-items: flex-end;
+}
+
+.sg-workspace-mode .group-message.own-message .message-meta {
+  justify-content: flex-end;
+  margin: 0 4px 4px;
+}
+
+.sg-workspace-mode .group-message.own-message .message-meta strong {
+  display: none;
+}
+
+.sg-workspace-mode .group-message.own-message .message-content {
+  border-color: var(--spc-purple);
+  background: var(--spc-purple);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(124, 58, 237, .16);
+}
+
+/* Small, quiet actions under own messages */
+.sg-workspace-mode .group-message.own-message .message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin: 3px 4px 0 0;
+}
+
+.sg-workspace-mode .message-actions button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--spc-muted);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.25;
+  opacity: .72;
+  cursor: pointer;
+}
+
+.sg-workspace-mode .message-actions button:hover {
+  background: transparent;
+  color: var(--spc-purple);
+  opacity: 1;
+}
+
+.sg-workspace-mode .message-actions button:last-child:hover {
+  color: #dc2626;
+}
+
+/* AI is a separate LEFT-side white response, matching the prototype layout */
+.sg-workspace-mode .group-message.ai-response-message {
+  margin-top: 2px;
+}
+
+.sg-workspace-mode .group-message.ai-response-message .ai-avatar {
+  margin-top: 17px;
+  background: rgba(124, 58, 237, .10);
+  color: var(--spc-purple);
+  box-shadow: none;
+}
+
+.sg-workspace-mode .group-message.ai-response-message .message-main {
+  max-width: min(760px, calc(100% - 50px));
+}
+
+.sg-workspace-mode .group-message.ai-response-message .message-meta strong {
+  color: var(--spc-purple);
+}
+
+.sg-workspace-mode .group-message.ai-response-message .ai-message {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 10px 13px;
+  border: 1px solid var(--spc-border);
+  border-radius: 12px;
+  background: #ffffff;
+  color: var(--spc-text);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .08);
+}
+
+.sg-workspace-mode .group-message.ai-response-message .markdown-content {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 850px) {
+  .sg-workspace-mode .group-message-list {
+    padding: 14px 12px 20px;
+  }
+
+  .sg-workspace-mode .group-message.own-message {
+    padding-left: 10%;
+  }
+
+  .sg-workspace-mode .group-message.own-message .message-main {
+    max-width: 86%;
+  }
+}
+
+
+/* =========================================================
+   GROUP DETAILS DRAWER
+   ========================================================= */
+
+.group-details-drawer {
+  position: fixed;
+  z-index: 1200;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  flex-direction: column;
+  border-left: 1px solid var(--spc-border);
+  background: #ffffff;
+  color: var(--spc-text);
+  box-shadow: -12px 0 30px rgba(15, 23, 42, .08);
+}
+
+.group-details-head {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--spc-border);
+}
+
+.group-details-head h2 {
+  margin: 0;
+  color: var(--spc-heading);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.group-details-close {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--spc-muted);
+  cursor: pointer;
+}
+
+.group-details-close:hover {
+  background: #f5f3ff;
+  color: var(--spc-purple);
+}
+
+.group-details-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--spc-border);
+}
+
+.group-details-tabs button {
+  position: relative;
+  min-width: 0;
+  padding: 13px 6px 11px;
+  border: 0;
+  background: transparent;
+  color: var(--spc-muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.group-details-tabs button.active {
+  color: var(--spc-purple);
+}
+
+.group-details-tabs button.active::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  border-radius: 999px 999px 0 0;
+  background: var(--spc-purple);
+  content: "";
+}
+
+.group-details-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px 24px;
+}
+
+/* Overview */
+
+.group-overview-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0 18px;
+  text-align: center;
+}
+
+.group-overview-avatar {
+  display: flex;
+  width: 54px;
+  height: 54px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: var(--spc-purple);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.group-overview-identity h3 {
+  margin: 0;
+  color: var(--spc-heading);
+  font-size: 13px;
+}
+
+.group-overview-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.group-visibility-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border: 1px solid #c4b5fd;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: var(--spc-purple);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.group-overview-description {
+  padding: 13px;
+  border: 1px solid var(--spc-border);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.group-overview-description > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--spc-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.group-overview-description p {
+  margin: 0;
+  color: var(--spc-text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.group-overview-facts {
+  margin-top: 12px;
+}
+
+.group-overview-facts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 34px;
+  border-bottom: 1px solid var(--spc-border);
+  font-size: 10px;
+}
+
+.group-overview-facts span {
+  color: var(--spc-muted);
+}
+
+.group-overview-facts strong {
+  color: var(--spc-heading);
+  font-weight: 700;
+  text-align: right;
+}
+
+/* Members */
+
+.group-details-search {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--spc-border);
+  border-radius: 10px;
+  background: #f8fafc;
+  color: var(--spc-muted);
+}
+
+.group-details-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--spc-text);
+  font: inherit;
+  font-size: 10px;
+}
+
+.group-member-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.group-member-filters {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+}
+
+.group-member-filters button {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.group-member-filters button.active {
+  background: var(--spc-purple);
+  color: #ffffff;
+}
+
+.group-member-add-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  color: var(--spc-purple);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.group-details-add-member {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.group-details-add-member input {
+  min-width: 0;
+  flex: 1;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  outline: none;
+  font: inherit;
+  font-size: 10px;
+}
+
+.group-details-add-member input:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, .08);
+}
+
+.group-details-add-member button {
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--spc-purple);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.group-details-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.group-details-member {
+  position: relative;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 4px;
+  border-radius: 10px;
+}
+
+.group-details-member:hover {
+  background: #f8fafc;
+}
+
+.group-details-member-avatar {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #ede9fe;
+  color: var(--spc-purple);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.group-details-member-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.group-details-member-info > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.group-details-member-info strong {
+  overflow: hidden;
+  color: var(--spc-heading);
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-details-member-info > small {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--spc-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-you {
+  color: var(--spc-muted);
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.group-details-member .member-role-badge {
+  flex: 0 0 auto;
+}
+
+.group-member-menu-wrap {
+  position: relative;
+  margin-left: auto;
+}
+
+.group-member-menu-button {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--spc-muted);
+  cursor: pointer;
+}
+
+.group-member-menu-button:hover {
+  background: #ede9fe;
+  color: var(--spc-purple);
+}
+
+.group-member-menu {
+  position: absolute;
+  z-index: 5;
+  top: 30px;
+  right: 0;
+  display: flex;
+  width: 158px;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--spc-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .14);
+}
+
+.group-member-menu button {
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--spc-text);
+  font-size: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-member-menu button:hover {
+  background: #f5f3ff;
+  color: var(--spc-purple);
+}
+
+.group-member-menu button.danger {
+  color: #dc2626;
+}
+
+.group-member-menu button.danger:hover {
+  background: #fef2f2;
+}
+
+/* Settings */
+
+.group-details-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.group-information-card,
+.group-danger-card {
+  padding: 15px;
+  border: 1px solid var(--spc-border);
+  border-radius: 15px;
+  background: #f8fafc;
+}
+
+.group-information-card h3,
+.group-danger-card h3 {
+  margin: 0 0 12px;
+  color: var(--spc-heading);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.group-information-card label {
+  display: block;
+  margin-top: 10px;
+}
+
+.group-information-card label > span {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.group-information-card input,
+.group-information-card textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--spc-border);
+  border-radius: 12px;
+  outline: 0;
+  background: #ffffff;
+  color: var(--spc-text);
+  font: inherit;
+  font-size: 10px;
+}
+
+.group-information-card textarea {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.group-information-card input:focus,
+.group-information-card textarea:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, .08);
+}
+
+.group-details-primary {
+  margin-top: 12px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--spc-purple);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.group-settings-readonly,
+.group-danger-card p {
+  margin: -4px 0 12px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.group-details-danger-outline {
+  padding: 7px 13px;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  background: #fff7f7;
+  color: #dc2626;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.group-details-danger-outline:hover {
+  background: #fef2f2;
+}
+
+@media (max-width: 700px) {
+  .group-details-drawer {
+    width: min(360px, 100vw);
+    max-width: 100vw;
+  }
+}
+
+/* =========================================================
+   ADD MEMBER — VISUAL-ONLY INVITE MODAL
+   ========================================================= */
+
+.group-member-add-label {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--spc-purple);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 0;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.group-member-add-label:hover { color: var(--spc-purple-hover); }
+
+.sg-add-member-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, .42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.sg-add-member-modal {
+  width: min(420px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--spc-border);
+  border-radius: 16px;
+  background: var(--spc-surface-raised);
+  color: var(--spc-text);
+  box-shadow: var(--spc-shadow-lg);
+}
+
+.sg-add-member-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 17px;
+  border-bottom: 1px solid var(--spc-border-soft);
+}
+
+.sg-add-member-modal-head h3 {
+  margin: 0 0 3px;
+  color: var(--spc-heading);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.sg-add-member-modal-head p {
+  margin: 0;
+  color: var(--spc-muted);
+  font-size: 12px;
+}
+
+.sg-add-member-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--spc-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.sg-add-member-close:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-heading);
+}
+
+.sg-add-member-modal-body { padding: 18px 22px 20px; }
+
+.sg-add-member-modal-body label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--spc-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sg-add-member-modal-body input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--spc-purple);
+  border-radius: 12px;
+  outline: 0;
+  background: var(--spc-input-bg);
+  color: var(--spc-text);
+  font: inherit;
+  font-size: 13px;
+  box-shadow: var(--spc-focus-ring);
+}
+
+.sg-add-member-modal-body input::placeholder { color: var(--spc-muted-light); }
+
+.sg-add-member-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.sg-add-member-modal-actions button {
+  min-height: 36px;
+  padding: 0 17px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.sg-add-member-cancel {
+  border: 1px solid var(--spc-border);
+  background: var(--spc-surface-hover);
+  color: var(--spc-text);
+}
+
+.sg-add-member-send {
+  border: 1px solid var(--spc-purple);
+  background: var(--spc-purple);
+  color: #fff;
+}
+
+.sg-add-member-send:hover { background: var(--spc-purple-hover); }
+
+/* =========================================================
+   STUDY GROUPS — DARK THEME RECOVERY
+   Uses the shared AppShell data-theme tokens.
+   ========================================================= */
+
+:root[data-theme="dark"] .group-study-page,
+:root[data-theme="dark"] .study-group-layout,
+:root[data-theme="dark"] .group-workspace,
+:root[data-theme="dark"] .workspace-body,
+:root[data-theme="dark"] .channel-chat,
+:root[data-theme="dark"] .group-details-drawer {
+  background: var(--spc-bg);
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .groups-panel,
+:root[data-theme="dark"] .channel-sidebar,
+:root[data-theme="dark"] .workspace-header,
+:root[data-theme="dark"] .channel-chat-header,
+:root[data-theme="dark"] .message-composer,
+:root[data-theme="dark"] .group-details-head,
+:root[data-theme="dark"] .group-details-tabs,
+:root[data-theme="dark"] .group-overview-description,
+:root[data-theme="dark"] .group-details-member,
+:root[data-theme="dark"] .group-details-search,
+:root[data-theme="dark"] .group-settings-card,
+:root[data-theme="dark"] .group-danger-card,
+:root[data-theme="dark"] .group-member-menu {
+  background: var(--spc-surface);
+  color: var(--spc-text);
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .group-message:not(.own-message) .message-bubble,
+:root[data-theme="dark"] .group-message.ai-response-message .message-bubble {
+  background: var(--spc-surface-raised);
+  color: var(--spc-text);
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .group-message-list { background: var(--spc-bg); }
+
+:root[data-theme="dark"] .group-details-tabs button,
+:root[data-theme="dark"] .group-member-filters button,
+:root[data-theme="dark"] .group-member-menu button,
+:root[data-theme="dark"] .workspace-back-button,
+:root[data-theme="dark"] .channel-action-button,
+:root[data-theme="dark"] .channel-menu-button {
+  color: var(--spc-muted);
+}
+
+:root[data-theme="dark"] .group-details-tabs button.active,
+:root[data-theme="dark"] .group-member-filters button.active {
+  color: var(--spc-purple);
+}
+
+:root[data-theme="dark"] .group-details-search input,
+:root[data-theme="dark"] .group-settings-card input,
+:root[data-theme="dark"] .group-settings-card textarea,
+:root[data-theme="dark"] .message-composer textarea,
+:root[data-theme="dark"] .message-composer input {
+  background: var(--spc-input-bg);
+  color: var(--spc-text);
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .group-details-member:hover,
+:root[data-theme="dark"] .group-member-menu button:hover,
+:root[data-theme="dark"] .workspace-back-button:hover,
+:root[data-theme="dark"] .channel-menu-button:hover {
+  background: var(--spc-surface-hover);
+}
+
+:root[data-theme="dark"] .group-details-member-avatar,
+:root[data-theme="dark"] .member-avatar {
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+}
+
+:root[data-theme="dark"] .group-details-danger-outline {
+  background: var(--spc-danger-bg);
+  border-color: var(--spc-danger-border);
+  color: var(--spc-danger);
+}
+
+:root[data-theme="dark"] .sg-add-member-backdrop { background: rgba(0, 0, 0, .64); }
+
+
+/* =========================================================
+   DARK THEME FIX — workspace + Group Details
+   ========================================================= */
+:root[data-theme="dark"] .group-study-page,
+:root[data-theme="dark"] .study-group-layout,
+:root[data-theme="dark"] .group-workspace,
+:root[data-theme="dark"] .workspace-body,
+:root[data-theme="dark"] .channel-chat,
+:root[data-theme="dark"] .group-message-list {
+  background: #0d1017;
+  color: #eef2ff;
+}
+
+:root[data-theme="dark"] .groups-panel,
+:root[data-theme="dark"] .channel-sidebar,
+:root[data-theme="dark"] .workspace-header,
+:root[data-theme="dark"] .channel-chat-header {
+  background: #171b25;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .channel-sidebar h3,
+:root[data-theme="dark"] .workspace-header h2,
+:root[data-theme="dark"] .channel-chat-header h3,
+:root[data-theme="dark"] .group-details-drawer h2,
+:root[data-theme="dark"] .group-details-drawer h3,
+:root[data-theme="dark"] .group-details-drawer strong {
+  color: #f8fafc;
+}
+
+:root[data-theme="dark"] .channel-item,
+:root[data-theme="dark"] .member-item {
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .channel-item:hover,
+:root[data-theme="dark"] .channel-item.active {
+  background: #242033;
+}
+
+:root[data-theme="dark"] .message-composer {
+  background: #171b25;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .message-composer textarea,
+:root[data-theme="dark"] .message-composer input {
+  background: #171b25;
+  color: #eef2ff;
+  border-color: #3a4254;
+}
+
+:root[data-theme="dark"] .message-composer textarea::placeholder,
+:root[data-theme="dark"] .message-composer input::placeholder {
+  color: #778197;
+}
+
+/* Drawer */
+:root[data-theme="dark"] .group-details-drawer,
+:root[data-theme="dark"] .group-details-head,
+:root[data-theme="dark"] .group-details-tabs,
+:root[data-theme="dark"] .group-details-body {
+  background: #0d1017;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .group-details-tabs button {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .group-details-tabs button.active {
+  color: #a78bfa;
+}
+
+/* Overview / Members / Settings cards */
+:root[data-theme="dark"] .group-overview-description,
+:root[data-theme="dark"] .group-details-search,
+:root[data-theme="dark"] .group-details-member,
+:root[data-theme="dark"] .group-settings-card,
+:root[data-theme="dark"] .group-danger-card,
+:root[data-theme="dark"] .group-member-menu {
+  background: #171b25;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .group-settings-card label,
+:root[data-theme="dark"] .group-settings-card h3,
+:root[data-theme="dark"] .group-danger-card h3,
+:root[data-theme="dark"] .group-overview-description > span {
+  color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .group-settings-card p,
+:root[data-theme="dark"] .group-danger-card p,
+:root[data-theme="dark"] .group-overview-description p,
+:root[data-theme="dark"] .group-details-member small {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .group-settings-card input,
+:root[data-theme="dark"] .group-settings-card textarea,
+:root[data-theme="dark"] .group-details-search input {
+  background: #111620;
+  color: #eef2ff;
+  border-color: #3a4254;
+}
+
+:root[data-theme="dark"] .group-settings-card input::placeholder,
+:root[data-theme="dark"] .group-settings-card textarea::placeholder,
+:root[data-theme="dark"] .group-details-search input::placeholder {
+  color: #778197;
+}
+
+:root[data-theme="dark"] .group-details-member:hover,
+:root[data-theme="dark"] .group-member-menu button:hover {
+  background: #1d2230;
+}
+
+/* Keep destructive section dark rather than turning white */
+:root[data-theme="dark"] .group-danger-card {
+  background: #171b25;
+}
+
+/* Add-member modal */
+:root[data-theme="dark"] .sg-add-member-modal {
+  background: #171b25;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .sg-add-member-modal input {
+  background: #111620;
+  color: #eef2ff;
+  border-color: #7c3aed;
+}
+
+:root[data-theme="dark"] .sg-add-member-modal input::placeholder {
+  color: #778197;
+}
+
+/* =========================================================
+   FINAL DARK THEME PATCH — Study Group workspace/details
+   Keeps light-theme styles unchanged.
+   ========================================================= */
+
+:root[data-theme="dark"] .group-study-page.sg-workspace-mode,
+:root[data-theme="dark"] .sg-workspace-mode .study-group-layout,
+:root[data-theme="dark"] .sg-workspace-mode .group-workspace,
+:root[data-theme="dark"] .sg-workspace-mode .workspace-body,
+:root[data-theme="dark"] .sg-workspace-mode .channel-chat,
+:root[data-theme="dark"] .sg-workspace-mode .channel-chat > .group-placeholder,
+:root[data-theme="dark"] .sg-workspace-mode .group-message-list {
+  background: #0d1017 !important;
+  color: #eef2ff;
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .channel-sidebar,
+:root[data-theme="dark"] .sg-workspace-mode .workspace-header,
+:root[data-theme="dark"] .sg-workspace-mode .channel-chat-header,
+:root[data-theme="dark"] .sg-workspace-mode .workspace-back-button,
+:root[data-theme="dark"] .sg-workspace-mode .group-composer {
+  background: #171b25 !important;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .message-input-wrap > input:focus {
+  background: #111620;
+  color: #eef2ff;
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .inline-channel-create input,
+:root[data-theme="dark"] .workspace-message-search,
+:root[data-theme="dark"] .workspace-settings-button {
+  background: #111620;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .workspace-message-search input {
+  color: #eef2ff;
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .message-content {
+  background: #171b25;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .group-message.own-message .message-content {
+  background: var(--spc-purple);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Group Details drawer */
+:root[data-theme="dark"] .group-details-drawer,
+:root[data-theme="dark"] .group-details-head,
+:root[data-theme="dark"] .group-details-tabs,
+:root[data-theme="dark"] .group-details-body,
+:root[data-theme="dark"] .group-details-settings {
+  background: #0d1017 !important;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .group-information-card,
+:root[data-theme="dark"] .group-danger-card,
+:root[data-theme="dark"] .group-overview-description,
+:root[data-theme="dark"] .group-details-search,
+:root[data-theme="dark"] .group-details-member,
+:root[data-theme="dark"] .group-member-menu {
+  background: #171b25 !important;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .group-information-card h3,
+:root[data-theme="dark"] .group-information-card label,
+:root[data-theme="dark"] .group-information-card label > span,
+:root[data-theme="dark"] .group-danger-card h3 {
+  color: #e5e7eb;
+}
+
+:root[data-theme="dark"] .group-information-card p,
+:root[data-theme="dark"] .group-settings-readonly,
+:root[data-theme="dark"] .group-danger-card p {
+  color: #94a3b8;
+}
+
+:root[data-theme="dark"] .group-information-card input,
+:root[data-theme="dark"] .group-information-card textarea {
+  background: #111620 !important;
+  color: #eef2ff !important;
+  border-color: #3a4254 !important;
+}
+
+:root[data-theme="dark"] .group-information-card input::placeholder,
+:root[data-theme="dark"] .group-information-card textarea::placeholder {
+  color: #778197;
+}
+
+/* Add-member visual-only modal */
+:root[data-theme="dark"] .sg-add-member-modal,
+:root[data-theme="dark"] .sg-add-member-modal-head,
+:root[data-theme="dark"] .sg-add-member-modal-body {
+  background: #171b25;
+  color: #eef2ff;
+  border-color: #2a3040;
+}
+
+:root[data-theme="dark"] .sg-add-member-modal-body input {
+  background: #111620;
+  color: #eef2ff;
+}
+
+
+/* =========================================================
+   DARK THEME COMPLETENESS — Study Groups
+   Covers surfaces that still used light-only prototype colors.
+   ========================================================= */
+
+:root[data-theme="dark"] .sg-workspace-mode .group-message.ai-response-message .ai-message,
+:root[data-theme="dark"] .sg-workspace-mode .group-message-list > .sg-empty,
+:root[data-theme="dark"] .sg-workspace-mode .channel-inline-actions,
+:root[data-theme="dark"] .group-settings-actions button,
+:root[data-theme="dark"] .settings-member-actions button {
+  background: var(--spc-surface-raised) !important;
+  color: var(--spc-text);
+  border-color: var(--spc-border);
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .group-message.ai-response-message .ai-message .markdown-content,
+:root[data-theme="dark"] .sg-workspace-mode .group-message.ai-response-message .ai-message .markdown-content p,
+:root[data-theme="dark"] .sg-workspace-mode .group-message.ai-response-message .ai-message .markdown-content li {
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .sg-workspace-mode .group-message .message-avatar {
+  background: var(--spc-surface-raised);
+  color: var(--spc-purple);
+  border: 1px solid var(--spc-border);
+}
+
+:root[data-theme="dark"] .group-details-close:hover,
+:root[data-theme="dark"] .group-member-menu-button:hover,
+:root[data-theme="dark"] .group-member-menu button:hover,
+:root[data-theme="dark"] .group-member-filters button:not(.active) {
+  background: var(--spc-surface-hover);
+  color: var(--spc-text);
+}
+
+:root[data-theme="dark"] .group-member-filters button:not(.active) {
+  border: 1px solid var(--spc-border-soft);
+}
+
+:root[data-theme="dark"] .group-visibility-badge {
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+  border-color: color-mix(in srgb, var(--spc-purple) 42%, var(--spc-border));
+}
+
+:root[data-theme="dark"] .group-member-menu button.danger:hover,
+:root[data-theme="dark"] .group-details-danger-outline:hover {
+  background: var(--spc-danger-bg);
+  color: var(--spc-danger);
+}
+
+:root[data-theme="dark"] .sg-add-member-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
