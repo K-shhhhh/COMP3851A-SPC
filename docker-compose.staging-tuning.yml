@@ -2,9 +2,11 @@
 # docker-compose.staging.yml; scripts/staging.sh does that for you.
 #
 # Why these exist:
-#  * Embeddings run on the server's CPU through Ollama. More worker processes do
-#    not make that faster, they only fight over the same cores and memory, so
-#    the worker is limited to 2 concurrent documents. Extra uploads simply queue.
+#  * Embeddings run on the server's CPU through Ollama, but most of an upload's
+#    time is spent waiting on the AI provider (picture descriptions and the
+#    knowledge graph). Three documents at once keep the CPU busy without
+#    overloading it. --prefetch-multiplier=1 stops a worker from hoarding
+#    queued uploads, so a restart cannot leave many of them stranded.
 #  * Ollama unloads a model after 5 idle minutes by default. Every question
 #    needs the embedding model, so the first question after a quiet period would
 #    pay a reload delay. Keeping it loaded removes that.
@@ -21,4 +23,4 @@ services:
         max-file: "3"
 
   worker:
-    command: celery -A app.workers.celery_app:celery_app worker --loglevel=INFO --concurrency=2
+    command: celery -A app.workers.celery_app:celery_app worker --loglevel=INFO --concurrency=3 --prefetch-multiplier=1
