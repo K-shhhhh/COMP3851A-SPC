@@ -18,6 +18,29 @@ import asyncio
 from app.ai.rag.embedding import embed_text
 from app.ai.rag.vector_store import cosine_similarity
 from app.ai.providers.llama_provider import generate_answer
+from app.ai.rag.small_talk import answer_small_talk
+
+
+_REFUSAL_MARKER = "not available in the supplied study material"
+
+
+def _distinct_sources(chunks):
+    """One source per page of each note, in ranked order.
+
+    The best passages often come from the same page, which used to list the
+    same document several times under one answer.
+    """
+
+    seen = set()
+    sources = []
+    for chunk in chunks:
+        source = chunk.source
+        key = (source.note_id, source.page)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(source)
+    return tuple(sources)
 
 
 class KrishRagAnswerGenerator(ChatAnswerGenerator):
@@ -52,6 +75,12 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         which is the only value personal chat ever needs -- group chat's
         @-mention modes are the intended caller for the other three.
         """
+        # A message that is only social chat ("okay thanks", "hi") gets a short
+        # friendly reply. It needs no search, no model call and no sources.
+        small_talk_reply = answer_small_talk(question)
+        if small_talk_reply is not None:
+            return GeneratedAnswer(content=small_talk_reply, sources=())
+
         if not chunks:
             raise ValueError("answer_question called with no chunks -- caller should check for this before invoking the adapter")
 
@@ -81,6 +110,10 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         )
 
         # Carry over each used chunk's citation information.
-        sources = tuple(chunk.source for chunk in top_chunks)
+        sources = _distinct_sources(top_chunks)
+        # An answer that says the material does not cover the question did not
+        # use the passages, so citing them would be misleading.
+        if _REFUSAL_MARKER in answer_text.lower():
+            sources = ()
 
         return GeneratedAnswer(content=answer_text, sources=sources)
