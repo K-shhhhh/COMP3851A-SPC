@@ -1184,9 +1184,14 @@
   cursor: pointer;
 }
 
-.mention-menu > button:hover {
-  background: var(--spc-surface-hover);
+.mention-menu > button:hover,
+.mention-menu > button.active {
+  background: var(--spc-purple-soft);
   color: var(--spc-purple);
+}
+
+.mention-menu > button.active {
+  font-weight: 600;
 }
 
 /* =========================================================

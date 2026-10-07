@@ -1,6 +1,7 @@
 import {
   Bell,
   LogOut,
+  Menu,
   Moon,
   Search,
   Sun,
@@ -18,7 +19,10 @@ import {
   useTheme,
 } from "../../contexts/ThemeContext.jsx";
 
-function TopBar() {
+function TopBar({
+  sidebarCollapsed = false,
+  onToggleSidebar,
+}) {
   const navigate =
     useNavigate();
 
@@ -46,13 +50,27 @@ function TopBar() {
   return (
     <header className="topbar">
 
-      <div className="topbar-search">
+      <div className="topbar-left">
+        {sidebarCollapsed && (
+          <button
+            className="topbar-sidebar-toggle"
+            type="button"
+            onClick={onToggleSidebar}
+            title="Open sidebar"
+            aria-label="Open sidebar"
+          >
+            <Menu size={21} />
+          </button>
+        )}
+
+        <div className="topbar-search">
         <Search size={18} />
 
         <input
           type="text"
           placeholder="Search notes, courses, study groups..."
         />
+        </div>
       </div>
 
       <div className="topbar-actions">
