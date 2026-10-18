@@ -18,6 +18,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
+)
 from app.domains.chats.domain.models import ChatSource
 from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.chats.infrastructure.memory_answering import (
@@ -57,6 +60,7 @@ def study_group_client() -> Iterator[TestClient]:
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     group_service = StudyGroupService(InMemoryStudyGroupRepository())
     app.dependency_overrides[get_auth_service] = lambda: auth_service
@@ -76,6 +80,7 @@ def member_management_context() -> Iterator[MemberManagementContext]:
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     repository = InMemoryStudyGroupRepository()
     group_service = StudyGroupService(repository)
@@ -96,6 +101,7 @@ def group_ai_context() -> Iterator[GroupAiContext]:
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     chunk_repository = InMemoryStudyGroupReadyChunkRepository()
     group_service = StudyGroupService(

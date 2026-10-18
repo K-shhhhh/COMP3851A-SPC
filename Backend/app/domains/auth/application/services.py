@@ -17,6 +17,7 @@ from app.domains.auth.domain.exceptions import (
     EmailAlreadyRegisteredError,
     InactiveAccountError,
     InvalidCredentialsError,
+    InvalidSessionError,
 )
 from app.domains.auth.domain.models import (
     AuthSession,
@@ -27,6 +28,7 @@ from app.domains.auth.domain.repository import AuthRepository
 from app.domains.auth.domain.revocation_store import (
     AccessTokenRevocationStore,
 )
+from app.domains.auth.domain.session_store import RefreshSessionStore
 from app.domains.auth.domain.ticket_store import WebSocketTicketStore
 
 
@@ -38,12 +40,14 @@ class AuthService:
         repository: AuthRepository,
         ticket_store: WebSocketTicketStore,
         revocation_store: AccessTokenRevocationStore,
+        session_store: RefreshSessionStore,
     ) -> None:
         """Initialize the service with repository, ticket, and revocation stores."""
 
         self.repository = repository
         self.ticket_store = ticket_store
         self.revocation_store = revocation_store
+        self.session_store = session_store
 
     async def register(
         self,
@@ -125,12 +129,47 @@ class AuthService:
         access_token = create_access_token(
             subject=credentials.user.id,
         )
+        refresh_token = await self.session_store.create(
+            credentials.user.id,
+            idle_timeout_seconds=60 * settings.SESSION_IDLE_TIMEOUT_MINUTES,
+            absolute_timeout_seconds=(
+                60 * 60 * settings.SESSION_ABSOLUTE_TIMEOUT_HOURS
+            ),
+        )
 
         return AuthSession(
             access_token=access_token,
             token_type="bearer",
             expires_in=60 * settings.ACCESS_TOKEN_EXPIRE_MINUTES,
             user=credentials.user,
+            refresh_token=refresh_token,
+        )
+
+    async def refresh(self, refresh_token: str) -> AuthSession:
+        """Renew an access token while the browser session remains active."""
+
+        refresh_session = await self.session_store.resolve_and_touch(
+            refresh_token,
+            idle_timeout_seconds=60 * settings.SESSION_IDLE_TIMEOUT_MINUTES,
+        )
+        if refresh_session is None:
+            raise InvalidSessionError(
+                "The session is missing, expired, or inactive."
+            )
+
+        user = await self.repository.get_user_by_id(refresh_session.user_id)
+        if user is None or not user.is_active:
+            await self.session_store.revoke(refresh_token)
+            raise InvalidSessionError(
+                "The session is missing, expired, or inactive."
+            )
+
+        access_token = create_access_token(subject=user.id)
+        return AuthSession(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=60 * settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+            user=user,
         )
 
     async def get_user(
@@ -182,3 +221,8 @@ class AuthService:
         """Check whether a previously issued token has been logged out."""
 
         return await self.revocation_store.is_revoked(token_id)
+
+    async def revoke_refresh_session(self, refresh_token: str) -> None:
+        """End the server-managed browser session represented by a cookie."""
+
+        await self.session_store.revoke(refresh_token)

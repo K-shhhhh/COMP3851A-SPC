@@ -19,6 +19,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
+)
 from app.main import app
 
 
@@ -40,15 +43,21 @@ def auth_context() -> Iterator[AuthTestContext]:
         repository=repository,
         ticket_store=ticket_store,
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
 
     app.dependency_overrides[get_auth_service] = lambda: service
 
-    with TestClient(app) as client:
+    # Dependencies are fully replaced with in-memory adapters, so this
+    # contract test intentionally skips the PostgreSQL application lifespan.
+    client = TestClient(app)
+    try:
         yield AuthTestContext(
             client=client,
             ticket_store=ticket_store,
         )
+    finally:
+        client.close()
 
     app.dependency_overrides.clear()
 
@@ -113,6 +122,42 @@ def test_register_login_and_get_current_user(
     }
     assert "password" not in registered
     assert "created_at" not in login["user"]
+    refresh_cookie = client.cookies.get("spc_refresh_session")
+    assert refresh_cookie
+    assert refresh_cookie not in login["access_token"]
+
+
+def test_refresh_renews_access_for_an_active_browser_session(
+    auth_context: AuthTestContext,
+) -> None:
+    client = auth_context.client
+    register_student(client)
+    login = login_student(client)
+
+    refreshed = client.post("/api/v1/auth/refresh")
+
+    assert refreshed.status_code == 200
+    assert refreshed.json()["access_token"] != login["access_token"]
+    assert refreshed.json()["expires_in"] > 0
+
+
+def test_refresh_rejects_a_missing_or_revoked_session(
+    auth_context: AuthTestContext,
+) -> None:
+    client = auth_context.client
+
+    missing = client.post("/api/v1/auth/refresh")
+    assert missing.status_code == 401
+    assert missing.json()["error"]["code"] == "SESSION_REQUIRED"
+
+    register_student(client)
+    login_student(client)
+    logout = client.post("/api/v1/auth/logout")
+    assert logout.status_code == 204
+
+    expired = client.post("/api/v1/auth/refresh")
+    assert expired.status_code == 401
+    assert expired.json()["error"]["code"] == "SESSION_REQUIRED"
 
 
 def test_duplicate_registration_and_invalid_login(

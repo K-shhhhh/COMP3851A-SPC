@@ -16,6 +16,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
+)
 from app.domains.chats.application.services import ChatService
 from app.domains.chats.domain.models import ChatSource
 from app.domains.chats.domain.retrieval import GroundingChunk
@@ -39,6 +42,7 @@ def chat_client() -> Iterator[tuple[TestClient, InMemoryReadyNoteChunkRepository
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     chunks = InMemoryReadyNoteChunkRepository()
     chat_service = ChatService(

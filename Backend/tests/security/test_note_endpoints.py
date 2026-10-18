@@ -17,6 +17,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
+)
 from app.domains.notes.application.services import NoteService
 from app.domains.notes.infrastructure.local_storage import (
     LocalAttachmentStorage,
@@ -38,6 +41,7 @@ def note_client(tmp_path: Path) -> Iterator[TestClient]:
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     note_service = NoteService(
         repository=InMemoryAttachmentRepository(),

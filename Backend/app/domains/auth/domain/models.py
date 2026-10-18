@@ -40,6 +40,7 @@ class AuthSession:
     token_type: str
     expires_in: int
     user: User
+    refresh_token: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

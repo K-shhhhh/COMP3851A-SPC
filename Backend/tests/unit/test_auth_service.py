@@ -9,6 +9,7 @@ from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.exceptions import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
+    InvalidSessionError,
 )
 from app.domains.auth.infrastructure.memory_repository import (
     InMemoryAuthRepository,
@@ -18,6 +19,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 )
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
+)
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
 )
 
 
@@ -34,6 +38,7 @@ def create_service() -> tuple[
         repository=repository,
         ticket_store=ticket_store,
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     return service, repository, ticket_store
 
@@ -141,6 +146,31 @@ def test_logout_revokes_only_the_supplied_token_identifier() -> None:
         assert not await service.is_access_token_revoked(
             second_claims.token_id
         )
+
+    asyncio.run(scenario())
+
+
+def test_refresh_renews_access_and_rejects_a_revoked_browser_session() -> None:
+    async def scenario() -> None:
+        service, _, _ = create_service()
+        await service.register(
+            full_name="Example Student",
+            email="student@example.com",
+            password="SecurePassword123!",
+        )
+        login = await service.login(
+            email="student@example.com",
+            password="SecurePassword123!",
+        )
+        assert login.refresh_token is not None
+
+        refreshed = await service.refresh(login.refresh_token)
+        assert refreshed.access_token != login.access_token
+        assert refreshed.user == login.user
+
+        await service.revoke_refresh_session(login.refresh_token)
+        with pytest.raises(InvalidSessionError):
+            await service.refresh(login.refresh_token)
 
     asyncio.run(scenario())
 
