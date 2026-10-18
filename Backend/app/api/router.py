@@ -14,6 +14,10 @@ from app.api.routers.knowledge_graph import router as knowledge_graph_router
 from app.api.routers.notifications import router as notifications_router
 from app.api.routers.analytics import router as analytics_router
 from app.api.routers.administration import router as administration_router
+from app.domains.presence.presentation.router import (
+    router as presence_router,
+    study_group_presence_router,
+)
 # from app.api.routers.ai import router as ai_router
 
 api_router = APIRouter(
@@ -44,6 +48,8 @@ api_router.include_router(knowledge_graph_router)
 api_router.include_router(notifications_router)
 api_router.include_router(analytics_router)
 api_router.include_router(administration_router)
+api_router.include_router(presence_router)
+api_router.include_router(study_group_presence_router)
 
 # Enable these when they're ready
 

@@ -147,6 +147,13 @@ class User(Base):
     ai_response_feedbacks: Mapped[list[AIResponseFeedback]] = relationship(
         back_populates="user"
     )
+    # This privacy setting controls whether the account may appear in online
+    # member lists. Actual presence remains temporary Redis state.
+    show_online_status: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+    )
 
 
 class Group(Base):

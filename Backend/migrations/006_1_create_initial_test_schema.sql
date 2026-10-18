@@ -35,6 +35,7 @@ create table if not exists users (
     password_hash text not null,
     user_role user_roles not null,
     status activity_status default 'active' not null,
+    show_online_status boolean default true not null,
     created_at timestamptz not null,
     last_updated_at timestamptz,
 	deleted_at timestamptz

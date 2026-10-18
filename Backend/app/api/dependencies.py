@@ -115,6 +115,18 @@ from app.domains.administration.application.services import AdministrationServic
 from app.domains.administration.domain.repository import AdministrationRepository
 from app.domains.administration.infrastructure.repository import PostgreSQLAdministrationRepository
 
+from app.domains.presence.application.services import PresenceService
+from app.domains.presence.domain.repository import (
+    PresenceRepository,
+    PresenceStore,
+)
+from app.domains.presence.infrastructure.redis_store import (
+    RedisPresenceStore,
+)
+from app.domains.presence.infrastructure.repository import (
+    PostgreSQLPresenceRepository,
+)
+
 # ---------- Auth ----------
 
 # Connections are lazy: importing the app does not perform network I/O.
@@ -511,3 +523,35 @@ def get_administration_service() -> AdministrationService:
     """Construct the administration application service."""
 
     return AdministrationService(get_administration_repository())
+
+
+# ---------- Presence ----------
+
+
+def get_presence_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> PresenceRepository:
+    """Return request-scoped persistence for presence privacy and profiles."""
+
+    return PostgreSQLPresenceRepository(session)
+
+
+def get_presence_store() -> PresenceStore:
+    """Return shared, short-lived Redis presence storage."""
+
+    return RedisPresenceStore(
+        _auth_redis,
+        ttl_seconds=settings.PRESENCE_TTL_SECONDS,
+    )
+
+
+def get_presence_service(
+    repository: PresenceRepository = Depends(get_presence_repository),
+    store: PresenceStore = Depends(get_presence_store),
+) -> PresenceService:
+    """Construct privacy-aware account-wide presence use cases."""
+
+    return PresenceService(
+        repository=repository,
+        store=store,
+    )

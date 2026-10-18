@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     ENABLE_DATABASE_SEMANTIC_SEARCH: bool = True
     RAG_SEMANTIC_SEARCH_TOP_K: int = 5
 
+    # A user is online when a presence heartbeat was received recently.
+    # Presence heartbeats never extend the authentication idle session.
+    PRESENCE_TTL_SECONDS: int = 90
+
     @model_validator(mode="after")
     def reject_insecure_production_secret(self) -> "Settings":
         """Prevent staging/production from using a known placeholder secret."""
@@ -109,6 +113,9 @@ class Settings(BaseSettings):
 
         if self.RAG_SEMANTIC_SEARCH_TOP_K <= 0:
             raise ValueError("RAG_SEMANTIC_SEARCH_TOP_K must be positive")
+
+        if self.PRESENCE_TTL_SECONDS <= 0:
+            raise ValueError("PRESENCE_TTL_SECONDS must be positive")
 
         if self.ACCESS_TOKEN_EXPIRE_MINUTES <= 0:
             raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
