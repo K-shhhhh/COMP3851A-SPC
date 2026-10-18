@@ -20,6 +20,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
+)
 from app.domains.knowledge_graph.application.services import (
     KnowledgeGraphService,
 )
@@ -42,6 +45,7 @@ def graph_client() -> Iterator[tuple[TestClient, KnowledgeGraphService]]:
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     graph_service = KnowledgeGraphService(
         repository=InMemoryKnowledgeGraphRepository(),

@@ -19,3 +19,7 @@ class InvalidCredentialsError(AuthenticationError):
 
 class InactiveAccountError(AuthenticationError):
     """Raised when a disabled account attempts to log in."""
+
+
+class InvalidSessionError(AuthenticationError):
+    """Raised when a browser refresh session is absent or expired."""

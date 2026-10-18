@@ -1,8 +1,7 @@
 """Construct application services and enforce request authentication.
 
 This module is the backend composition boundary. Persistent domain data uses
-PostgreSQL while short-lived ticket and revocation data remains local until
-the Redis deployment switch is enabled.
+PostgreSQL while short-lived authentication state uses shared Redis storage.
 """
 from collections.abc import Callable
 
@@ -11,6 +10,7 @@ from fastapi.security import (
     HTTPAuthorizationCredentials,
     HTTPBearer,
 )
+from redis.asyncio import Redis
 
 from app.api.error_handlers import ApiError
 from app.core.config import settings
@@ -32,11 +32,14 @@ from app.domains.auth.domain.models import User
 
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.repository import AuthRepository
-from app.domains.auth.infrastructure.memory_revocation_store import (
-    InMemoryAccessTokenRevocationStore,
+from app.domains.auth.infrastructure.redis_revocation_store import (
+    RedisAccessTokenRevocationStore,
 )
-from app.domains.auth.infrastructure.memory_ticket_store import (
-    InMemoryWebSocketTicketStore,
+from app.domains.auth.infrastructure.redis_session_store import (
+    RedisRefreshSessionStore,
+)
+from app.domains.auth.infrastructure.redis_ticket_store import (
+    RedisWebSocketTicketStore,
 )
 from app.domains.users.application.services import UserService
 from app.domains.users.domain.repository import UserRepository
@@ -114,11 +117,11 @@ from app.domains.administration.infrastructure.repository import PostgreSQLAdmin
 
 # ---------- Auth ----------
 
-# Ticket and revocation stores remain process-local until Redis is enabled.
-_local_websocket_ticket_store = InMemoryWebSocketTicketStore()
-_local_access_token_revocation_store = (
-    InMemoryAccessTokenRevocationStore()
-)
+# Connections are lazy: importing the app does not perform network I/O.
+_auth_redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+_websocket_ticket_store = RedisWebSocketTicketStore(_auth_redis)
+_access_token_revocation_store = RedisAccessTokenRevocationStore(_auth_redis)
+_refresh_session_store = RedisRefreshSessionStore(_auth_redis)
 
 # HTTPBearer allows Swagger to send an Authorization: Bearer header.
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -137,14 +140,15 @@ def get_auth_service(
 ) -> AuthService:
     """Construct authentication use cases with PostgreSQL persistence.
 
-    WebSocket tickets and logout revocations remain in local memory until the
-    Redis integration is enabled in a later step.
+    Authentication state is shared in Redis so it remains correct across API
+    workers and restarts.
     """
 
     return AuthService(
         repository=repository,
-        ticket_store=_local_websocket_ticket_store,
-        revocation_store=_local_access_token_revocation_store,
+        ticket_store=_websocket_ticket_store,
+        revocation_store=_access_token_revocation_store,
+        session_store=_refresh_session_store,
     )
 
 
@@ -195,6 +199,20 @@ async def get_current_access_token_claims(
         )
 
     return claims
+
+
+async def get_optional_access_token_claims(
+    credentials: HTTPAuthorizationCredentials | None = Security(
+        bearer_scheme
+    ),
+    service: AuthService = Depends(get_auth_service),
+) -> AccessTokenClaims | None:
+    """Validate a bearer token when supplied, otherwise return ``None``."""
+
+    if credentials is None:
+        return None
+
+    return await get_current_access_token_claims(credentials, service)
 
 
 async def get_current_user(

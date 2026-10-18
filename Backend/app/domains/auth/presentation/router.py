@@ -1,19 +1,21 @@
 """HTTP endpoints for registration, login and current-user access."""
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
 from app.api.dependencies import (
     get_auth_service,
-    get_current_access_token_claims,
     get_current_user,
+    get_optional_access_token_claims,
 )
 from app.api.error_handlers import ApiError
+from app.core.config import settings
 from app.core.security import AccessTokenClaims
 from app.domains.auth.application.services import AuthService
 from app.domains.auth.domain.exceptions import (
     EmailAlreadyRegisteredError,
     InactiveAccountError,
     InvalidCredentialsError,
+    InvalidSessionError,
 )
 from app.domains.auth.domain.models import User
 from app.domains.auth.presentation.schemas import (
@@ -65,6 +67,7 @@ async def register(
 )
 async def login(
     request: LoginRequest,
+    response: Response,
     service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
     """Validate credentials and return a signed access token."""
@@ -84,6 +87,45 @@ async def login(
         raise ApiError(
             status_code=403,
             code="ACCOUNT_INACTIVE",
+            message=str(exc),
+        ) from exc
+
+    if session.refresh_token is None:
+        raise RuntimeError("Login did not create a refresh session")
+
+    _set_refresh_cookie(response, session.refresh_token)
+    return TokenResponse(
+        access_token=session.access_token,
+        token_type=session.token_type,
+        expires_in=session.expires_in,
+        user=UserResponse.model_validate(session.user),
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+)
+async def refresh_session(
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+) -> TokenResponse:
+    """Renew a short-lived access token for a recently active session."""
+
+    refresh_token = request.cookies.get(settings.REFRESH_SESSION_COOKIE_NAME)
+    if not refresh_token:
+        raise ApiError(
+            status_code=401,
+            code="SESSION_REQUIRED",
+            message="A valid browser session is required.",
+        )
+
+    try:
+        session = await service.refresh(refresh_token)
+    except InvalidSessionError as exc:
+        raise ApiError(
+            status_code=401,
+            code="SESSION_EXPIRED",
             message=str(exc),
         ) from exc
 
@@ -112,18 +154,34 @@ async def get_me(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def logout(
-    claims: AccessTokenClaims = Depends(
-        get_current_access_token_claims
+    request: Request,
+    response: Response,
+    claims: AccessTokenClaims | None = Depends(
+        get_optional_access_token_claims
     ),
     service: AuthService = Depends(get_auth_service),
 ) -> Response:
-    """Revoke the caller's current access token until it expires."""
+    """Revoke the access token and opaque browser session when present."""
 
-    await service.logout(
-        token_id=claims.token_id,
-        expires_at=claims.expires_at,
-    )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    refresh_token = request.cookies.get(settings.REFRESH_SESSION_COOKIE_NAME)
+    if claims is None and not refresh_token:
+        raise ApiError(
+            status_code=401,
+            code="AUTHENTICATION_REQUIRED",
+            message="A valid access token or browser session is required.",
+        )
+
+    if claims is not None:
+        await service.logout(
+            token_id=claims.token_id,
+            expires_at=claims.expires_at,
+        )
+    if refresh_token:
+        await service.revoke_refresh_session(refresh_token)
+
+    _clear_refresh_cookie(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.post(
@@ -141,4 +199,28 @@ async def create_websocket_ticket(
     return WebSocketTicketResponse(
         ticket=result.ticket,
         expires_in=result.expires_in,
+    )
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    """Write the opaque session secret using browser security controls."""
+
+    response.set_cookie(
+        key=settings.REFRESH_SESSION_COOKIE_NAME,
+        value=refresh_token,
+        max_age=60 * 60 * settings.SESSION_ABSOLUTE_TIMEOUT_HOURS,
+        httponly=True,
+        secure=settings.refresh_cookie_secure,
+        samesite=settings.REFRESH_SESSION_COOKIE_SAMESITE,
+        path=f"{settings.API_V1_PREFIX}/auth",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.REFRESH_SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=settings.refresh_cookie_secure,
+        samesite=settings.REFRESH_SESSION_COOKIE_SAMESITE,
+        path=f"{settings.API_V1_PREFIX}/auth",
     )

@@ -15,6 +15,8 @@ The frontend team owns:
 - Protected-route behavior
 - Showing API errors
 - Calling backend logout and then clearing local authentication state
+- Tracking user activity and stopping refresh after 30 minutes of inactivity
+- Coordinating refresh/logout between browser tabs
 - Requesting a WebSocket ticket before opening a socket
 
 The backend owns:
@@ -23,6 +25,7 @@ The backend owns:
 - Password hashing and verification
 - User lookup and account status
 - JWT creation and verification
+- Opaque HttpOnly refresh-session cookies and server-side idle expiry
 - Role/permission enforcement
 - Standard error responses
 - WebSocket-ticket creation and validation
@@ -44,12 +47,16 @@ Login form
 POST /api/v1/auth/login
      |
      +-- store access token in frontend auth state
+     +-- browser receives HttpOnly refresh-session cookie
      |
      v
 GET /api/v1/auth/me
      |
      v
 Authenticated application
+     |
+     +-- while recently active, POST /api/v1/auth/refresh
+     |                        returns a replacement access token
      |
      v
 POST /api/v1/auth/logout
@@ -74,6 +81,41 @@ Open WebSocket URL with ticket
 ```
 
 Never put the normal JWT access token directly in the WebSocket URL.
+
+---
+
+## Activity-based session contract
+
+The refresh cookie is written by the backend and must not be read or stored by
+JavaScript. Same-origin calls include it automatically. If the frontend and API
+are ever deployed on different origins, use `credentials: "include"` and add a
+strict backend CORS allow-list; never use a wildcard origin with credentials.
+
+```http
+POST /api/v1/auth/refresh
+```
+
+Successful response uses the same `TokenResponse` shape as login. Calling this
+endpoint records authenticated activity in Redis and extends the 30-minute idle
+window, but never extends the configured 12-hour absolute session lifetime.
+
+Possible errors:
+
+- `SESSION_REQUIRED`: the browser has no refresh cookie.
+- `SESSION_EXPIRED`: the Redis session is invalid, inactive for 30 minutes, or
+  beyond its absolute lifetime.
+
+The frontend should keep the access token in memory (sessionStorage is an
+acceptable transitional option), track meaningful activity, and refresh only
+when the user was active recently and the access token is near expiry. Passive
+timers, an open tab, and WebSocket heartbeats must not count as user activity.
+
+On 30 minutes of inactivity, call logout without an Authorization header so the
+HttpOnly cookie can still revoke the server session even if the access token is
+already expired. Then clear local state, close WebSockets, and redirect to login.
+
+Use `BroadcastChannel` or the `storage` event to share activity, refreshed access
+tokens, and logout across tabs. Ensure only one tab refreshes at a time.
 
 ---
 

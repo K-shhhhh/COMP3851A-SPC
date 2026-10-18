@@ -15,6 +15,9 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 from app.domains.auth.infrastructure.memory_ticket_store import (
     InMemoryWebSocketTicketStore,
 )
+from app.domains.auth.infrastructure.memory_session_store import (
+    InMemoryRefreshSessionStore,
+)
 from app.domains.chats.application.services import ChatService
 from app.domains.chats.infrastructure.memory_answering import LocalGroundedAnswerGenerator
 from app.domains.chats.infrastructure.memory_repository import InMemoryChatRepository
@@ -40,6 +43,7 @@ def demo_client(tmp_path: Path) -> Iterator[TestClient]:
         repository=InMemoryAuthRepository(),
         ticket_store=InMemoryWebSocketTicketStore(),
         revocation_store=InMemoryAccessTokenRevocationStore(),
+        session_store=InMemoryRefreshSessionStore(),
     )
     attachment_repository = InMemoryAttachmentRepository()
     chunk_repository = InMemoryReadyNoteChunkRepository()

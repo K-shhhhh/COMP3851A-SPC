@@ -40,8 +40,22 @@ class Settings(BaseSettings):
     # Algorithm used to sign and validate access tokens
     JWT_ALGORITHM: str = "HS256"
 
-    # Access tokens expire after 30 minutes
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    # Access tokens are deliberately short-lived. Active browser sessions use
+    # the opaque refresh-session cookie below to obtain replacement tokens.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+
+    # An authenticated browser session ends after this much inactivity even
+    # when its cookie has not reached the absolute lifetime.
+    SESSION_IDLE_TIMEOUT_MINUTES: int = 30
+
+    # Bound the lifetime of a single login even when the user remains active.
+    SESSION_ABSOLUTE_TIMEOUT_HOURS: int = 12
+
+    # The cookie contains only a random opaque secret. Session state is held in
+    # Redis and the cookie is never readable by browser JavaScript.
+    REFRESH_SESSION_COOKIE_NAME: str = "spc_refresh_session"
+    REFRESH_SESSION_COOKIE_SECURE: bool | None = None
+    REFRESH_SESSION_COOKIE_SAMESITE: str = "lax"
 
     # WebSocket tickets are intentionally short-lived and single-use.
     WEBSOCKET_TICKET_EXPIRE_SECONDS: int = 60
@@ -96,6 +110,28 @@ class Settings(BaseSettings):
         if self.RAG_SEMANTIC_SEARCH_TOP_K <= 0:
             raise ValueError("RAG_SEMANTIC_SEARCH_TOP_K must be positive")
 
+        if self.ACCESS_TOKEN_EXPIRE_MINUTES <= 0:
+            raise ValueError("ACCESS_TOKEN_EXPIRE_MINUTES must be positive")
+
+        if self.SESSION_IDLE_TIMEOUT_MINUTES <= 0:
+            raise ValueError("SESSION_IDLE_TIMEOUT_MINUTES must be positive")
+
+        if self.SESSION_ABSOLUTE_TIMEOUT_HOURS <= 0:
+            raise ValueError("SESSION_ABSOLUTE_TIMEOUT_HOURS must be positive")
+
+        if self.REFRESH_SESSION_COOKIE_SAMESITE not in {"lax", "strict"}:
+            raise ValueError(
+                "REFRESH_SESSION_COOKIE_SAMESITE must be 'lax' or 'strict'"
+            )
+
         return self
+
+    @property
+    def refresh_cookie_secure(self) -> bool:
+        """Use secure cookies by default outside local debug mode."""
+
+        if self.REFRESH_SESSION_COOKIE_SECURE is not None:
+            return self.REFRESH_SESSION_COOKIE_SECURE
+        return not self.DEBUG
 
 settings = Settings()
