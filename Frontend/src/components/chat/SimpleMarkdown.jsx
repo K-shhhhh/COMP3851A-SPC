@@ -6,6 +6,33 @@
    of each page needing its own copy.
    ========================================================= */
 
+/* Inline formatting inside one line of text: **bold**, *italic* and `code`.
+   Built as React elements (never raw HTML), so a reply cannot inject markup.
+   Anything that does not match a complete pair is shown as plain text. */
+const INLINE_PATTERN = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\s][^*\n]*\*)/g;
+
+function renderInline(text, keyPrefix) {
+  return String(text)
+    .split(INLINE_PATTERN)
+    .map((part, index) => {
+      const key = `${keyPrefix}-${index}`;
+
+      if (part.length > 4 && part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={key}>{part.slice(2, -2)}</strong>;
+      }
+
+      if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) {
+        return <code key={key}>{part.slice(1, -1)}</code>;
+      }
+
+      if (part.length > 2 && part.startsWith("*") && part.endsWith("*")) {
+        return <em key={key}>{part.slice(1, -1)}</em>;
+      }
+
+      return part;
+    });
+}
+
 function SimpleMarkdown({ children = "" }) {
   const lines = String(children).split("\n");
   const blocks = [];
@@ -48,7 +75,9 @@ function SimpleMarkdown({ children = "" }) {
             <thead>
               <tr>
                 {headers.map((header, index) => (
-                  <th key={index}>{header}</th>
+                  <th key={index}>
+                    {renderInline(header, `th-${index}`)}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -57,7 +86,9 @@ function SimpleMarkdown({ children = "" }) {
               {rows.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex}>{cell}</td>
+                    <td key={cellIndex}>
+                      {renderInline(cell, `td-${rowIndex}-${cellIndex}`)}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -87,7 +118,7 @@ function SimpleMarkdown({ children = "" }) {
       blocks.push(
         <ul key={`ul-${i}`}>
           {items.map((item, index) => (
-            <li key={index}>{item}</li>
+            <li key={index}>{renderInline(item, `uli-${index}`)}</li>
           ))}
         </ul>,
       );
@@ -113,7 +144,7 @@ function SimpleMarkdown({ children = "" }) {
       blocks.push(
         <ol key={`ol-${i}`}>
           {items.map((item, index) => (
-            <li key={index}>{item}</li>
+            <li key={index}>{renderInline(item, `oli-${index}`)}</li>
           ))}
         </ol>,
       );
@@ -126,9 +157,24 @@ function SimpleMarkdown({ children = "" }) {
       continue;
     }
 
+    // A heading line such as "## Title" is shown as bold text, without the
+    // leading # characters.
+    const heading = line.match(/^\s{0,3}#{1,6}\s+(.*)$/);
+
+    if (heading) {
+      blocks.push(
+        <p key={`heading-${i}`}>
+          <strong>{renderInline(heading[1], `h-${i}`)}</strong>
+        </p>,
+      );
+
+      i += 1;
+      continue;
+    }
+
     blocks.push(
       <p key={`paragraph-${i}`}>
-        {line}
+        {renderInline(line, `p-${i}`)}
       </p>,
     );
 

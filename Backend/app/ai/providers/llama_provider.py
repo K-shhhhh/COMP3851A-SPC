@@ -21,7 +21,11 @@ _client = OpenAI(
     base_url=os.environ.get("INFERENCE_API_URL") or "https://openrouter.ai/api/v1",
     api_key=os.environ.get("INFERENCE_API_KEY"),
 )
-CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
+DEFAULT_CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
+
+# Set CHAT_MODEL in the environment to try another model without a code
+# change. An empty value falls back to the default.
+CHAT_MODEL = os.environ.get("CHAT_MODEL") or DEFAULT_CHAT_MODEL
 
 
 def generate_answer(
@@ -30,13 +34,16 @@ def generate_answer(
     model: str = CHAT_MODEL,
     response_format: str | None = None,
     mode: str | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> str:
     """Generate a grounded answer, optionally in a requested display format
     and AI mode (default/summarizer/quiz/facilitator).
 
-    Both are passed straight through to build_secure_chat_messages, which
-    decides how they're safely woven into the TRUSTED system message --
+    Format and mode are passed straight through to build_secure_chat_messages,
+    which decides how they're safely woven into the TRUSTED system message --
     never into the untrusted study_context or student_question payload.
+    history (earlier turns of the same chat) goes to the same function, which
+    treats it as untrusted data next to the study context.
     """
 
     messages = build_secure_chat_messages(
@@ -44,6 +51,7 @@ def generate_answer(
         context=context,
         response_format=response_format,
         mode=mode,
+        history=history,
     )
 
     response = _client.chat.completions.create(

@@ -13,6 +13,11 @@ import {
   register as registerRequest,
 } from "../services/authService.js";
 
+import {
+  rememberSessionExpired,
+  tokenHasExpired,
+} from "../utils/sessionNotice.js";
+
 const AuthContext = createContext(null);
 
 const TOKEN_KEY = "spc_access_token";
@@ -55,6 +60,10 @@ export function AuthProvider({ children }) {
         setUser(currentUser);
         sessionStorage.setItem(USER_KEY, JSON.stringify(currentUser));
       } catch {
+        if (tokenHasExpired(accessToken)) {
+          rememberSessionExpired();
+        }
+
         sessionStorage.removeItem(TOKEN_KEY);
         sessionStorage.removeItem(USER_KEY);
 
@@ -95,11 +104,21 @@ export function AuthProvider({ children }) {
   }
 
   async function logout() {
+    // Pages call logout() when the API says the token is no longer valid.
+    // If the token has simply run out, remember that so the login page can
+    // explain it instead of looking like a random logout.
+    const sessionRanOut =
+      Boolean(accessToken) && tokenHasExpired(accessToken);
+
     try {
       if (accessToken) {
         await logoutRequest(accessToken);
       }
     } finally {
+      if (sessionRanOut) {
+        rememberSessionExpired();
+      }
+
       sessionStorage.removeItem(TOKEN_KEY);
       sessionStorage.removeItem(USER_KEY);
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   useNavigate,
@@ -22,6 +22,11 @@ import {
 import {
   useTheme,
 } from "../../contexts/ThemeContext.jsx";
+
+import {
+  clearSessionNotice,
+  readSessionNotice,
+} from "../../utils/sessionNotice.js";
 
 import "../../styles/styles.css";
 
@@ -58,10 +63,16 @@ function LoginPage() {
     setRememberMe,
   ] = useState(false);
 
+  // Shows "Your session expired" when the student was signed out because
+  // their login ran out, instead of leaving them wondering what happened.
   const [
     error,
     setError,
-  ] = useState("");
+  ] = useState(() => readSessionNotice());
+
+  useEffect(() => {
+    clearSessionNotice();
+  }, []);
 
   const [
     isSubmitting,

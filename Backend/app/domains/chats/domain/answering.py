@@ -8,6 +8,18 @@ from app.domains.chats.domain.retrieval import GroundingChunk
 
 
 @dataclass(frozen=True, slots=True)
+class ConversationTurn:
+    """One earlier message of the same chat, passed so follow ups make sense.
+
+    role is "user" or "assistant". The text is plain content only: sources,
+    ids and timestamps stay behind in the persistence layer.
+    """
+
+    role: str
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
 class GeneratedAnswer:
     """Provider-neutral answer returned by a synchronous RAG adapter."""
 
@@ -32,8 +44,13 @@ class ChatAnswerGenerator(ABC):
         chunks: tuple[GroundingChunk, ...],
         response_format: str | None = None,
         mode: str | None = None,
+        history: tuple[ConversationTurn, ...] = (),
     ) -> GeneratedAnswer:
         """Return an answer grounded only in the supplied authorized chunks.
+
+        history holds the last few turns of the same chat, oldest first, so
+        a follow up such as "put that in bullet points" can be understood.
+        It is optional: callers with no history simply leave it out.
 
         response_format is one of "paragraph", "bullet_points", "table", or
         None (defaults to paragraph).

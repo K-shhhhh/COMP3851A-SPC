@@ -10,7 +10,12 @@ returned authorized chunks in cosine-similarity order and this adapter uses
 them directly without re-embedding stored chunks.
 """
 
-from app.domains.chats.domain.answering import ChatAnswerGenerator, GeneratedAnswer
+from app.domains.chats.domain.answering import (
+    ChatAnswerGenerator,
+    ConversationTurn,
+    GeneratedAnswer,
+)
+from app.domains.chats.domain.followups import build_retrieval_query
 from app.domains.chats.domain.retrieval import GroundingChunk
 
 import asyncio
@@ -59,8 +64,14 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         chunks: tuple[GroundingChunk, ...],
         response_format: str | None = None,
         mode: str | None = None,
+        history: tuple[ConversationTurn, ...] = (),
     ) -> GeneratedAnswer:
         """Return an answer grounded only in the supplied authorized chunks.
+
+        history is the last few turns of the same chat. It is used twice: a
+        short follow up is ranked together with the previous question so the
+        right chunks are found, and the turns go to the model so it knows
+        what "that" or "it" refers to.
 
         embed_text() and generate_answer() are blocking calls under the hood
         (real network I/O to Ollama/OpenRouter). Each is wrapped in
@@ -86,7 +97,12 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
 
         if self.rank_chunks:
             # Local fallback: rank authorized chunks in Python.
-            question_embedding = await asyncio.to_thread(embed_text, question)
+            previous_questions = []
+            for turn in history:
+                if turn.role == "user":
+                    previous_questions.append(turn.content)
+            search_text = build_retrieval_query(question, previous_questions)
+            question_embedding = await asyncio.to_thread(embed_text, search_text)
             scored_chunks = []
             for chunk in chunks:
                 chunk_embedding = await asyncio.to_thread(
@@ -105,8 +121,16 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         context = "\n\n".join(chunk.content for chunk in top_chunks)
 
         # Generate the grounded answer off the event loop.
+        generation_options = {"response_format": response_format, "mode": mode}
+        if history:
+            # Only sent when there is something to send, so a first question
+            # behaves exactly as before.
+            history_payload = []
+            for turn in history:
+                history_payload.append({"role": turn.role, "content": turn.content})
+            generation_options["history"] = history_payload
         answer_text = await asyncio.to_thread(
-            generate_answer, question, context, response_format=response_format, mode=mode
+            generate_answer, question, context, **generation_options
         )
 
         # Carry over each used chunk's citation information.

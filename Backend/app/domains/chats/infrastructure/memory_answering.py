@@ -4,6 +4,7 @@ import re
 
 from app.domains.chats.domain.answering import (
     ChatAnswerGenerator,
+    ConversationTurn,
     GeneratedAnswer,
 )
 from app.domains.chats.domain.retrieval import GroundingChunk
@@ -19,13 +20,14 @@ class LocalGroundedAnswerGenerator(ChatAnswerGenerator):
         chunks: tuple[GroundingChunk, ...],
         response_format: str | None = None,
         mode: str | None = None,
+        history: tuple[ConversationTurn, ...] = (),
     ) -> GeneratedAnswer:
         """Choose the chunk sharing the most useful words with the question.
 
-        response_format and mode are accepted to match the updated
+        response_format, mode and history are accepted to match the updated
         ChatAnswerGenerator interface but ignored here -- this is a
         deterministic demo fallback, not a real model call, so there's no
-        formatting or mode behaviour to apply.
+        formatting, mode or conversation behaviour to apply.
         """
 
         question_terms = _meaningful_terms(question)

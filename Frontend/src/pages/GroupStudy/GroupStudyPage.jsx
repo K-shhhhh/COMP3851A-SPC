@@ -272,6 +272,12 @@ function GroupStudyPage() {
   const [myFilter, setMyFilter] =
     useState("all");
 
+  // Used to ignore a slow reply when a newer request has already
+  // been sent, so one filter never shows the list of another.
+  const myGroupsRequestRef = useRef(0);
+  const myGroupsFilterRef = useRef(null);
+  const discoverRequestRef = useRef(0);
+
   const [search, setSearch] =
     useState("");
 
@@ -695,6 +701,9 @@ function GroupStudyPage() {
   const loadDiscover = useCallback(async () => {
     if (!accessToken) return;
 
+    discoverRequestRef.current += 1;
+    const requestId = discoverRequestRef.current;
+
     setGroupsLoading(true);
     setPageError("");
 
@@ -712,13 +721,21 @@ function GroupStudyPage() {
           },
         );
 
+      if (requestId !== discoverRequestRef.current) {
+        return;
+      }
+
       setDiscoverGroups(
         extractItems(result),
       );
     } catch (error) {
-      setPageError(apiMessage(error));
+      if (requestId === discoverRequestRef.current) {
+        setPageError(apiMessage(error));
+      }
     } finally {
-      setGroupsLoading(false);
+      if (requestId === discoverRequestRef.current) {
+        setGroupsLoading(false);
+      }
     }
   }, [accessToken, search]);
 
@@ -728,6 +745,17 @@ function GroupStudyPage() {
 
   const loadMyGroups = useCallback(async () => {
     if (!accessToken) return;
+
+    myGroupsRequestRef.current += 1;
+    const requestId = myGroupsRequestRef.current;
+
+    // A different filter must not show the old filter's list
+    // while the new one is loading.
+    if (myGroupsFilterRef.current !== myFilter) {
+      setMyGroups([]);
+    }
+
+    myGroupsFilterRef.current = myFilter;
 
     setGroupsLoading(true);
     setPageError("");
@@ -745,13 +773,21 @@ function GroupStudyPage() {
           },
         );
 
+      if (requestId !== myGroupsRequestRef.current) {
+        return;
+      }
+
       setMyGroups(
         extractItems(result),
       );
     } catch (error) {
-      setPageError(apiMessage(error));
+      if (requestId === myGroupsRequestRef.current) {
+        setPageError(apiMessage(error));
+      }
     } finally {
-      setGroupsLoading(false);
+      if (requestId === myGroupsRequestRef.current) {
+        setGroupsLoading(false);
+      }
     }
   }, [accessToken, myFilter]);
 

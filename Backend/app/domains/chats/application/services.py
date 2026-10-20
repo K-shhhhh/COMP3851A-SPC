@@ -6,8 +6,12 @@ from app.domains.chats.application.prompt_security import (
     validate_user_question,
 )
 
-from app.domains.chats.domain.answering import ChatAnswerGenerator
+from app.domains.chats.domain.answering import (
+    ChatAnswerGenerator,
+    ConversationTurn,
+)
 from app.domains.chats.domain.embedding import QuestionEmbeddingProvider
+from app.domains.chats.domain.followups import build_retrieval_query
 from app.domains.chats.domain.exceptions import (
     AnswerGenerationError,
     ChatNotFoundError,
@@ -23,6 +27,16 @@ from app.domains.chats.domain.models import (
 )
 from app.domains.chats.domain.repository import ChatRepository
 from app.domains.chats.domain.retrieval import ReadyNoteChunkRepository
+
+
+# How many earlier messages (questions and answers together) the assistant
+# gets to see. Six is three exchanges: enough for "make that shorter" or
+# "explain the second point", small enough to keep each request cheap.
+HISTORY_MESSAGE_LIMIT = 6
+
+# Chats up to this long are read in one query. Longer ones need a second
+# query for their most recent messages.
+HISTORY_SCAN_LIMIT = 200
 
 
 class ChatService:
@@ -164,6 +178,21 @@ class ChatService:
         chat = await self.get_chat(chat_id=chat_id, user_id=user_id)
         normalized_question = self._normalize_question(question)
 
+        # Earlier turns of this chat, read before the new question is saved.
+        # They let the assistant follow "put that in bullet points", and they
+        # tell the search which topic a short follow up is about.
+        history, existing_message_count = await self._load_recent_history(
+            chat_id=chat_id
+        )
+        previous_questions = []
+        for turn in history:
+            if turn.role == "user":
+                previous_questions.append(turn.content)
+        search_text = build_retrieval_query(
+            normalized_question,
+            previous_questions,
+        )
+
         # The repository is the security boundary: it must exclude other
         # students' chunks and failed/deleted notes. All attachments displayed
         # in My Notes are treated equally in the prototype search pool.
@@ -174,7 +203,7 @@ class ChatService:
         else:
             query_embedding = (
                 await self._question_embedding_provider.embed_question(
-                    normalized_question
+                    search_text
                 )
             )
             chunks = (
@@ -199,12 +228,7 @@ class ChatService:
         # A personal conversation begins with a placeholder name. Replace that
         # placeholder from the first persisted question only; a manual title is
         # never overwritten by later questions.
-        _, message_count = await self._repository.list_messages(
-            chat_id=chat_id,
-            offset=0,
-            limit=1,
-        )
-        if message_count == 1 and self._is_placeholder_title(chat.title):
+        if existing_message_count == 0 and self._is_placeholder_title(chat.title):
             renamed_chat = await self._repository.rename_owned_chat(
                 chat_id=chat_id,
                 owner_id=user_id,
@@ -213,11 +237,19 @@ class ChatService:
             if renamed_chat is not None:
                 chat = renamed_chat
 
+        answer_options = {
+            "question": normalized_question,
+            "chunks": chunks,
+            "response_format": response_format,
+        }
+        if history:
+            # Left out for a first question so adapters that predate the
+            # history option keep working unchanged.
+            answer_options["history"] = history
+
         try:
             answer = await self._answer_generator.answer_question(
-                question=normalized_question,
-                chunks=chunks,
-                response_format=response_format,
+                **answer_options
             )
             self._validate_sources(answer.sources, chunks)
         except Exception as exc:
@@ -237,6 +269,33 @@ class ChatService:
             user_message=user_message,
             assistant_message=assistant_message,
         )
+
+    async def _load_recent_history(
+        self,
+        *,
+        chat_id: str,
+    ) -> tuple[tuple[ConversationTurn, ...], int]:
+        """Return the latest turns of the chat and how many messages it holds."""
+
+        messages, total = await self._repository.list_messages(
+            chat_id=chat_id,
+            offset=0,
+            limit=HISTORY_SCAN_LIMIT,
+        )
+        if total > HISTORY_SCAN_LIMIT:
+            messages, _ = await self._repository.list_messages(
+                chat_id=chat_id,
+                offset=total - HISTORY_MESSAGE_LIMIT,
+                limit=HISTORY_MESSAGE_LIMIT,
+            )
+
+        turns = []
+        for message in messages[-HISTORY_MESSAGE_LIMIT:]:
+            role = str(message.role)
+            if role not in ("user", "assistant"):
+                continue
+            turns.append(ConversationTurn(role=role, content=message.content))
+        return tuple(turns), total
 
     @staticmethod
     def _is_placeholder_title(title: str) -> bool:
