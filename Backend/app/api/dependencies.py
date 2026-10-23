@@ -30,8 +30,9 @@ from app.domains.auth.infrastructure.repository import (
 
 from app.domains.auth.domain.models import User
 
-from app.domains.auth.application.services import AuthService
+from app.domains.auth.application.services import AuthService, PasswordChangeService
 from app.domains.auth.domain.repository import AuthRepository
+from app.domains.auth.domain.password_repository import PasswordChangeRepository
 from app.domains.auth.infrastructure.redis_revocation_store import (
     RedisAccessTokenRevocationStore,
 )
@@ -41,9 +42,8 @@ from app.domains.auth.infrastructure.redis_session_store import (
 from app.domains.auth.infrastructure.redis_ticket_store import (
     RedisWebSocketTicketStore,
 )
-from app.domains.users.application.services import UserService
-from app.domains.users.domain.repository import UserRepository
-from app.domains.users.infrastructure.repository import PostgreSQLUserRepository
+from app.domains.users.application.services import UserProfileService
+from app.domains.users.domain.repository import UserProfileRepository
 
 from app.domains.notes.application.services import NoteService
 from app.domains.notes.domain.processing import (
@@ -103,9 +103,11 @@ from app.domains.knowledge_graph.infrastructure.repository import (
     PostgreSQLKnowledgeGraphRepository,
 )
 
-from app.domains.notifications.application.services import NotificationService
-from app.domains.notifications.domain.repository import NotificationRepository
-from app.domains.notifications.infrastructure.repository import PostgreSQLNotificationRepository
+from app.domains.notifications.application.services import NotificationPreferenceService
+from app.domains.notifications.domain.repository import NotificationPreferenceRepository
+
+from app.domains.reports.application.services import ReportService
+from app.domains.reports.domain.repository import ReportRepository
 
 from app.domains.analytics.application.services import AnalyticsService
 from app.domains.analytics.domain.repository import AnalyticsRepository
@@ -285,18 +287,41 @@ def require_roles(
     return role_dependency
 
 
-# ---------- Users ----------
+# ---------- User-side persistence handoff boundaries ----------
 
-def get_user_repository() -> UserRepository:
-    """Construct the configured user repository."""
+def _persistence_pending(feature: str) -> ApiError:
+    """Return a safe response until the database adapter is integrated."""
 
-    return PostgreSQLUserRepository()
+    return ApiError(
+        status_code=503,
+        code="PERSISTENCE_NOT_CONFIGURED",
+        message=f"{feature} persistence has not been configured.",
+        retryable=False,
+    )
 
 
-def get_user_service() -> UserService:
-    """Construct the user application service."""
+def get_user_profile_repository() -> UserProfileRepository:
+    """Database developer integration point for student profiles."""
 
-    return UserService(get_user_repository())
+    raise _persistence_pending("Profile")
+
+
+def get_user_profile_service(
+    repository: UserProfileRepository = Depends(get_user_profile_repository),
+) -> UserProfileService:
+    return UserProfileService(repository)
+
+
+def get_password_change_repository() -> PasswordChangeRepository:
+    """Database developer integration point for password replacement."""
+
+    raise _persistence_pending("Password change")
+
+
+def get_password_change_service(
+    repository: PasswordChangeRepository = Depends(get_password_change_repository),
+) -> PasswordChangeService:
+    return PasswordChangeService(repository)
 
 
 # ---------- Notes ----------
@@ -481,18 +506,34 @@ def get_knowledge_graph_service(
     )
 
 
-# ---------- Notificatios ----------
+# ---------- Notification preferences ----------
 
-def get_notification_repository() -> NotificationRepository:
-    """Construct the configured notification repository."""
+def get_notification_preference_repository() -> NotificationPreferenceRepository:
+    """Database developer integration point for student notification settings."""
 
-    return PostgreSQLNotificationRepository()
+    raise _persistence_pending("Notification preference")
 
 
-def get_notification_service() -> NotificationService:
-    """Construct the notification application service."""
+def get_notification_preference_service(
+    repository: NotificationPreferenceRepository = Depends(
+        get_notification_preference_repository
+    ),
+) -> NotificationPreferenceService:
+    return NotificationPreferenceService(repository)
 
-    return NotificationService(get_notification_repository())
+
+# ---------- Reports ----------
+
+def get_report_repository() -> ReportRepository:
+    """Database/storage developer integration point for user reports."""
+
+    raise _persistence_pending("Report")
+
+
+def get_report_service(
+    repository: ReportRepository = Depends(get_report_repository),
+) -> ReportService:
+    return ReportService(repository)
 
 
 # ---------- Analytics ----------

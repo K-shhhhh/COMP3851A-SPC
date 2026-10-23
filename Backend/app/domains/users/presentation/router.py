@@ -1,58 +1,50 @@
-# HTTP boundary for users: parse request schemas and delegate through Depends.
-# These scaffold routes still need authentication and resource-level authorization.
+"""Authenticated current-user profile endpoints."""
+
 from fastapi import APIRouter, Depends
-from uuid import UUID
 
-from app.api.dependencies import get_user_service
-from app.domains.users.application.services import UserService
-from app.domains.users.domain.models import User
+from app.api.dependencies import get_current_user, get_user_profile_service
+from app.api.error_handlers import ApiError
+from app.domains.auth.domain.models import User
+from app.domains.users.application.services import UserProfileService
+from app.domains.users.domain.exceptions import UserProfileNotFoundError
+from app.domains.users.domain.models import UserProfileChanges
 from app.domains.users.presentation.schemas import (
-    UserResponse,
-    UpdateUserRequest,
+    UpdateUserProfileRequest,
+    UserProfileResponse,
 )
 
-router = APIRouter(
-    prefix="/users",
-    tags=["Users"],
-)
+router = APIRouter(prefix="/users", tags=["Users"])
 
 
-@router.get(
-    "/",
-    response_model=list[UserResponse],
-)
-async def get_all_users(
-    service: UserService = Depends(get_user_service),
-):
-    return await service.get_all_users()
+@router.get("/me/profile", response_model=UserProfileResponse)
+async def get_current_profile(
+    current_user: User = Depends(get_current_user),
+    service: UserProfileService = Depends(get_user_profile_service),
+) -> UserProfileResponse:
+    try:
+        profile = await service.get_profile(current_user.id)
+    except UserProfileNotFoundError as exc:
+        raise ApiError(status_code=404, code="PROFILE_NOT_FOUND", message=str(exc)) from exc
+    return UserProfileResponse.model_validate(profile)
 
 
-@router.get(
-    "/{user_id}",
-    response_model=UserResponse,
-)
-async def get_user_by_id(
-    user_id: UUID,
-    service: UserService = Depends(get_user_service),
-):
-    return await service.get_user_by_id(str(user_id))
-
-
-@router.put(
-    "/{user_id}",
-    response_model=UserResponse,
-)
-async def update_user(
-    user_id: UUID,
-    request: UpdateUserRequest,
-    service: UserService = Depends(get_user_service),
-):
-
-    user = User(
-        id=str(user_id),
-        full_name=request.full_name,
-        email=request.email,
-        role=request.role,
-    )
-
-    return await service.update_user(user)
+@router.patch("/me/profile", response_model=UserProfileResponse)
+async def update_current_profile(
+    request: UpdateUserProfileRequest,
+    current_user: User = Depends(get_current_user),
+    service: UserProfileService = Depends(get_user_profile_service),
+) -> UserProfileResponse:
+    try:
+        profile = await service.update_profile(
+            user_id=current_user.id,
+            changes=UserProfileChanges(
+                full_name=request.full_name,
+                programme=request.programme,
+                year_of_study=request.year_of_study,
+                bio=request.bio,
+                changed_fields=frozenset(request.model_fields_set),
+            ),
+        )
+    except UserProfileNotFoundError as exc:
+        raise ApiError(status_code=404, code="PROFILE_NOT_FOUND", message=str(exc)) from exc
+    return UserProfileResponse.model_validate(profile)

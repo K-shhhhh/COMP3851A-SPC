@@ -18,6 +18,7 @@ from app.domains.presence.presentation.router import (
     router as presence_router,
     study_group_presence_router,
 )
+from app.domains.reports.presentation.router import router as reports_router
 # from app.api.routers.ai import router as ai_router
 
 api_router = APIRouter(
@@ -50,6 +51,7 @@ api_router.include_router(analytics_router)
 api_router.include_router(administration_router)
 api_router.include_router(presence_router)
 api_router.include_router(study_group_presence_router)
+api_router.include_router(reports_router)
 
 # Enable these when they're ready
 

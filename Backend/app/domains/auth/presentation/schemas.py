@@ -83,3 +83,10 @@ class WebSocketTicketResponse(BaseModel):
 
     ticket: str
     expires_in: int
+
+
+class ChangePasswordRequest(BaseModel):
+    """Current and replacement passwords supplied by an authenticated user."""
+
+    current_password: SecretStr = Field(min_length=1, max_length=128)
+    new_password: SecretStr = Field(min_length=8, max_length=128)

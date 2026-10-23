@@ -23,3 +23,11 @@ class InactiveAccountError(AuthenticationError):
 
 class InvalidSessionError(AuthenticationError):
     """Raised when a browser refresh session is absent or expired."""
+
+
+class CurrentPasswordIncorrectError(AuthenticationError):
+    """Raised when a password-change request cannot verify the current secret."""
+
+
+class PasswordReuseError(AuthenticationError):
+    """Raised when the proposed password is the current password."""

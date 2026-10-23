@@ -1,59 +1,27 @@
-# Notifications use cases depend on repository interfaces, not HTTP or SQL.
-# Current methods delegate to repositories; authorization and business rules still need implementation.
-# Owner: Krish implements this application/background/AI behavior.
+"""Notification-preference use cases."""
+
 from app.domains.notifications.domain.repository import (
-    NotificationRepository,
+    NotificationPreferenceRepository,
 )
 
 
-class NotificationService:
+class NotificationPreferenceService:
 
-    def __init__(
-        self,
-        repository: NotificationRepository,
-    ):
+    def __init__(self, repository: NotificationPreferenceRepository) -> None:
         self.repository = repository
 
-    async def get_all_notifications(self):
+    async def get_preferences(self, user_id: str):
+        return await self.repository.get_preferences(user_id)
 
-        return await self.repository.get_all_notifications()
-
-    async def get_notification_by_id(
+    async def update_preferences(
         self,
-        notification_id: int,
+        *,
+        user_id: str,
+        new_group_messages: bool | None,
+        group_mentions: bool | None,
     ):
-
-        return await self.repository.get_notification_by_id(
-            notification_id
-        )
-
-    async def create_notification(
-        self,
-        title: str,
-        message: str,
-        recipient_id: int,
-    ):
-
-        return await self.repository.create_notification(
-            title,
-            message,
-            recipient_id,
-        )
-
-    async def mark_as_read(
-        self,
-        notification_id: int,
-    ):
-
-        return await self.repository.mark_as_read(
-            notification_id
-        )
-
-    async def delete_notification(
-        self,
-        notification_id: int,
-    ):
-
-        await self.repository.delete_notification(
-            notification_id
+        return await self.repository.update_preferences(
+            user_id=user_id,
+            new_group_messages=new_group_messages,
+            group_mentions=group_mentions,
         )

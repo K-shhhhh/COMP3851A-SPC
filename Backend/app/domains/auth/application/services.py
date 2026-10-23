@@ -14,10 +14,12 @@ from app.core.security import (
     verify_password,
 )
 from app.domains.auth.domain.exceptions import (
+    CurrentPasswordIncorrectError,
     EmailAlreadyRegisteredError,
     InactiveAccountError,
     InvalidCredentialsError,
     InvalidSessionError,
+    PasswordReuseError,
 )
 from app.domains.auth.domain.models import (
     AuthSession,
@@ -25,6 +27,7 @@ from app.domains.auth.domain.models import (
     WebSocketTicket,
 )
 from app.domains.auth.domain.repository import AuthRepository
+from app.domains.auth.domain.password_repository import PasswordChangeRepository
 from app.domains.auth.domain.revocation_store import (
     AccessTokenRevocationStore,
 )
@@ -226,3 +229,31 @@ class AuthService:
         """End the server-managed browser session represented by a cookie."""
 
         await self.session_store.revoke(refresh_token)
+
+
+class PasswordChangeService:
+    """Verify and replace the authenticated user's password hash."""
+
+    def __init__(self, repository: PasswordChangeRepository) -> None:
+        self.repository = repository
+
+    async def change_password(
+        self,
+        *,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+    ) -> None:
+        current_hash = await self.repository.get_password_hash(user_id)
+        if current_hash is None or not verify_password(current_password, current_hash):
+            raise CurrentPasswordIncorrectError("The current password is incorrect.")
+        if verify_password(new_password, current_hash):
+            raise PasswordReuseError(
+                "The new password must be different from the current password."
+            )
+        updated = await self.repository.update_password_hash(
+            user_id=user_id,
+            password_hash=hash_password(new_password),
+        )
+        if not updated:
+            raise CurrentPasswordIncorrectError("The account is unavailable.")

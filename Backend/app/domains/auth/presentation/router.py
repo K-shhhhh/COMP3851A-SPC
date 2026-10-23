@@ -6,19 +6,23 @@ from app.api.dependencies import (
     get_auth_service,
     get_current_user,
     get_optional_access_token_claims,
+    get_password_change_service,
 )
 from app.api.error_handlers import ApiError
 from app.core.config import settings
 from app.core.security import AccessTokenClaims
-from app.domains.auth.application.services import AuthService
+from app.domains.auth.application.services import AuthService, PasswordChangeService
 from app.domains.auth.domain.exceptions import (
+    CurrentPasswordIncorrectError,
     EmailAlreadyRegisteredError,
     InactiveAccountError,
     InvalidCredentialsError,
     InvalidSessionError,
+    PasswordReuseError,
 )
 from app.domains.auth.domain.models import User
 from app.domains.auth.presentation.schemas import (
+    ChangePasswordRequest,
     LoginRequest,
     RegisteredUserResponse,
     RegisterRequest,
@@ -147,6 +151,35 @@ async def get_me(
     """Return the user represented by the bearer token."""
 
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    service: PasswordChangeService = Depends(get_password_change_service),
+) -> Response:
+    """Change only the authenticated user's password after verification."""
+
+    try:
+        await service.change_password(
+            user_id=current_user.id,
+            current_password=request.current_password.get_secret_value(),
+            new_password=request.new_password.get_secret_value(),
+        )
+    except CurrentPasswordIncorrectError as exc:
+        raise ApiError(
+            status_code=400,
+            code="CURRENT_PASSWORD_INCORRECT",
+            message=str(exc),
+        ) from exc
+    except PasswordReuseError as exc:
+        raise ApiError(
+            status_code=400,
+            code="PASSWORD_REUSE_NOT_ALLOWED",
+            message=str(exc),
+        ) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

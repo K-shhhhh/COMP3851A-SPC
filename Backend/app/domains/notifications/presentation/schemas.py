@@ -1,17 +1,23 @@
-# Public notifications request/response shapes used by FastAPI validation and OpenAPI.
-# Coordinate field-name changes with the frontend; schemas alone do not enforce permissions.
-from pydantic import BaseModel
+"""Schemas for notification preferences."""
+
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
-class NotificationResponse(BaseModel):
-    id: int
-    title: str
-    message: str
-    recipient_id: int
-    is_read: bool
+class NotificationPreferencesResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    new_group_messages: bool
+    group_mentions: bool
 
 
-class CreateNotificationRequest(BaseModel):
-    title: str
-    message: str
-    recipient_id: int
+class UpdateNotificationPreferencesRequest(BaseModel):
+    new_group_messages: bool | None = None
+    group_mentions: bool | None = None
+
+    @model_validator(mode="after")
+    def require_a_change(self) -> "UpdateNotificationPreferencesRequest":
+        if not self.model_fields_set:
+            raise ValueError("At least one notification preference is required.")
+        if any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("Notification preferences must be true or false.")
+        return self

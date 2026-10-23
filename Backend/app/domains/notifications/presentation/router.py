@@ -1,90 +1,42 @@
-# HTTP boundary for notifications: parse request schemas and delegate through Depends.
-# These scaffold routes still need authentication and resource-level authorization.
-from fastapi import APIRouter, Depends, Response, status
+"""Authenticated notification-preference endpoints."""
 
-from app.api.dependencies import get_notification_service
+from fastapi import APIRouter, Depends
+
+from app.api.dependencies import get_current_user, get_notification_preference_service
+from app.domains.auth.domain.models import User
 from app.domains.notifications.application.services import (
-    NotificationService,
+    NotificationPreferenceService,
 )
 from app.domains.notifications.presentation.schemas import (
-    CreateNotificationRequest,
-    NotificationResponse,
+    NotificationPreferencesResponse,
+    UpdateNotificationPreferencesRequest,
 )
 
-router = APIRouter(
-    prefix="/notifications",
-    tags=["Notifications"],
-)
+router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 
-@router.get(
-    "/",
-    response_model=list[NotificationResponse],
-)
-async def get_all_notifications(
-    service: NotificationService = Depends(
-        get_notification_service
+@router.get("/preferences", response_model=NotificationPreferencesResponse)
+async def get_notification_preferences(
+    current_user: User = Depends(get_current_user),
+    service: NotificationPreferenceService = Depends(
+        get_notification_preference_service
     ),
-):
-    return await service.get_all_notifications()
+) -> NotificationPreferencesResponse:
+    preferences = await service.get_preferences(current_user.id)
+    return NotificationPreferencesResponse.model_validate(preferences)
 
 
-@router.get(
-    "/{notification_id}",
-    response_model=NotificationResponse,
-)
-async def get_notification_by_id(
-    notification_id: int,
-    service: NotificationService = Depends(
-        get_notification_service
+@router.patch("/preferences", response_model=NotificationPreferencesResponse)
+async def update_notification_preferences(
+    request: UpdateNotificationPreferencesRequest,
+    current_user: User = Depends(get_current_user),
+    service: NotificationPreferenceService = Depends(
+        get_notification_preference_service
     ),
-):
-    return await service.get_notification_by_id(
-        notification_id
+) -> NotificationPreferencesResponse:
+    preferences = await service.update_preferences(
+        user_id=current_user.id,
+        new_group_messages=request.new_group_messages,
+        group_mentions=request.group_mentions,
     )
-
-
-@router.post(
-    "/",
-    response_model=NotificationResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_notification(
-    request: CreateNotificationRequest,
-    service: NotificationService = Depends(
-        get_notification_service
-    ),
-):
-    return await service.create_notification(
-        request.title,
-        request.message,
-        request.recipient_id,
-    )
-
-
-@router.patch(
-    "/{notification_id}/read",
-    response_model=NotificationResponse,
-)
-async def mark_as_read(
-    notification_id: int,
-    service: NotificationService = Depends(
-        get_notification_service
-    ),
-):
-    return await service.mark_as_read(notification_id)
-
-
-@router.delete(
-    "/{notification_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def delete_notification(
-    notification_id: int,
-    service: NotificationService = Depends(
-        get_notification_service
-    ),
-):
-
-    await service.delete_notification(notification_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return NotificationPreferencesResponse.model_validate(preferences)

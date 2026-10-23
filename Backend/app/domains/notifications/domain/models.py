@@ -1,14 +1,11 @@
-# Notifications domain data objects, independent of FastAPI and database libraries.
-# These dataclasses are not database tables or migrations.
+"""Notification-setting domain objects independent of HTTP and SQL."""
+
 from dataclasses import dataclass
 
 
-@dataclass(slots=True)
-class Notification:
-    """Domain entity representing a notification."""
+@dataclass(frozen=True, slots=True)
+class NotificationPreferences:
+    """Student-controlled MVP notification preferences."""
 
-    id: int
-    title: str
-    message: str
-    recipient_id: int
-    is_read: bool
+    new_group_messages: bool
+    group_mentions: bool

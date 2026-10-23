@@ -1,42 +1,29 @@
-# Notifications repository contract used by the application service.
-# The database developer implements these operations; abstract methods provide no storage.
+"""Persistence contract for per-user notification preferences."""
+
 from abc import ABC, abstractmethod
 
-from app.domains.notifications.domain.models import Notification
+from app.domains.notifications.domain.models import NotificationPreferences
 
 
-class NotificationRepository(ABC):
+class NotificationPreferenceRepository(ABC):
 
     @abstractmethod
-    async def get_all_notifications(self) -> list[Notification]:
+    async def get_preferences(
+        self,
+        user_id: str,
+    ) -> NotificationPreferences:
+        """Return persisted values, using both ``True`` as creation defaults."""
+
         raise NotImplementedError
 
     @abstractmethod
-    async def get_notification_by_id(
+    async def update_preferences(
         self,
-        notification_id: int,
-    ) -> Notification:
-        raise NotImplementedError
+        *,
+        user_id: str,
+        new_group_messages: bool | None,
+        group_mentions: bool | None,
+    ) -> NotificationPreferences:
+        """Atomically apply supplied preference values and return the result."""
 
-    @abstractmethod
-    async def create_notification(
-        self,
-        title: str,
-        message: str,
-        recipient_id: int,
-    ) -> Notification:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def mark_as_read(
-        self,
-        notification_id: int,
-    ) -> Notification:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def delete_notification(
-        self,
-        notification_id: int,
-    ) -> None:
         raise NotImplementedError

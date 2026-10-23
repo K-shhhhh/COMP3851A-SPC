@@ -1,32 +1,32 @@
-# Users use cases depend on repository interfaces, not HTTP or SQL.
-# Current methods delegate to repositories; authorization and business rules still need implementation.
-# Owner: Krish implements this application/background/AI behavior.
-from app.domains.users.domain.models import User
-from app.domains.users.domain.repository import UserRepository
+"""Authenticated student-profile use cases."""
+
+from app.domains.users.domain.exceptions import UserProfileNotFoundError
+from app.domains.users.domain.models import UserProfile, UserProfileChanges
+from app.domains.users.domain.repository import UserProfileRepository
 
 
-class UserService:
+class UserProfileService:
+    """Read and update only the currently authenticated user's profile."""
 
-    def __init__(
-        self,
-        repository: UserRepository,
-    ):
+    def __init__(self, repository: UserProfileRepository) -> None:
         self.repository = repository
 
-    async def get_all_users(self):
+    async def get_profile(self, user_id: str) -> UserProfile:
+        profile = await self.repository.get_profile(user_id)
+        if profile is None:
+            raise UserProfileNotFoundError("The user profile was not found.")
+        return profile
 
-        return await self.repository.get_all_users()
-
-    async def get_user_by_id(
+    async def update_profile(
         self,
+        *,
         user_id: str,
-    ):
-
-        return await self.repository.get_user_by_id(user_id)
-
-    async def update_user(
-        self,
-        user: User,
-    ):
-
-        return await self.repository.update_user(user)
+        changes: UserProfileChanges,
+    ) -> UserProfile:
+        profile = await self.repository.update_profile(
+            user_id=user_id,
+            changes=changes,
+        )
+        if profile is None:
+            raise UserProfileNotFoundError("The user profile was not found.")
+        return profile
