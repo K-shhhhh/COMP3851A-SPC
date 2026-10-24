@@ -98,6 +98,20 @@ _RESPONSE_FORMAT_INSTRUCTIONS: dict[str, str] = {
 }
 
 
+# Used when no layout was chosen in the app. Personal AI Assistant has no
+# format picker, so the student asks for a layout in their own words. The old
+# default forced plain paragraphs and refused "use bullet points" or "put that
+# in a table". Study group channels still send an explicit picker value.
+_NO_PICKER_FORMAT_INSTRUCTION = (
+    "No layout was chosen in the app. Unless the student asks for a "
+    "particular layout, answer in one to three short paragraphs. If the "
+    "student asks for bullet points, a table, keywords, a shorter version "
+    "or a simpler explanation, do exactly that. A request to change the "
+    "layout of your earlier answer is a normal request: reshape that "
+    "answer and do not refuse it."
+)
+
+
 # Rules about how a reply should read. They sit after the security rules and
 # never replace them. The wording "not available in the supplied study
 # material" is matched by the answer adapter to hide sources on a refusal,
@@ -349,7 +363,10 @@ def build_secure_chat_messages(
     if mode_instruction is not None:
         system_message = f"{system_message} {mode_instruction}"
 
-    format_instruction = _RESPONSE_FORMAT_INSTRUCTIONS.get(response_format or "paragraph")
+    if response_format is None:
+        format_instruction = _NO_PICKER_FORMAT_INSTRUCTION
+    else:
+        format_instruction = _RESPONSE_FORMAT_INSTRUCTIONS.get(response_format)
     if format_instruction is not None:
         system_message = f"{system_message} {format_instruction}"
 
