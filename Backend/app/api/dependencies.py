@@ -115,7 +115,6 @@ from app.domains.analytics.infrastructure.repository import PostgreSQLAnalyticsR
 
 from app.domains.administration.application.services import AdministrationService
 from app.domains.administration.domain.repository import AdministrationRepository
-from app.domains.administration.infrastructure.repository import PostgreSQLAdministrationRepository
 
 from app.domains.presence.application.services import PresenceService
 from app.domains.presence.domain.repository import (
@@ -555,15 +554,19 @@ def get_analytics_service() -> AnalyticsService:
 
 
 def get_administration_repository() -> AdministrationRepository:
-    """Construct the configured administration repository."""
+    """Database developer integration point for administration queries."""
 
-    return PostgreSQLAdministrationRepository()
+    raise _persistence_pending("Administration")
 
 
-def get_administration_service() -> AdministrationService:
+def get_administration_service(
+    repository: AdministrationRepository = Depends(
+        get_administration_repository
+    ),
+) -> AdministrationService:
     """Construct the administration application service."""
 
-    return AdministrationService(get_administration_repository())
+    return AdministrationService(repository)
 
 
 # ---------- Presence ----------
