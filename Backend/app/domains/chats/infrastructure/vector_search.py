@@ -2,6 +2,9 @@
 
 from math import isfinite
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.domains.chats.domain.embedding import QUESTION_EMBEDDING_DIMENSIONS
 
 SEMANTIC_EMBEDDING_MODEL_VERSION = "nomic-embed-text"
@@ -25,3 +28,24 @@ def validate_semantic_search(
     if not any(embedding):
         raise ValueError("question embedding must be nonzero for cosine distance")
     return embedding
+
+
+async def enable_filtered_vector_search(session: AsyncSession) -> None:
+    """Make the vector index keep looking until it finds enough of THIS user's chunks.
+
+    The HNSW index picks its nearest candidates across every student's chunks
+    and only then applies the "belongs to this user" filter. On a database with
+    many users that can leave nothing, so the chat wrongly says the student has
+    no processed notes. Iterative scan tells the index to keep scanning until
+    the filter has produced enough rows. The setting lasts for this transaction
+    only. If the database does not support it (pgvector older than 0.8), the
+    search carries on as before.
+    """
+
+    try:
+        async with session.begin_nested():
+            await session.execute(
+                text("SET LOCAL hnsw.iterative_scan = strict_order")
+            )
+    except Exception:
+        return

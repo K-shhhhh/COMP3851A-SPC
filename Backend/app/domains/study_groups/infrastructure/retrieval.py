@@ -9,6 +9,7 @@ from app.domains.chats.domain.models import ChatSource
 from app.domains.chats.domain.retrieval import GroundingChunk
 from app.domains.chats.infrastructure.vector_search import (
     SEMANTIC_EMBEDDING_MODEL_VERSION,
+    enable_filtered_vector_search,
     validate_semantic_search,
 )
 from app.domains.study_groups.domain.retrieval import StudyGroupReadyChunkRepository
@@ -77,6 +78,7 @@ class PostgreSQLStudyGroupReadyChunkRepository(StudyGroupReadyChunkRepository):
         except (TypeError, ValueError, AttributeError):
             return ()
 
+        await enable_filtered_vector_search(self.session)
         result = await self.session.execute(
             select(Chunk, Attachment)
             .join(Attachment, Attachment.attachment_id == Chunk.attachment_id)
