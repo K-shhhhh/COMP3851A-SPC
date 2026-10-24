@@ -13,8 +13,9 @@ What it does, in order:
   3. uploads a small generated PDF and waits for it to become ready
   4. asks a question whose answer exists only in that PDF (grounding + citations)
   5. asks again in bullet point format
-  6. registers a SECOND student and checks they cannot see the first student's note
-  7. optionally checks the knowledge graph (--graph)
+  6. uploads a second note and checks that asking about ONE chosen note stays inside it
+  7. registers a SECOND student and checks they cannot see the first student's note
+  8. optionally checks the knowledge graph (--graph)
 
 It prints how long processing and answering took, so the same numbers can be
 compared before and after a change. The exit code is 1 if any check failed.
@@ -36,6 +37,15 @@ PDF_LINES = [
     "Each checkpoint must be completed by a different reviewer.",
 ]
 QUESTION = "How many checkpoints does the Zephyrquill protocol require?"
+
+# A second note with a different subject, used to check "ask about one note".
+SECOND_PDF_LINES = [
+    "Quillbright Handbook Study Notes",
+    "The Quillbright handbook is a fictional guide used only for testing.",
+    "The Quillbright handbook says every lantern needs exactly nine brass hinges.",
+    "Lanterns are inspected on the first Monday of every month.",
+]
+SECOND_QUESTION = "How many brass hinges does every lantern need in the Quillbright handbook?"
 PASSWORD = "SmokeTest123!"
 
 
@@ -180,11 +190,13 @@ def wait_until_processed(base, token, note_id, timeout, interval):
     return "timeout", time.time() - started, None
 
 
-def ask(base, token, chat_id, question, response_format):
+def ask(base, token, chat_id, question, response_format, note_id=None):
     started = time.time()
+    body = {"content": question, "response_format": response_format}
+    if note_id is not None:
+        body["note_id"] = note_id
     status, payload = call(
-        base, "POST", f"/chats/{chat_id}/messages", token=token,
-        body={"content": question, "response_format": response_format},
+        base, "POST", f"/chats/{chat_id}/messages", token=token, body=body,
     )
     return status, payload, time.time() - started
 
@@ -242,10 +254,14 @@ def main():
 
     # 4. grounded answer with citations
     status, payload, answer_seconds = call_chat_flow(base, token_a, report)
-    # 6. isolation
+
+    # 6. asking about one chosen note
+    check_note_scope(base, token_a, note_id, report, args)
+
+    # 7. isolation
     check_isolation(base, report, note_id)
 
-    # 7. knowledge graph
+    # 8. knowledge graph
     if args.graph:
         check_graph(base, token_a, note_id, report, args.graph_wait, args.poll_interval)
 
@@ -280,6 +296,74 @@ def call_chat_flow(base, token, report):
     return status, payload, seconds
 
 
+def source_note_ids(payload, status):
+    """Return the set of note ids named in an answer's sources."""
+    if status != 201:
+        return set()
+    answer = (payload or {}).get("assistant_message", {})
+    found = set()
+    for source in answer.get("sources", []):
+        found.add(source.get("note_id"))
+    return found
+
+
+def check_note_scope(base, token, first_note_id, report, args):
+    """Upload a second note, then ask about each note on its own."""
+    second_pdf = build_pdf(SECOND_PDF_LINES)
+    status, payload = call(
+        base, "POST", "/notes/upload", token=token,
+        multipart=multipart_body({"title": "Quillbright smoke test"}, "file",
+                                 "quillbright.pdf", second_pdf, "application/pdf"),
+    )
+    if not report.check("second note upload accepted (202)", status == 202,
+                        f"HTTP {status} {error_code(payload) or ''}"):
+        return
+    second_note_id = payload["id"]
+    final, seconds, error = wait_until_processed(
+        base, token, second_note_id, args.process_timeout, args.poll_interval
+    )
+    if not report.check("second note finished processing", final == "ready",
+                        f"{final} after {seconds:.1f}s" + (f", error: {error}" if error else "")):
+        return
+
+    status, chat = call(base, "POST", "/chats", token=token, body={"title": None})
+    if not report.check("create chat for note scope checks", status == 201, f"HTTP {status}"):
+        return
+    chat_id = chat["id"]
+
+    # Ask about the first note only.
+    status, payload, _ = ask(base, token, chat_id, QUESTION, "paragraph", note_id=first_note_id)
+    ids = source_note_ids(payload, status)
+    report.check("question limited to note one answered", status == 201,
+                 f"HTTP {status} {error_code(payload) or ''}")
+    report.check("sources stay inside note one", ids == {first_note_id},
+                 f"source note ids {sorted(ids)}")
+
+    # Same chat, now about the second note only.
+    status, payload, _ = ask(base, token, chat_id, SECOND_QUESTION, "paragraph", note_id=second_note_id)
+    content = (payload or {}).get("assistant_message", {}).get("content", "") if status == 201 else ""
+    ids = source_note_ids(payload, status)
+    report.check("question limited to note two answered", status == 201,
+                 f"HTTP {status} {error_code(payload) or ''}")
+    report.check("answer for note two is grounded", "nine" in content.lower() or "9" in content,
+                 content[:80].replace("\n", " "))
+    report.check("sources stay inside note two", ids == {second_note_id},
+                 f"source note ids {sorted(ids)}")
+
+    # A question about note one, asked while note two is chosen, must never cite note one.
+    status, payload, _ = ask(base, token, chat_id, QUESTION, "paragraph", note_id=second_note_id)
+    ids = source_note_ids(payload, status)
+    report.check("note one is not used while note two is chosen",
+                 status == 201 and first_note_id not in ids,
+                 f"HTTP {status}, source note ids {sorted(ids)}")
+
+    # A note that does not exist.
+    status, payload, _ = ask(base, token, chat_id, QUESTION, "paragraph", note_id=999999999)
+    report.check("unknown note gives SELECTED_NOTE_UNAVAILABLE",
+                 status == 409 and error_code(payload) == "SELECTED_NOTE_UNAVAILABLE",
+                 f"HTTP {status} {error_code(payload) or ''}")
+
+
 def check_isolation(base, report, note_id_of_a):
     token_b, status, payload = register_and_login(base, "b")
     if not report.check("register + login student B", token_b is not None, f"HTTP {status}"):
@@ -292,6 +376,11 @@ def check_isolation(base, report, note_id_of_a):
     if status != 201:
         report.check("student B can create a chat", False, f"HTTP {status}")
         return
+    # Choosing A's note id must not work either, and must say nothing about it.
+    status, payload, _ = ask(base, token_b, chat["id"], QUESTION, "paragraph", note_id=note_id_of_a)
+    report.check("student B cannot choose A's note", status == 409,
+                 f"HTTP {status} {error_code(payload) or ''}")
+
     status, payload, _ = ask(base, token_b, chat["id"], QUESTION, "paragraph")
     if status == 409:
         report.check("student B gets no access to A's content", True,
