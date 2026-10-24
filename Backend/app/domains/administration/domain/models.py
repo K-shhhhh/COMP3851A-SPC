@@ -2,13 +2,19 @@
 
 These models intentionally contain no SQLAlchemy or FastAPI code. They define
 the backend contract that the PostgreSQL adapter and admin frontend integrate
-against. Report-review models live in the reports domain and are deliberately
-out of scope here.
+against. Report review reuses the canonical report enums while exposing only
+the evidence and limited context preserved for the submitted report.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+
+from app.domains.reports.domain.models import (
+    ReportCategory,
+    ReportStatus,
+    ReportTargetType,
+)
 
 
 class AdministrationHealth(StrEnum):
@@ -57,6 +63,33 @@ class AdministrationLogSeverity(StrEnum):
     CRITICAL = "critical"
 
 
+class AdminReportResolutionOutcome(StrEnum):
+    NO_VIOLATION = "no_violation"
+    CONTENT_REMOVED = "content_removed"
+    USER_DEACTIVATED = "user_deactivated"
+    GROUP_REMOVED = "group_removed"
+    FILE_REMOVED = "file_removed"
+    DUPLICATE = "duplicate"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
+class AdminReportGovernanceAction(StrEnum):
+    REMOVE_MESSAGE = "remove_message"
+    DEACTIVATE_MESSAGE_AUTHOR = "deactivate_message_author"
+    REMOVE_GROUP = "remove_group"
+    REMOVE_FILE = "remove_file"
+
+
+class AdminReportActivityType(StrEnum):
+    REPORT_SUBMITTED = "report_submitted"
+    REVIEW_STARTED = "review_started"
+    NOTE_ADDED = "note_added"
+    EVIDENCE_VIEWED = "evidence_viewed"
+    GOVERNANCE_ACTION = "governance_action"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+
 @dataclass(frozen=True, slots=True)
 class AdministrationActor:
     """Administrator performing a governance action."""
@@ -96,13 +129,74 @@ class SystemLogEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class AdminReportSummary:
+    report_id: str
+    created_at: datetime
+    category: ReportCategory
+    target_type: ReportTargetType
+    target_description: str
+    status: ReportStatus
+
+
+@dataclass(frozen=True, slots=True)
+class AdminReportEvidence:
+    evidence_id: str
+    filename: str
+    content_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class AdminReportActivity:
+    activity_id: str
+    event_type: AdminReportActivityType
+    summary: str
+    administrator_user_id: str | None
+    administrator_name: str | None
+    occurred_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AdminReportDetails:
+    report: AdminReportSummary
+    reporter_user_id: str
+    reporter_name: str
+    description: str
+    target_snapshot: dict[str, object]
+    limited_context_snapshot: tuple[dict[str, object], ...]
+    evidence: tuple[AdminReportEvidence, ...]
+    activity: tuple[AdminReportActivity, ...]
+    resolved_at: datetime | None
+    resolution_outcome: AdminReportResolutionOutcome | None
+    internal_resolution_reason: str | None
+    public_summary: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AdminReportPage:
+    items: tuple[AdminReportSummary, ...]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AdminEvidenceFile:
+    evidence_id: str
+    filename: str
+    content_type: str
+    content: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardSnapshot:
     active_users: int
     active_study_groups: int
     stored_notes: int
     processing_failures_24h: int
+    open_reports: int
+    under_review_reports: int
+    recently_submitted_reports: int
     recent_processing_failures: tuple[ProcessingFailure, ...]
     recent_system_events: tuple[SystemLogEntry, ...]
+    recent_reports: tuple[AdminReportSummary, ...]
 
 
 @dataclass(frozen=True, slots=True)

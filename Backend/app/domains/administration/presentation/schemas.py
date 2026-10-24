@@ -13,6 +13,14 @@ from app.domains.administration.domain.models import (
     AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
+    AdminReportActivityType,
+    AdminReportGovernanceAction,
+    AdminReportResolutionOutcome,
+)
+from app.domains.reports.domain.models import (
+    ReportCategory,
+    ReportStatus,
+    ReportTargetType,
 )
 
 
@@ -70,8 +78,12 @@ class DashboardResponse(DomainResponse):
     active_study_groups: int
     stored_notes: int
     processing_failures_24h: int
+    open_reports: int
+    under_review_reports: int
+    recently_submitted_reports: int
     recent_processing_failures: tuple[ProcessingFailureResponse, ...]
     recent_system_events: tuple[SystemLogResponse, ...]
+    recent_reports: tuple["AdminReportSummaryResponse", ...]
 
 
 class AdminUserSummaryResponse(DomainResponse):
@@ -160,3 +172,67 @@ class AdminAttachmentPageResponse(DomainResponse):
 class SystemLogPageResponse(DomainResponse):
     items: tuple[SystemLogResponse, ...]
     next_cursor: str | None
+
+
+class AdminReportSummaryResponse(DomainResponse):
+    report_id: str
+    created_at: datetime
+    category: ReportCategory
+    target_type: ReportTargetType
+    target_description: str
+    status: ReportStatus
+
+
+class AdminReportEvidenceResponse(DomainResponse):
+    evidence_id: str
+    filename: str
+    content_type: str
+
+
+class AdminReportActivityResponse(DomainResponse):
+    activity_id: str
+    event_type: AdminReportActivityType
+    summary: str
+    administrator_user_id: str | None
+    administrator_name: str | None
+    occurred_at: datetime
+
+
+class AdminReportDetailsResponse(DomainResponse):
+    report: AdminReportSummaryResponse
+    reporter_user_id: str
+    reporter_name: str
+    description: str
+    target_snapshot: dict[str, object]
+    limited_context_snapshot: tuple[dict[str, object], ...]
+    evidence: tuple[AdminReportEvidenceResponse, ...]
+    activity: tuple[AdminReportActivityResponse, ...]
+    resolved_at: datetime | None
+    resolution_outcome: AdminReportResolutionOutcome | None
+    internal_resolution_reason: str | None
+    public_summary: str | None
+
+
+class AdminReportPageResponse(DomainResponse):
+    items: tuple[AdminReportSummaryResponse, ...]
+    next_cursor: str | None
+
+
+class AdminReportNoteRequest(BaseModel):
+    note: str = Field(min_length=2, max_length=2000)
+
+
+class AdminReportResolutionRequest(BaseModel):
+    outcome: AdminReportResolutionOutcome
+    reason: str = Field(min_length=10, max_length=2000)
+    public_summary: str = Field(min_length=10, max_length=1000)
+
+
+class AdminReportDismissRequest(BaseModel):
+    reason: str = Field(min_length=10, max_length=2000)
+    public_summary: str = Field(min_length=10, max_length=1000)
+
+
+class AdminReportGovernanceRequest(BaseModel):
+    action: AdminReportGovernanceAction
+    reason: str = Field(min_length=10, max_length=1000)

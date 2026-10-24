@@ -12,8 +12,13 @@ from datetime import datetime
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
     AdminAttachmentPage,
+    AdminEvidenceFile,
     AdminGroupDetails,
     AdminGroupPage,
+    AdminReportDetails,
+    AdminReportGovernanceAction,
+    AdminReportPage,
+    AdminReportResolutionOutcome,
     AdminUserDetails,
     AdminUserPage,
     AdministrationActor,
@@ -30,6 +35,7 @@ from app.domains.administration.domain.models import (
     SystemLogPage,
     SystemStatus,
 )
+from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 
 
 class AdministrationRepository(ABC):
@@ -177,4 +183,79 @@ class AdministrationRepository(ABC):
 
     @abstractmethod
     async def get_system_log(self, event_id: str) -> SystemLogEntry | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def list_reports(
+        self,
+        *,
+        search: str | None,
+        status: ReportStatus | None,
+        target_type: ReportTargetType | None,
+        cursor: str | None,
+        limit: int,
+    ) -> AdminReportPage:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_report(self, report_id: str) -> AdminReportDetails | None:
+        """Return report-preserved context only, never an unrestricted chat."""
+
+        raise NotImplementedError
+
+    @abstractmethod
+    async def start_report_review(
+        self, *, report_id: str, actor: AdministrationActor
+    ) -> AdminReportDetails | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def add_report_note(
+        self, *, report_id: str, administrator_user_id: str, note: str
+    ) -> AdminReportDetails | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def resolve_report(
+        self,
+        *,
+        report_id: str,
+        administrator_user_id: str,
+        outcome: AdminReportResolutionOutcome,
+        internal_reason: str,
+        public_summary: str,
+    ) -> AdminReportDetails | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def dismiss_report(
+        self,
+        *,
+        report_id: str,
+        administrator_user_id: str,
+        internal_reason: str,
+        public_summary: str,
+    ) -> AdminReportDetails | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def perform_report_governance_action(
+        self,
+        *,
+        report_id: str,
+        action: AdminReportGovernanceAction,
+        actor: AdministrationActor,
+    ) -> GovernanceActionResult | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_report_evidence(
+        self,
+        *,
+        report_id: str,
+        evidence_id: str,
+        administrator_user_id: str,
+    ) -> AdminEvidenceFile | None:
+        """Load one submitted evidence file and audit the evidence view."""
+
         raise NotImplementedError

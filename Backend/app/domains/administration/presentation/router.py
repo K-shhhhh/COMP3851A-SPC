@@ -2,9 +2,11 @@
 
 from contextlib import contextmanager
 from datetime import datetime
+from io import BytesIO
 from typing import Iterator
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_administration_service, require_roles
 from app.api.error_handlers import ApiError
@@ -31,6 +33,12 @@ from app.domains.administration.presentation.schemas import (
     AdminMeResponse,
     AdminUserDetailsResponse,
     AdminUserPageResponse,
+    AdminReportDetailsResponse,
+    AdminReportDismissRequest,
+    AdminReportGovernanceRequest,
+    AdminReportNoteRequest,
+    AdminReportPageResponse,
+    AdminReportResolutionRequest,
     DashboardResponse,
     GovernanceActionRequest,
     GovernanceActionResponse,
@@ -39,6 +47,7 @@ from app.domains.administration.presentation.schemas import (
     SystemStatusResponse,
 )
 from app.domains.auth.domain.models import User
+from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 
 
 ADMIN_REQUIRED = require_roles("admin")
@@ -307,3 +316,152 @@ async def get_system_log(
 ) -> SystemLogResponse:
     with administration_errors():
         return SystemLogResponse.model_validate(await service.get_system_log(event_id))
+
+
+@router.get("/reports", response_model=AdminReportPageResponse)
+async def list_reports(
+    search: str | None = Query(default=None, max_length=200),
+    status: ReportStatus | None = None,
+    target_type: ReportTargetType | None = None,
+    cursor: str | None = Query(default=None, max_length=500),
+    limit: int = Query(default=25, ge=1, le=100),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminReportPageResponse:
+    page = await service.list_reports(
+        search=search,
+        status=status,
+        target_type=target_type,
+        cursor=cursor,
+        limit=limit,
+    )
+    return AdminReportPageResponse.model_validate(page)
+
+
+@router.get("/reports/{report_id}", response_model=AdminReportDetailsResponse)
+async def get_report(
+    report_id: str,
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminReportDetailsResponse:
+    with administration_errors():
+        return AdminReportDetailsResponse.model_validate(
+            await service.get_report(report_id)
+        )
+
+
+@router.post(
+    "/reports/{report_id}/start-review",
+    response_model=AdminReportDetailsResponse,
+)
+async def start_report_review(
+    report_id: str,
+    request: GovernanceActionRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminReportDetailsResponse:
+    with administration_errors():
+        return AdminReportDetailsResponse.model_validate(
+            await service.start_report_review(
+                current_admin_id=current_admin.id,
+                report_id=report_id,
+                reason=request.reason,
+            )
+        )
+
+
+@router.post("/reports/{report_id}/notes", response_model=AdminReportDetailsResponse)
+async def add_report_note(
+    report_id: str,
+    request: AdminReportNoteRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminReportDetailsResponse:
+    with administration_errors():
+        return AdminReportDetailsResponse.model_validate(
+            await service.add_report_note(
+                current_admin_id=current_admin.id,
+                report_id=report_id,
+                note=request.note,
+            )
+        )
+
+
+@router.post("/reports/{report_id}/resolve", response_model=AdminReportDetailsResponse)
+async def resolve_report(
+    report_id: str,
+    request: AdminReportResolutionRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminReportDetailsResponse:
+    with administration_errors():
+        return AdminReportDetailsResponse.model_validate(
+            await service.resolve_report(
+                current_admin_id=current_admin.id,
+                report_id=report_id,
+                outcome=request.outcome,
+                reason=request.reason,
+                public_summary=request.public_summary,
+            )
+        )
+
+
+@router.post("/reports/{report_id}/dismiss", response_model=AdminReportDetailsResponse)
+async def dismiss_report(
+    report_id: str,
+    request: AdminReportDismissRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminReportDetailsResponse:
+    with administration_errors():
+        return AdminReportDetailsResponse.model_validate(
+            await service.dismiss_report(
+                current_admin_id=current_admin.id,
+                report_id=report_id,
+                reason=request.reason,
+                public_summary=request.public_summary,
+            )
+        )
+
+
+@router.post("/reports/{report_id}/actions", response_model=GovernanceActionResponse)
+async def perform_report_governance_action(
+    report_id: str,
+    request: AdminReportGovernanceRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> GovernanceActionResponse:
+    with administration_errors():
+        return GovernanceActionResponse.model_validate(
+            await service.perform_report_governance_action(
+                current_admin_id=current_admin.id,
+                report_id=report_id,
+                action=request.action,
+                reason=request.reason,
+            )
+        )
+
+
+@router.get("/reports/{report_id}/evidence/{evidence_id}")
+async def get_report_evidence(
+    report_id: str,
+    evidence_id: str,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> StreamingResponse:
+    with administration_errors():
+        evidence = await service.get_report_evidence(
+            current_admin_id=current_admin.id,
+            report_id=report_id,
+            evidence_id=evidence_id,
+        )
+        safe_name = (
+            evidence.filename.replace('"', "").replace("\r", "").replace("\n", "")
+        )
+        return StreamingResponse(
+            BytesIO(evidence.content),
+            media_type=evidence.content_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{safe_name}"',
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )

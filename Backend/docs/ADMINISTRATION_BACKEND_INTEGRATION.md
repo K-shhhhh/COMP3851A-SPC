@@ -1,8 +1,9 @@
 # Administration Backend Integration
 
-This contract covers the MVP administration portal except Report Management.
-Report-review endpoints, priority, assignment, evidence review, and resolution
-are intentionally excluded until the revised Figma workflow is approved.
+This contract covers the complete MVP administration portal, including the
+privacy-preserving Report Management workflow. Priority, administrator
+assignment, unrestricted chat access, and escalation workflows are not part of
+the MVP.
 
 ## Security boundary
 
@@ -24,7 +25,7 @@ adapter is supplied. Authenticated administrators receive
 
 The dashboard contains active-user, active-study-group, stored-note, and recent
 processing-failure counts plus sanitized recent operational events. Report
-statistics will be added with Report Management later.
+statistics plus open, under-review, and recently submitted report counts.
 
 ### Users
 
@@ -67,6 +68,31 @@ Filters are `severity`, `service`, `request_id`, `occurred_from`, `occurred_to`,
 `cursor`, and `limit`. Logs are read-only and must be sanitized. There are no
 edit, clear, or delete endpoints.
 
+### Reports
+
+- `GET /administration/reports`
+- `GET /administration/reports/{report_id}`
+- `POST /administration/reports/{report_id}/start-review`
+- `POST /administration/reports/{report_id}/notes`
+- `POST /administration/reports/{report_id}/actions`
+- `POST /administration/reports/{report_id}/resolve`
+- `POST /administration/reports/{report_id}/dismiss`
+- `GET /administration/reports/{report_id}/evidence/{evidence_id}`
+
+List filters are `search`, `status`, `target_type`, `cursor`, and `limit`.
+The state machine is `submitted -> under_review -> resolved|dismissed`.
+Internal notes and governance actions are allowed only during review; completed
+reports are read-only. Resolution requires an internal reason and a separate
+public summary. Target-specific actions are message removal/message-author
+deactivation, group removal, or file removal.
+
+Report details may expose only the immutable target snapshot, limited context
+captured when the report was submitted, and evidence explicitly attached to
+that report. They must never provide arbitrary conversation browsing. Evidence
+is private, returned with `no-store`, and every evidence view must append an
+immutable audit event. Reporter identity is for authorized administrator use
+only and must not be exposed to reported users.
+
 ## Database adapter requirements
 
 Implement `AdministrationRepository` in
@@ -81,6 +107,13 @@ Every governance mutation must atomically:
 3. Append an immutable audit event containing administrator ID, action, target,
    reason, and timestamp.
 4. Commit both changes together or roll both back.
+
+Report persistence additionally needs immutable report-activity records for
+review start, note creation, evidence access, governance action, resolution,
+and dismissal. Notes must be append-only. Report resolution/dismissal must lock
+the report to prevent concurrent final decisions. If a report action crosses
+PostgreSQL, private storage, Redis sessions, or the worker queue, use an
+idempotent operation/outbox design so retries cannot duplicate the action.
 
 The adapter must not return passwords, password hashes, refresh tokens, access
 tokens, private object paths, complete conversations, raw request bodies, or

@@ -13,6 +13,10 @@ from app.domains.administration.domain.exceptions import (
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
     AdminAttachmentSummary,
+    AdminReportDetails,
+    AdminReportGovernanceAction,
+    AdminReportResolutionOutcome,
+    AdminReportSummary,
     AdminUserDetails,
     AdminUserSummary,
     AdministrationAttachmentSource,
@@ -20,6 +24,11 @@ from app.domains.administration.domain.models import (
     AdministrationUserRole,
     AdministrationUserStatus,
     GovernanceActionResult,
+)
+from app.domains.reports.domain.models import (
+    ReportCategory,
+    ReportStatus,
+    ReportTargetType,
 )
 
 
@@ -55,6 +64,8 @@ class StubAdministrationRepository:
             safe_processing_error="Processing failed.",
         )
         self.last_actor = None
+        self.report = self._report(ReportStatus.SUBMITTED, ReportTargetType.MESSAGE)
+        self.last_report_call = None
 
     @staticmethod
     def _user(user_id: str, role: AdministrationUserRole) -> AdminUserDetails:
@@ -92,6 +103,55 @@ class StubAdministrationRepository:
 
     async def list_system_logs(self, **_):
         raise AssertionError("invalid ranges must fail before persistence")
+
+    @staticmethod
+    def _report(status, target_type):
+        return AdminReportDetails(
+            report=AdminReportSummary(
+                report_id="report-1",
+                created_at=NOW,
+                category=ReportCategory.HARASSMENT_BULLYING,
+                target_type=target_type,
+                target_description="Reported content",
+                status=status,
+            ),
+            reporter_user_id="student-1",
+            reporter_name="Student",
+            description="A clear report description",
+            target_snapshot={"message": "preserved reported message"},
+            limited_context_snapshot=(),
+            evidence=(),
+            activity=(),
+            resolved_at=None,
+            resolution_outcome=None,
+            internal_resolution_reason=None,
+            public_summary=None,
+        )
+
+    async def get_report(self, report_id):
+        return self.report if report_id == "report-1" else None
+
+    async def start_report_review(self, **values):
+        self.last_report_call = values
+        return replace(
+            self.report,
+            report=replace(self.report.report, status=ReportStatus.UNDER_REVIEW),
+        )
+
+    async def add_report_note(self, **values):
+        self.last_report_call = values
+        return self.report
+
+    async def resolve_report(self, **values):
+        self.last_report_call = values
+        return replace(
+            self.report,
+            report=replace(self.report.report, status=ReportStatus.RESOLVED),
+        )
+
+    async def perform_report_governance_action(self, **values):
+        self.last_report_call = values
+        return GovernanceActionResult("report-1", "action_completed", NOW)
 
 
 @pytest.mark.asyncio
@@ -170,3 +230,56 @@ async def test_system_log_range_must_be_ordered() -> None:
             cursor=None,
             limit=25,
         )
+
+
+@pytest.mark.asyncio
+async def test_report_workflow_requires_explicit_review_state() -> None:
+    repository = StubAdministrationRepository()
+    service = AdministrationService(repository)
+
+    with pytest.raises(AdministrationConflictError, match="under review"):
+        await service.add_report_note(
+            current_admin_id="admin-1", report_id="report-1", note="Reviewed"
+        )
+
+    reviewed = await service.start_report_review(
+        current_admin_id="admin-1",
+        report_id="report-1",
+        reason="Beginning policy investigation",
+    )
+    assert reviewed.report.status == ReportStatus.UNDER_REVIEW
+
+
+@pytest.mark.asyncio
+async def test_report_resolution_and_action_must_match_target() -> None:
+    repository = StubAdministrationRepository()
+    repository.report = repository._report(
+        ReportStatus.UNDER_REVIEW, ReportTargetType.GROUP
+    )
+    service = AdministrationService(repository)
+
+    with pytest.raises(AdministrationValidationError, match="outcome"):
+        await service.resolve_report(
+            current_admin_id="admin-1",
+            report_id="report-1",
+            outcome=AdminReportResolutionOutcome.FILE_REMOVED,
+            reason="Confirmed governance policy violation",
+            public_summary="The report was reviewed and actioned.",
+        )
+
+    with pytest.raises(AdministrationValidationError, match="action"):
+        await service.perform_report_governance_action(
+            current_admin_id="admin-1",
+            report_id="report-1",
+            action=AdminReportGovernanceAction.REMOVE_FILE,
+            reason="Confirmed governance policy violation",
+        )
+
+    resolved = await service.resolve_report(
+        current_admin_id="admin-1",
+        report_id="report-1",
+        outcome=AdminReportResolutionOutcome.GROUP_REMOVED,
+        reason="Confirmed governance policy violation",
+        public_summary="The group was removed after review.",
+    )
+    assert resolved.report.status == ReportStatus.RESOLVED

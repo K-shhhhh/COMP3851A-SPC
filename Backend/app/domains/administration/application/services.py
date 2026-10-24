@@ -15,8 +15,13 @@ from app.domains.administration.domain.exceptions import (
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
     AdminAttachmentPage,
+    AdminEvidenceFile,
     AdminGroupDetails,
     AdminGroupPage,
+    AdminReportDetails,
+    AdminReportGovernanceAction,
+    AdminReportPage,
+    AdminReportResolutionOutcome,
     AdminUserDetails,
     AdminUserPage,
     AdministrationActor,
@@ -34,6 +39,7 @@ from app.domains.administration.domain.models import (
     SystemStatus,
 )
 from app.domains.administration.domain.repository import AdministrationRepository
+from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 
 
 class AdministrationService:
@@ -258,6 +264,197 @@ class AdministrationService:
         if event is None:
             raise AdministrationResourceNotFoundError("The system log was not found.")
         return event
+
+    async def list_reports(
+        self,
+        *,
+        search: str | None,
+        status: ReportStatus | None,
+        target_type: ReportTargetType | None,
+        cursor: str | None,
+        limit: int,
+    ) -> AdminReportPage:
+        return await self.repository.list_reports(
+            search=self._clean_optional(search),
+            status=status,
+            target_type=target_type,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    async def get_report(self, report_id: str) -> AdminReportDetails:
+        report = await self.repository.get_report(report_id)
+        if report is None:
+            raise AdministrationResourceNotFoundError("The report was not found.")
+        return report
+
+    async def start_report_review(
+        self, *, current_admin_id: str, report_id: str, reason: str
+    ) -> AdminReportDetails:
+        report = await self.get_report(report_id)
+        if report.report.status != ReportStatus.SUBMITTED:
+            raise AdministrationConflictError(
+                "Only a submitted report can enter review."
+            )
+        result = await self.repository.start_report_review(
+            report_id=report_id,
+            actor=self._actor(current_admin_id, reason),
+        )
+        return self._require_report(result)
+
+    async def add_report_note(
+        self, *, current_admin_id: str, report_id: str, note: str
+    ) -> AdminReportDetails:
+        report = await self._require_report_under_review(report_id)
+        clean_note = note.strip()
+        if len(clean_note) < 2:
+            raise AdministrationValidationError(
+                "An internal note must contain at least 2 characters."
+            )
+        result = await self.repository.add_report_note(
+            report_id=report.report.report_id,
+            administrator_user_id=current_admin_id,
+            note=clean_note,
+        )
+        return self._require_report(result)
+
+    async def resolve_report(
+        self,
+        *,
+        current_admin_id: str,
+        report_id: str,
+        outcome: AdminReportResolutionOutcome,
+        reason: str,
+        public_summary: str,
+    ) -> AdminReportDetails:
+        report = await self._require_report_under_review(report_id)
+        self._validate_resolution_outcome(report.report.target_type, outcome)
+        result = await self.repository.resolve_report(
+            report_id=report_id,
+            administrator_user_id=current_admin_id,
+            outcome=outcome,
+            internal_reason=self._reason(reason),
+            public_summary=self._public_summary(public_summary),
+        )
+        return self._require_report(result)
+
+    async def dismiss_report(
+        self,
+        *,
+        current_admin_id: str,
+        report_id: str,
+        reason: str,
+        public_summary: str,
+    ) -> AdminReportDetails:
+        await self._require_report_under_review(report_id)
+        result = await self.repository.dismiss_report(
+            report_id=report_id,
+            administrator_user_id=current_admin_id,
+            internal_reason=self._reason(reason),
+            public_summary=self._public_summary(public_summary),
+        )
+        return self._require_report(result)
+
+    async def perform_report_governance_action(
+        self,
+        *,
+        current_admin_id: str,
+        report_id: str,
+        action: AdminReportGovernanceAction,
+        reason: str,
+    ) -> GovernanceActionResult:
+        report = await self._require_report_under_review(report_id)
+        allowed = {
+            ReportTargetType.MESSAGE: {
+                AdminReportGovernanceAction.REMOVE_MESSAGE,
+                AdminReportGovernanceAction.DEACTIVATE_MESSAGE_AUTHOR,
+            },
+            ReportTargetType.GROUP: {AdminReportGovernanceAction.REMOVE_GROUP},
+            ReportTargetType.FILE: {AdminReportGovernanceAction.REMOVE_FILE},
+        }
+        if action not in allowed[report.report.target_type]:
+            raise AdministrationValidationError(
+                "The governance action does not match the report target."
+            )
+        result = await self.repository.perform_report_governance_action(
+            report_id=report_id,
+            action=action,
+            actor=self._actor(current_admin_id, reason),
+        )
+        return self._require_result(result, "The report was not found.")
+
+    async def get_report_evidence(
+        self,
+        *,
+        current_admin_id: str,
+        report_id: str,
+        evidence_id: str,
+    ) -> AdminEvidenceFile:
+        report = await self.get_report(report_id)
+        if not any(item.evidence_id == evidence_id for item in report.evidence):
+            raise AdministrationResourceNotFoundError(
+                "The report evidence was not found."
+            )
+        evidence = await self.repository.get_report_evidence(
+            report_id=report_id,
+            evidence_id=evidence_id,
+            administrator_user_id=current_admin_id,
+        )
+        if evidence is None:
+            raise AdministrationResourceNotFoundError(
+                "The report evidence was not found."
+            )
+        return evidence
+
+    async def _require_report_under_review(self, report_id: str) -> AdminReportDetails:
+        report = await self.get_report(report_id)
+        if report.report.status != ReportStatus.UNDER_REVIEW:
+            raise AdministrationConflictError(
+                "This action is available only while the report is under review."
+            )
+        return report
+
+    @staticmethod
+    def _validate_resolution_outcome(
+        target_type: ReportTargetType,
+        outcome: AdminReportResolutionOutcome,
+    ) -> None:
+        common = {
+            AdminReportResolutionOutcome.NO_VIOLATION,
+            AdminReportResolutionOutcome.DUPLICATE,
+            AdminReportResolutionOutcome.INSUFFICIENT_EVIDENCE,
+        }
+        target_outcomes = {
+            ReportTargetType.MESSAGE: {
+                AdminReportResolutionOutcome.CONTENT_REMOVED,
+                AdminReportResolutionOutcome.USER_DEACTIVATED,
+            },
+            ReportTargetType.GROUP: {AdminReportResolutionOutcome.GROUP_REMOVED},
+            ReportTargetType.FILE: {AdminReportResolutionOutcome.FILE_REMOVED},
+        }
+        if outcome not in common | target_outcomes[target_type]:
+            raise AdministrationValidationError(
+                "The resolution outcome does not match the report target."
+            )
+
+    @staticmethod
+    def _reason(value: str) -> str:
+        return AdministrationService._actor("validation-only", value).reason
+
+    @staticmethod
+    def _public_summary(value: str) -> str:
+        clean = value.strip()
+        if len(clean) < 10:
+            raise AdministrationValidationError(
+                "A public resolution summary must contain at least 10 characters."
+            )
+        return clean
+
+    @staticmethod
+    def _require_report(result: AdminReportDetails | None) -> AdminReportDetails:
+        if result is None:
+            raise AdministrationResourceNotFoundError("The report was not found.")
+        return result
 
     @staticmethod
     def _actor(user_id: str, reason: str) -> AdministrationActor:
