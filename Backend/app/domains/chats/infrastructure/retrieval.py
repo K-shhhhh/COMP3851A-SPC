@@ -22,6 +22,16 @@ from app.models.orm_models import (
 )
 
 
+def _clean_chunk_text(text: str) -> str:
+    """Drop NUL (0x00) characters, which PostgreSQL text columns refuse.
+
+    Some PDFs contain them in their extracted text, and one bad character used
+    to fail the whole upload at the last step.
+    """
+
+    return text.replace("\x00", "")
+
+
 class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
     """Persist embedded chunks and retrieve only authorized ready content."""
 
@@ -57,7 +67,7 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
                     chunk_order=order,
                     source_page=payload.get("source_page"),
                     source_type=payload.get("source_type", "text"),
-                    chunk_content=payload["text"],
+                    chunk_content=_clean_chunk_text(payload["text"]),
                     embedding_model_version=payload.get(
                         "embedding_model_version",
                         "nomic-embed-text",
@@ -69,7 +79,7 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
             else:
                 chunk.source_page = payload.get("source_page")
                 chunk.source_type = payload.get("source_type", "text")
-                chunk.chunk_content = payload["text"]
+                chunk.chunk_content = _clean_chunk_text(payload["text"])
                 chunk.embedding_model_version = payload.get(
                     "embedding_model_version",
                     "nomic-embed-text",
