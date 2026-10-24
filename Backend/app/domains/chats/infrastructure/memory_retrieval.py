@@ -58,11 +58,19 @@ class InMemoryReadyNoteChunkRepository(ReadyNoteChunkRepository):
         self,
         *,
         user_id: str,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
         """Return only the chunks previously scoped to this user."""
 
         async with self._lock:
-            return self._chunks.get(user_id, ())
+            chunks = self._chunks.get(user_id, ())
+        if note_id is None:
+            return chunks
+        selected = []
+        for chunk in chunks:
+            if chunk.source.note_id == note_id:
+                selected.append(chunk)
+        return tuple(selected)
 
     async def search_ready_chunks_for_user(
         self,
@@ -70,10 +78,14 @@ class InMemoryReadyNoteChunkRepository(ReadyNoteChunkRepository):
         user_id: str,
         query_embedding: tuple[float, ...],
         limit: int,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
         """Provide a deterministic bounded fallback for isolated tests."""
 
         if limit <= 0:
             raise ValueError("semantic search limit must be positive")
-        async with self._lock:
-            return self._chunks.get(user_id, ())[:limit]
+        chunks = await self.list_ready_chunks_for_user(
+            user_id=user_id,
+            note_id=note_id,
+        )
+        return chunks[:limit]

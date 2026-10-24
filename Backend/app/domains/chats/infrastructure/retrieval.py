@@ -23,6 +23,14 @@ from app.models.orm_models import (
 )
 
 
+def _note_filter(note_id: int | None) -> list:
+    """Return the extra condition that limits a search to one chosen note."""
+
+    if note_id is None:
+        return []
+    return [Attachment.attachment_id == note_id]
+
+
 def _clean_chunk_text(text: str) -> str:
     """Drop NUL (0x00) characters, which PostgreSQL text columns refuse.
 
@@ -102,6 +110,7 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
         self,
         *,
         user_id: str,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
         """Return ready My Notes chunks owned by one authenticated student."""
 
@@ -122,6 +131,7 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
                 Attachment.processing_status == AttachmentStatus.READY,
                 Attachment.deleted_at.is_(None),
                 Chunk.deleted_at.is_(None),
+                *_note_filter(note_id),
             )
             .order_by(Chunk.attachment_id, Chunk.chunk_order)
         )
@@ -145,8 +155,9 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
         user_id: str,
         query_embedding: tuple[float, ...],
         limit: int,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
-        """Rank authorized My Notes chunks equally, regardless of chat origin."""
+        """Rank authorized My Notes chunks, optionally inside one chosen note."""
         embedding = validate_semantic_search(query_embedding, limit)
         try:
             user_uuid = uuid.UUID(user_id)
@@ -164,6 +175,7 @@ class PostgreSQLReadyNoteChunkRepository(ReadyNoteChunkRepository):
                 Attachment.deleted_at.is_(None),
                 Chunk.deleted_at.is_(None),
                 Chunk.embedding_model_version == SEMANTIC_EMBEDDING_MODEL_VERSION,
+                *_note_filter(note_id),
             )
             # The direct ascending cosine operator can use vector_cosine_ops.
             # Scope/status predicates belong in this query, before LIMIT.

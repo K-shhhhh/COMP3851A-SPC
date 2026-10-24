@@ -28,8 +28,12 @@ class ReadyNoteChunkRepository(ABC):
         self,
         *,
         user_id: str,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
-        """Return non-deleted ready-note chunks scoped to one student."""
+        """Return non-deleted ready-note chunks scoped to one student.
+
+        When note_id is given, only that one note is searched.
+        """
 
         raise NotImplementedError
 
@@ -40,8 +44,12 @@ class ReadyNoteChunkRepository(ABC):
         user_id: str,
         query_embedding: tuple[float, ...],
         limit: int,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
         """Return top-ranked ready library chunks owned by one student.
+
+        When note_id is given, the search is limited to that one note and the
+        same ownership, status and deletion rules still apply to it.
 
         All My Notes attachments are treated equally in this prototype. The
         database adapter applies ownership/status/deletion filters before

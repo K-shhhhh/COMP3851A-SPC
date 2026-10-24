@@ -28,6 +28,7 @@ from app.domains.chats.domain.exceptions import (
     InvalidChatTitleError,
     InvalidQuestionError,
     NoProcessedNotesError,
+    SelectedNoteUnavailableError,
     PromptInjectionDetectedError,
 )
 from app.domains.notes.application.services import NoteService
@@ -289,6 +290,7 @@ async def ask_question(
             user_id=current_user.id,
             question=payload.content,
             response_format=payload.response_format,
+            note_id=payload.note_id,
         )
     except Exception as exc:
         _raise_chat_api_error(exc)
@@ -308,6 +310,13 @@ def _raise_chat_api_error(exc: Exception) -> None:
             status_code=404,
             code="CHAT_NOT_FOUND",
             message="The requested chat was not found.",
+        ) from exc
+
+    if isinstance(exc, SelectedNoteUnavailableError):
+        raise ApiError(
+            status_code=409,
+            code="SELECTED_NOTE_UNAVAILABLE",
+            message=str(exc),
         ) from exc
 
     if isinstance(exc, NoProcessedNotesError):

@@ -145,6 +145,25 @@ Content-Type: application/json
 }
 ```
 
+Two optional fields can be added:
+
+| Field | Meaning |
+|---|---|
+| `response_format` | `paragraph`, `bullet_points` or `table`. Leave it out and the student can still ask for a layout in their own words |
+| `note_id` | The id of one of the student's Ready notes (the same `id` the notes list returns). The answer is searched only inside that note. Leave it out to search all of the student's notes |
+
+```json
+{
+  "content": "Summarise the main findings",
+  "response_format": "bullet_points",
+  "note_id": 7
+}
+```
+
+The note picker is meant to stay selected for the whole conversation until
+the student changes it, so the frontend sends the same `note_id` with every
+message of that chat. The backend does not remember it.
+
 Success is `201 Created`:
 
 ```json
@@ -232,6 +251,7 @@ from frontend state.
 | `AUTHENTICATION_REQUIRED`, `TOKEN_INVALID`, `TOKEN_EXPIRED`, `TOKEN_REVOKED` | Clear/refresh the session according to the authentication policy |
 | `CHAT_NOT_FOUND` | Remove stale chat state and select another conversation |
 | `NO_PROCESSED_NOTES` | Tell the student to upload a note and wait until it is ready |
+| `SELECTED_NOTE_UNAVAILABLE` (409) | The chosen note was deleted, is still processing or failed. Switch the picker back to All my notes and show the returned message |
 | `VALIDATION_ERROR` | Show the safe validation message near the input |
 | `ANSWER_GENERATION_FAILED` | Keep the question visible and show a retryable answer error |
 

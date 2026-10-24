@@ -35,6 +35,15 @@ class AskQuestionRequest(BaseModel):
         default=None,
         description="Requested display format for the assistant's answer.",
     )
+    note_id: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Optional id of one of the student's ready notes. When set, the "
+            "answer is searched only inside that note. Leave it out to search "
+            "all of the student's notes."
+        ),
+    )
 
 
 class ChatResponse(BaseModel):

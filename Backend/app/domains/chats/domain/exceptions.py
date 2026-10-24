@@ -24,6 +24,14 @@ class NoProcessedNotesError(ChatError):
     """Raised when the student has no ready note chunks to search."""
 
 
+class SelectedNoteUnavailableError(ChatError):
+    """Raised when the note a student chose to ask about cannot be searched.
+
+    The note may belong to someone else, be deleted, still be processing or
+    have failed. The reply is the same in every case so it reveals nothing.
+    """
+
+
 class AnswerGenerationError(ChatError):
     """Raised when the configured synchronous answer adapter fails."""
 

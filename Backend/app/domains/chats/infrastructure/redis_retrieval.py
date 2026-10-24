@@ -63,6 +63,7 @@ class RedisReadyNoteChunkRepository(ReadyNoteChunkRepository):
         self,
         *,
         user_id: str,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
         """Return only the chunks previously scoped to this user."""
 
@@ -74,7 +75,10 @@ class RedisReadyNoteChunkRepository(ReadyNoteChunkRepository):
         stored_items = json.loads(raw)
         chunks = []
         for item in stored_items:
-            chunks.append(self._deserialize_chunk(item))
+            chunk = self._deserialize_chunk(item)
+            if note_id is not None and chunk.source.note_id != note_id:
+                continue
+            chunks.append(chunk)
 
         return tuple(chunks)
 
@@ -84,12 +88,16 @@ class RedisReadyNoteChunkRepository(ReadyNoteChunkRepository):
         user_id: str,
         query_embedding: tuple[float, ...],
         limit: int,
+        note_id: int | None = None,
     ) -> tuple[GroundingChunk, ...]:
         """Return a bounded fallback; Redis does not own vector ranking."""
 
         if limit <= 0:
             raise ValueError("semantic search limit must be positive")
-        existing = await self.list_ready_chunks_for_user(user_id=user_id)
+        existing = await self.list_ready_chunks_for_user(
+            user_id=user_id,
+            note_id=note_id,
+        )
         return existing[:limit]
 
     async def replace_attachment_chunks(

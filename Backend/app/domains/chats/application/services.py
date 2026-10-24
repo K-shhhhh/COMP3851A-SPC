@@ -18,6 +18,7 @@ from app.domains.chats.domain.exceptions import (
     InvalidChatTitleError,
     InvalidQuestionError,
     NoProcessedNotesError,
+    SelectedNoteUnavailableError,
 )
 from app.domains.chats.domain.models import (
     ChatExchange,
@@ -167,6 +168,7 @@ class ChatService:
         user_id: str,
         question: str,
         response_format: str | None = None,
+        note_id: int | None = None,
     ) -> ChatExchange:
         """Answer synchronously using only the student's ready note chunks.
 
@@ -198,7 +200,8 @@ class ChatService:
         # in My Notes are treated equally in the prototype search pool.
         if self._question_embedding_provider is None:
             chunks = await self._chunk_repository.list_ready_chunks_for_user(
-                user_id=user_id
+                user_id=user_id,
+                note_id=note_id,
             )
         else:
             query_embedding = (
@@ -211,7 +214,16 @@ class ChatService:
                     user_id=user_id,
                     query_embedding=query_embedding,
                     limit=self._semantic_search_limit,
+                    note_id=note_id,
                 )
+            )
+
+        if not chunks and note_id is not None:
+            # The student chose one note, and nothing can be searched in it.
+            raise SelectedNoteUnavailableError(
+                "The selected note is not available. It may have been deleted "
+                "or may still be processing. Choose another note or ask "
+                "about all your notes."
             )
 
         if not chunks:
