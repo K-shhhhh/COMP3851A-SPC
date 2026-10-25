@@ -485,6 +485,9 @@ function GroupStudyPage() {
   const [reportTarget, setReportTarget] =
     useState(null);
 
+  const [messageActionMenuId, setMessageActionMenuId] =
+    useState(null);
+
   /* -------------------------------------------------------
      RESPONSE TIMERS
      ------------------------------------------------------- */
@@ -3555,19 +3558,44 @@ function GroupStudyPage() {
                                           )}
 
                                           {!isOwnMessage && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setReportTarget({
-                                                  type: "message",
-                                                  id: String(item.id),
-                                                  label: "message",
-                                                })
-                                              }
-                                            >
-                                              <Flag size={13} />
-                                              Report
-                                            </button>
+                                            <div className="message-more-wrap">
+                                              <button
+                                                type="button"
+                                                className="message-more-button"
+                                                aria-label="Message options"
+                                                title="Message options"
+                                                onClick={() =>
+                                                  setMessageActionMenuId(
+                                                    (current) =>
+                                                      current === item.id
+                                                        ? null
+                                                        : item.id,
+                                                  )
+                                                }
+                                              >
+                                                <MoreHorizontal size={15} />
+                                              </button>
+
+                                              {messageActionMenuId ===
+                                                item.id && (
+                                                <div className="message-more-menu">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setMessageActionMenuId(null);
+                                                      setReportTarget({
+                                                        type: "message",
+                                                        id: String(item.id),
+                                                        label: "message",
+                                                      });
+                                                    }}
+                                                  >
+                                                    <Flag size={13} />
+                                                    Report message
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
                                           )}
                                         </div>
                                       </div>
