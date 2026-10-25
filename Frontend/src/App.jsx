@@ -13,8 +13,18 @@ import NotesPage from "./pages/Notes/NotesPage.jsx";
 import CompanionPage from "./pages/Companion/CompanionPage";
 import GroupStudyPage from "./pages/GroupStudy/GroupStudyPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraph/KnowledgeGraphPage.jsx";
+import ProfilePage from "./pages/Profile/ProfilePage.jsx";
+import SettingsPage from "./pages/Settings/SettingsPage.jsx";
 
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
+import RoleRedirect from "./routes/RoleRedirect.jsx";
+import GuestRoute from "./routes/GuestRoute.jsx";
+import AdminLayout from "./pages/Admin/AdminLayout.jsx";
+import AdminDashboardPage from "./pages/Admin/AdminDashboardPage.jsx";
+import AdminCollectionPage from "./pages/Admin/AdminCollectionPage.jsx";
+import AdminStudyGroupsPage from "./pages/Admin/AdminStudyGroupsPage.jsx";
+import AdminAttachmentsPage from "./pages/Admin/AdminAttachmentsPage.jsx";
+import AdminReportsPage from "./pages/Admin/AdminReportsPage.jsx";
 
 import "./styles/styles.css";
 
@@ -25,21 +35,18 @@ function App() {
         <Route
           path="/"
           element={
-            <Navigate
-              to="/login"
-              replace
-            />
+            <RoleRedirect />
           }
         />
 
         <Route
           path="/login"
-          element={<LoginPage />}
+          element={<GuestRoute><LoginPage /></GuestRoute>}
         />
 
         <Route
           path="/register"
-          element={<RegisterPage />}
+          element={<GuestRoute><RegisterPage /></GuestRoute>}
         />
 
         <Route
@@ -103,10 +110,41 @@ function App() {
         />
 
         <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin pages share the login but have their own role-protected shell. */}
+        <Route
+          path="/admin"
+          element={<ProtectedRoute requiredRole="admin"><AdminLayout /></ProtectedRoute>}
+        >
+          <Route index element={<AdminDashboardPage />} />
+          <Route path="users" element={<AdminCollectionPage section="users" />} />
+          <Route path="study-groups" element={<AdminStudyGroupsPage />} />
+          <Route path="attachments" element={<AdminAttachmentsPage />} />
+          <Route path="reports" element={<AdminReportsPage />} />
+          <Route path="system-logs" element={<AdminCollectionPage section="system-logs" />} />
+        </Route>
+
+        <Route
           path="*"
           element={
             <Navigate
-              to="/dashboard"
+              to="/"
               replace
             />
           }

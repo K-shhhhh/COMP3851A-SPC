@@ -1,59 +1,39 @@
-/* =========================================================
-   SESSION EXPIRED NOTICE
-
-   Access tokens last 30 minutes. When one runs out, the app
-   signs the student out and shows the login page. Without a
-   message that looks like a bug, so the reason is remembered
-   here and shown on the login page.
-   ========================================================= */
-
+/** Inform the login screen why a previous session ended. */
 const NOTICE_KEY = "spc_session_notice";
 
-export const SESSION_EXPIRED_MESSAGE =
-  "Your session expired, so you were signed out. Please log in again.";
+export const SESSION_EXPIRED_MESSAGE = "Your session expired. Please sign in again.";
+export const SESSION_IDLE_MESSAGE = "You were logged out after 30 minutes of inactivity.";
 
-/* Reads the exp claim of a JWT. Returns true only when the token
-   clearly ran out; anything unreadable counts as not expired. */
-export function tokenHasExpired(token, now = Date.now()) {
+export function getTokenExpiry(token) {
   try {
-    const payloadPart = String(token).split(".")[1];
-
-    if (!payloadPart) {
-      return false;
-    }
-
-    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const part = String(token).split(".")[1];
+    if (!part) return null;
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/");
     const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    const payload = JSON.parse(atob(padded));
-
-    return typeof payload.exp === "number" && payload.exp * 1000 <= now;
+    const data = JSON.parse(atob(padded));
+    return Number.isFinite(data.exp) ? data.exp * 1000 : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function rememberSessionExpired() {
-  try {
-    sessionStorage.setItem(NOTICE_KEY, "expired");
-  } catch {
-    /* Storage can be blocked. The notice is a convenience only. */
-  }
+export function tokenHasExpired(token, now = Date.now()) {
+  const expiresAt = getTokenExpiry(token);
+  return expiresAt !== null && expiresAt <= now;
+}
+
+export function rememberSessionExpired(reason = "expired") {
+  try { sessionStorage.setItem(NOTICE_KEY, reason); } catch { /* optional */ }
 }
 
 export function readSessionNotice() {
   try {
-    return sessionStorage.getItem(NOTICE_KEY) === "expired"
-      ? SESSION_EXPIRED_MESSAGE
-      : "";
-  } catch {
-    return "";
-  }
+    const value = sessionStorage.getItem(NOTICE_KEY);
+    if (value === "idle") return SESSION_IDLE_MESSAGE;
+    return value === "expired" ? SESSION_EXPIRED_MESSAGE : "";
+  } catch { return ""; }
 }
 
 export function clearSessionNotice() {
-  try {
-    sessionStorage.removeItem(NOTICE_KEY);
-  } catch {
-    /* Nothing to do if storage is blocked. */
-  }
+  try { sessionStorage.removeItem(NOTICE_KEY); } catch { /* optional */ }
 }

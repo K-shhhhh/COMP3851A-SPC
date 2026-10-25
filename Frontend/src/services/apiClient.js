@@ -1,19 +1,8 @@
 /** Shared HTTP transport for feature-specific service modules. */
 import { integrationConfig } from "../config/integration.js";
+import { getAuthBridge } from "./authBridge.js";
 
-/** Error raised when the backend request or response contract cannot be satisfied. */
 export class ApiError extends Error {
-  /**
-   * Create a normalized frontend API error.
-   *
-   * @param {string} message Human-readable error message.
-   * @param {object} [metadata] Structured backend or network error metadata.
-   * @param {number} [metadata.status=0] HTTP status, or zero for network failures.
-   * @param {string} [metadata.code="NETWORK_ERROR"] Stable application error code.
-   * @param {unknown} [metadata.details=null] Optional validation or diagnostic details.
-   * @param {boolean} [metadata.retryable=false] Whether retrying may succeed.
-   * @param {string|null} [metadata.requestId=null] Correlation identifier for support.
-   */
   constructor(message, {
     status = 0, code = "NETWORK_ERROR", details = null,
     retryable = false, requestId = null,
@@ -28,34 +17,23 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Send a request through the configured API base URL.
- *
- * @param {string} path API path beginning with a slash.
- * @param {RequestInit & {accessToken?: string}} [options={}] Fetch options and optional bearer token.
- * @returns {Promise<unknown|null>} Parsed JSON, or null for a 204 response.
- * @throws {ApiError} When the network, HTTP response, or JSON contract fails.
- */
-export async function apiRequest(path, options = {}) {
-  // Authentication state belongs to the frontend team. Accept a token per call;
-  // do not choose localStorage, refresh-token policy, or a global token store here.
-  const { accessToken, ...fetchOptions } = options;
-  const headers = new Headers(fetchOptions.headers);
+async function sendRequest(path, options, accessToken) {
+  const headers = new Headers(options.headers);
   if (!headers.has("Accept")) headers.set("Accept", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  // JSON callers stringify their bodies. Leave FormData's multipart boundary to fetch.
-  if (typeof fetchOptions.body === "string" && !headers.has("Content-Type")) {
+  else headers.delete("Authorization");
+  if (typeof options.body === "string" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   let response;
   try {
     response = await fetch(`${integrationConfig.apiBaseUrl}${path}`, {
-      ...fetchOptions, headers,
+      ...options,
+      headers,
     });
   } catch (error) {
-    // Cancelling a screen's request is not a connection failure to display to the user.
-    if (error.name === "AbortError") throw error;
+    if (error?.name === "AbortError") throw error;
     throw new ApiError("Unable to reach the backend.", { retryable: true });
   }
 
@@ -64,8 +42,7 @@ export async function apiRequest(path, options = {}) {
   try {
     payload = await response.json();
   } catch (error) {
-    if (error.name === "AbortError") throw error;
-    // For failed requests an HTML gateway error is handled by the generic message below.
+    if (error?.name === "AbortError") throw error;
     if (response.ok) {
       throw new ApiError("The backend returned an invalid JSON response.", {
         status: response.status, code: "INVALID_RESPONSE",
@@ -74,8 +51,6 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    // Support the agreed error envelope and FastAPI's existing detail responses
-    // while the backend team migrates routes to the common contract.
     const validation = Array.isArray(payload?.detail);
     const legacyMessage = typeof payload?.detail === "string" ? payload.detail : null;
     throw new ApiError(payload?.error?.message || legacyMessage || "The request failed.", {
@@ -86,6 +61,58 @@ export async function apiRequest(path, options = {}) {
       requestId: payload?.request_id || response.headers.get("X-Request-ID"),
     });
   }
-
   return payload;
+}
+
+/**
+ * Protected calls use the latest token, even when a React callback captured
+ * an older one. Retry a TOKEN_EXPIRED failure at most once after refresh.
+ * Passive requests such as presence heartbeats must specify skipAuthRefresh.
+ */
+export async function apiRequest(path, options = {}) {
+  const {
+    accessToken, skipAuthRefresh = false, skipAuthHandling = false,
+    ...fetchOptions
+  } = options;
+  const auth = getAuthBridge();
+  // Only requests explicitly passed a bearer token participate in refresh.
+  const protectedCall = Boolean(accessToken);
+  if (protectedCall && auth?.getAccessToken && !auth.getAccessToken()) {
+    throw new ApiError("The session has ended.", { status: 401, code: "SESSION_EXPIRED" });
+  }
+  const currentToken = protectedCall
+    ? (auth?.getAccessToken?.() || accessToken)
+    : null;
+
+  try {
+    return await sendRequest(path, fetchOptions, currentToken);
+  } catch (error) {
+    if (!(error instanceof ApiError) || !protectedCall || skipAuthHandling) {
+      throw error;
+    }
+
+    // A different request may already have refreshed while this one was in flight.
+    if (!skipAuthRefresh && auth?.getAccessToken?.() && auth.getAccessToken() !== currentToken) {
+      return sendRequest(path, fetchOptions, auth.getAccessToken());
+    }
+
+    if (error.code === "TOKEN_EXPIRED" && !skipAuthRefresh && auth?.refreshAccessToken) {
+      const replacement = await auth.refreshAccessToken();
+      if (!replacement) throw error;
+      // Do not recursively retry a retried request or refresh again.
+      try {
+        return await sendRequest(path, fetchOptions, replacement);
+      } catch (retryError) {
+        if (["TOKEN_INVALID", "TOKEN_REVOKED", "TOKEN_EXPIRED"].includes(retryError?.code)) {
+          auth?.onInvalidSession?.();
+        }
+        throw retryError;
+      }
+    }
+
+    if (!skipAuthRefresh && ["TOKEN_INVALID", "TOKEN_REVOKED", "SESSION_REQUIRED", "SESSION_EXPIRED"].includes(error.code)) {
+      auth?.onInvalidSession?.();
+    }
+    throw error;
+  }
 }
