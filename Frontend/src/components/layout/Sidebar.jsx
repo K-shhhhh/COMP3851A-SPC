@@ -4,6 +4,7 @@ import {
   BrainCircuit,
   ChevronDown,
   FilePlus2,
+  Flag,
   FolderOpen,
   LayoutDashboard,
   Lock,
@@ -317,6 +318,14 @@ function Sidebar({
         >
           <User size={19} />
           <span>Profile</span>
+        </NavLink>
+
+        <NavLink
+          to="/reports"
+          className="sidebar-link"
+        >
+          <Flag size={19} />
+          <span>My Reports</span>
         </NavLink>
 
         <NavLink

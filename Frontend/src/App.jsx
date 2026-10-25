@@ -15,6 +15,7 @@ import GroupStudyPage from "./pages/GroupStudy/GroupStudyPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraph/KnowledgeGraphPage.jsx";
 import ProfilePage from "./pages/Profile/ProfilePage.jsx";
 import SettingsPage from "./pages/Settings/SettingsPage.jsx";
+import MyReportsPage from "./pages/Reports/MyReportsPage.jsx";
 
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 import RoleRedirect from "./routes/RoleRedirect.jsx";
@@ -123,6 +124,15 @@ function App() {
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/reports"
+          element={
+            <ProtectedRoute>
+              <MyReportsPage />
             </ProtectedRoute>
           }
         />

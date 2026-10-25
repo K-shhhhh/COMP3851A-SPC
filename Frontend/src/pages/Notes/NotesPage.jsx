@@ -10,12 +10,15 @@ import {
   AlertCircle,
   Eye,
   FileText,
+  Flag,
   LoaderCircle,
+  MoreHorizontal,
   Trash2,
   X,
 } from "lucide-react";
 
 import AppShell from "../../components/layout/AppShell.jsx";
+import ReportDialog from "../../components/reports/ReportDialog.jsx";
 import {
   useConfirmModal,
 } from "../../components/common/ConfirmModal.jsx";
@@ -90,6 +93,12 @@ function NotesPage() {
    * Full metadata returned by GET /notes/{note_id}.
    */
   const [selectedNote, setSelectedNote] = useState(null);
+
+  const [reportTarget, setReportTarget] =
+    useState(null);
+
+  const [noteActionMenuId, setNoteActionMenuId] =
+    useState(null);
 
   /*
    * Store one polling timer per note.
@@ -823,6 +832,44 @@ function NotesPage() {
                       </span>
                     </button>
 
+                    <div className="notes-more-wrap">
+                      <button
+                        type="button"
+                        className="notes-button notes-button-secondary notes-more-button"
+                        aria-label={`File options for ${note.title}`}
+                        title="File options"
+                        onClick={() =>
+                          setNoteActionMenuId(
+                            (current) =>
+                              current === note.id
+                                ? null
+                                : note.id,
+                          )
+                        }
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+
+                      {noteActionMenuId === note.id && (
+                        <div className="notes-more-menu">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNoteActionMenuId(null);
+                              setReportTarget({
+                                type: "file",
+                                id: String(note.id),
+                                label: note.title,
+                              });
+                            }}
+                          >
+                            <Flag size={15} />
+                            Report file
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       type="button"
                       className="notes-button notes-button-danger"
@@ -1019,6 +1066,17 @@ function NotesPage() {
           </div>
         </div>
       )}
+
+      {reportTarget && (
+        <ReportDialog
+          accessToken={accessToken}
+          target={reportTarget}
+          onClose={() =>
+            setReportTarget(null)
+          }
+        />
+      )}
+
       {confirmModal}
     </AppShell>
   );

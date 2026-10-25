@@ -2216,3 +2216,119 @@
     width: 100% !important;
   }
 }
+
+/* =========================================================
+   AI RESPONSE SOURCES + REPORTING
+   ========================================================= */
+
+.ai-response-sources {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--spc-border-soft);
+}
+
+.ai-response-sources > strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--spc-muted);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ai-response-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-response-source-list span {
+  padding: 5px 8px;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--spc-purple) 22%,
+      var(--spc-border)
+    );
+  border-radius: 999px;
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.group-report-button {
+  width: 100%;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 14px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  background: var(--spc-surface);
+  color: var(--spc-muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.group-report-button:hover {
+  border-color: var(--spc-purple);
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+}
+
+
+/* =========================================================
+   MESSAGE OVERFLOW MENU
+   ========================================================= */
+
+.message-more-wrap {
+  position: relative;
+}
+
+.message-actions .message-more-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.message-actions .message-more-button:hover {
+  background: var(--spc-surface-hover);
+}
+
+.message-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 145px;
+  padding: 5px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  background: var(--spc-surface);
+  box-shadow: var(--spc-shadow-md);
+}
+
+.message-actions .message-more-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 9px;
+  border-radius: 6px;
+  color: var(--spc-text);
+  text-align: left;
+}
+
+.message-actions .message-more-menu button:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-purple);
+}

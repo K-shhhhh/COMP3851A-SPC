@@ -813,3 +813,52 @@
     width: 100%;
   }
 }
+
+/* =========================================================
+   NOTES OVERFLOW MENU
+   ========================================================= */
+
+.notes-more-wrap {
+  position: relative;
+}
+
+.notes-more-button {
+  width: 38px;
+  padding-inline: 0;
+}
+
+.notes-more-menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 50;
+  min-width: 145px;
+  padding: 5px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  background: var(--spc-surface);
+  box-shadow: var(--spc-shadow-md);
+}
+
+.notes-more-menu button {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--spc-text);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+}
+
+.notes-more-menu button:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-purple);
+}
