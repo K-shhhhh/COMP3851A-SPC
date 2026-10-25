@@ -10,12 +10,14 @@ import {
   AlertCircle,
   Eye,
   FileText,
+  Flag,
   LoaderCircle,
   Trash2,
   X,
 } from "lucide-react";
 
 import AppShell from "../../components/layout/AppShell.jsx";
+import ReportDialog from "../../components/reports/ReportDialog.jsx";
 import {
   useConfirmModal,
 } from "../../components/common/ConfirmModal.jsx";
@@ -90,6 +92,9 @@ function NotesPage() {
    * Full metadata returned by GET /notes/{note_id}.
    */
   const [selectedNote, setSelectedNote] = useState(null);
+
+  const [reportTarget, setReportTarget] =
+    useState(null);
 
   /*
    * Store one polling timer per note.
@@ -825,6 +830,21 @@ function NotesPage() {
 
                     <button
                       type="button"
+                      className="notes-button notes-button-secondary"
+                      onClick={() =>
+                        setReportTarget({
+                          type: "file",
+                          id: String(note.id),
+                          label: note.title,
+                        })
+                      }
+                    >
+                      <Flag size={16} />
+                      <span>Report</span>
+                    </button>
+
+                    <button
+                      type="button"
                       className="notes-button notes-button-danger"
                       onClick={() =>
                         handleDelete(note)
@@ -1019,6 +1039,17 @@ function NotesPage() {
           </div>
         </div>
       )}
+
+      {reportTarget && (
+        <ReportDialog
+          accessToken={accessToken}
+          target={reportTarget}
+          onClose={() =>
+            setReportTarget(null)
+          }
+        />
+      )}
+
       {confirmModal}
     </AppShell>
   );

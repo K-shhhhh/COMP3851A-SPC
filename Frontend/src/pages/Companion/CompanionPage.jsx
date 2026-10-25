@@ -47,15 +47,15 @@ const AUTH_ERROR_CODES = new Set([
 const suggestedPrompts = [
   {
     icon: BookOpen,
-    text: "Explain backpropagation in simple terms",
+    text: "Explain a concept from my notes as if I were 10 years old",
   },
   {
     icon: FileText,
-    text: "Summarise my Machine Learning lecture notes",
+    text: "Summarise my uploaded study material in 5 sentences",
   },
   {
     icon: Lightbulb,
-    text: "Create 5 practice questions for my Physics exam",
+    text: "Create 5 quiz questions based on my uploaded study material",
   },
 ];
 

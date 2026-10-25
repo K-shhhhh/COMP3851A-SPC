@@ -183,6 +183,38 @@ function UploadNotesPage() {
   }
 
   function getElapsedSeconds(note) {
+    /*
+     * The backend is the source of truth for a completed
+     * processing duration. Never calculate a Ready/Failed
+     * note as "now - upload date" because that turns the age
+     * of an old note into a fake processing time.
+     */
+    if (
+      note.status === "ready" ||
+      note.status === "failed"
+    ) {
+      if (note.total_duration_ms == null) {
+        return null;
+      }
+
+      return Math.max(
+        0,
+        Math.floor(note.total_duration_ms / 1000),
+      );
+    }
+
+    /*
+     * For an active job, prefer the backend's elapsed value.
+     * The local timer remains as a fallback immediately after
+     * upload and between status responses.
+     */
+    if (note.elapsed_ms != null) {
+      return Math.max(
+        0,
+        Math.floor(note.elapsed_ms / 1000),
+      );
+    }
+
     const timing = noteTimings[note.id];
 
     const fallbackStartedAt = note.created_at
@@ -196,11 +228,9 @@ function UploadNotesPage() {
       return null;
     }
 
-    const finishedAt = timing?.completedAt || timerNow;
-
     return Math.max(
       0,
-      Math.floor((finishedAt - startedAt) / 1000),
+      Math.floor((timerNow - startedAt) / 1000),
     );
   }
 
@@ -358,6 +388,18 @@ function UploadNotesPage() {
                   processing_error:
                     result.error,
 
+                  elapsed_ms:
+                    result.elapsed_ms,
+
+                  total_duration_ms:
+                    result.total_duration_ms,
+
+                  processing_started_at:
+                    result.processing_started_at,
+
+                  processing_completed_at:
+                    result.processing_completed_at,
+
                   updated_at:
                     result.updated_at,
                 }
@@ -511,20 +553,18 @@ function UploadNotesPage() {
         );
 
         /*
-         * Start polling every note that
-         * has not finished processing yet.
+         * Hydrate timing for every recent note once.
+         *
+         * Active notes continue polling from pollNoteStatus().
+         * Terminal notes are checked once so Ready/Failed can
+         * display the backend's real total_duration_ms instead
+         * of the age of the upload.
          */
         loadedNotes.forEach(
           (note) => {
-            if (
-              ACTIVE_STATUSES.has(
-                note.status,
-              )
-            ) {
-              schedulePolling(
-                note.id,
-              );
-            }
+            void pollNoteStatus(
+              note.id,
+            );
           },
         );
       } catch (err) {

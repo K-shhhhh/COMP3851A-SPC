@@ -1,0 +1,246 @@
+.report-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(14, 18, 28, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.report-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--spc-border);
+  border-radius: 16px;
+  background: var(--spc-surface);
+  color: var(--spc-text);
+  box-shadow: var(--spc-shadow-lg);
+}
+
+.report-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--spc-border);
+}
+
+.report-dialog-eyebrow {
+  color: var(--spc-purple);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.report-dialog-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 5px 0 0;
+  color: var(--spc-heading);
+  font-size: 19px;
+}
+
+.report-dialog-header > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--spc-muted);
+  cursor: pointer;
+}
+
+.report-dialog-header > button:hover {
+  background: var(--spc-surface-hover);
+  color: var(--spc-heading);
+}
+
+.report-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+}
+
+.report-dialog-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--spc-heading);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.report-dialog-form select,
+.report-dialog-form textarea,
+.report-dialog-form input[type="file"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  background: var(--spc-input-bg);
+  color: var(--spc-text);
+  font: inherit;
+}
+
+.report-dialog-form select {
+  min-height: 42px;
+  padding: 0 11px;
+}
+
+.report-dialog-form textarea {
+  padding: 11px;
+  resize: vertical;
+}
+
+.report-dialog-form input[type="file"] {
+  padding: 9px;
+}
+
+.report-dialog-form small {
+  color: var(--spc-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.report-context-check {
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 9px !important;
+  padding: 11px 12px;
+  border: 1px solid var(--spc-border-soft);
+  border-radius: 9px;
+  background: var(--spc-surface-soft);
+}
+
+.report-context-check input {
+  margin-top: 2px;
+}
+
+.report-evidence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.report-evidence-list span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.report-dialog-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--spc-danger-border);
+  border-radius: 9px;
+  background: var(--spc-danger-bg);
+  color: var(--spc-danger);
+  font-size: 11px;
+}
+
+.report-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 3px;
+}
+
+.report-dialog-actions button,
+.report-dialog-success button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 15px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.report-secondary {
+  border: 1px solid var(--spc-border);
+  background: var(--spc-surface);
+  color: var(--spc-text);
+}
+
+.report-primary {
+  border: 1px solid var(--spc-purple);
+  background: var(--spc-purple);
+  color: #fff;
+}
+
+.report-dialog-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 34px 24px;
+  text-align: center;
+}
+
+.report-dialog-success > svg {
+  color: var(--spc-success);
+}
+
+.report-dialog-success h3,
+.report-dialog-success p {
+  margin: 0;
+}
+
+.report-dialog-success h3 {
+  color: var(--spc-heading);
+}
+
+.report-dialog-success p {
+  max-width: 360px;
+  color: var(--spc-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.report-spin {
+  animation: report-spin 0.8s linear infinite;
+}
+
+@keyframes report-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+  .report-dialog-backdrop {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .report-dialog {
+    max-height: calc(100vh - 24px);
+  }
+
+  .report-dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .report-dialog-actions button {
+    width: 100%;
+  }
+}

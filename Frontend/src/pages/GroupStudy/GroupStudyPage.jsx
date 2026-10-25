@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  Flag,
   Hash,
   Lock,
   MoreHorizontal,
@@ -37,6 +38,7 @@ import {
 } from "../../components/common/ConfirmModal.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
+import ReportDialog from "../../components/reports/ReportDialog.jsx";
 import { getOnlineGroupMembers } from "../../services/presenceService.js";
 
 import {
@@ -479,6 +481,9 @@ function GroupStudyPage() {
 
   const [editingMessageValue, setEditingMessageValue] =
     useState("");
+
+  const [reportTarget, setReportTarget] =
+    useState(null);
 
   /* -------------------------------------------------------
      RESPONSE TIMERS
@@ -3522,36 +3527,49 @@ function GroupStudyPage() {
                                           {item.content}
                                         </p>
 
-                                        {(canEdit ||
-                                          isOwnMessage) && (
-                                          <div className="message-actions">
-                                            {canEdit && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  beginEditMessage(
-                                                    item,
-                                                  )
-                                                }
-                                              >
-                                                Edit
-                                              </button>
-                                            )}
+                                        <div className="message-actions">
+                                          {canEdit && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                beginEditMessage(
+                                                  item,
+                                                )
+                                              }
+                                            >
+                                              Edit
+                                            </button>
+                                          )}
 
-                                            {isOwnMessage && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleDeleteMessage(
-                                                    item,
-                                                  )
-                                                }
-                                              >
-                                                Delete
-                                              </button>
-                                            )}
-                                          </div>
-                                        )}
+                                          {isOwnMessage && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleDeleteMessage(
+                                                  item,
+                                                )
+                                              }
+                                            >
+                                              Delete
+                                            </button>
+                                          )}
+
+                                          {!isOwnMessage && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setReportTarget({
+                                                  type: "message",
+                                                  id: String(item.id),
+                                                  label: "message",
+                                                })
+                                              }
+                                            >
+                                              <Flag size={13} />
+                                              Report
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
 
@@ -3581,6 +3599,29 @@ function GroupStudyPage() {
                                               {aiResponse.content}
                                             </SimpleMarkdown>
                                           </div>
+
+                                          {Array.isArray(aiResponse.sources) &&
+                                            aiResponse.sources.length > 0 && (
+                                              <div className="ai-response-sources">
+                                                <strong>Sources</strong>
+
+                                                <div className="ai-response-source-list">
+                                                  {aiResponse.sources.map(
+                                                    (source, sourceIndex) => (
+                                                      <span
+                                                        key={`${source.note_id}-${source.chunk_id}-${sourceIndex}`}
+                                                      >
+                                                        {source.note_title ||
+                                                          "Study material"}
+                                                        {source.page != null
+                                                          ? ` · p. ${source.page}`
+                                                          : ""}
+                                                      </span>
+                                                    ),
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
                                         </div>
                                       </div>
                                     )}
@@ -4146,6 +4187,21 @@ function GroupStudyPage() {
                       </strong>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    className="group-report-button"
+                    onClick={() =>
+                      setReportTarget({
+                        type: "group",
+                        id: String(selectedGroup.id),
+                        label: selectedGroup.name,
+                      })
+                    }
+                  >
+                    <Flag size={14} />
+                    Report group
+                  </button>
                 </div>
               );
             })()}
@@ -4853,6 +4909,17 @@ function GroupStudyPage() {
           </form>
         </Modal>
       )}
+
+      {reportTarget && (
+        <ReportDialog
+          accessToken={accessToken}
+          target={reportTarget}
+          onClose={() =>
+            setReportTarget(null)
+          }
+        />
+      )}
+
       {confirmModal}
     </AppShell>
   );
