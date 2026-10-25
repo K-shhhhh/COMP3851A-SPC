@@ -21,6 +21,7 @@ export function login({
 }) {
   return apiRequest("/auth/login", {
     method: "POST",
+    credentials: "include",
     body: JSON.stringify({
       email,
       password,
@@ -35,10 +36,23 @@ export function getCurrentUser(accessToken) {
   });
 }
 
+export function refreshSession() {
+  return apiRequest("/auth/refresh", {
+    method: "POST",
+    credentials: "include",
+    skipAuthHandling: true,
+    skipAuthRefresh: true,
+  });
+}
+
 export function logout(accessToken) {
   return apiRequest("/auth/logout", {
     method: "POST",
-    accessToken,
+    // When idle, omit Authorization and let the HttpOnly cookie revoke session.
+    ...(accessToken ? { accessToken } : {}),
+    credentials: "include",
+    skipAuthHandling: true,
+    skipAuthRefresh: true,
   });
 }
 

@@ -100,14 +100,14 @@ function LoginPage() {
     try {
       setIsSubmitting(true);
 
-      await login({
+      const session = await login({
         email: email.trim(),
         password,
       });
 
-      navigate(
-        "/dashboard",
-      );
+      navigate(session?.user?.role === "admin" ? "/admin" : "/dashboard", {
+        replace: true,
+      });
     } catch (err) {
       if (
         err.code ===

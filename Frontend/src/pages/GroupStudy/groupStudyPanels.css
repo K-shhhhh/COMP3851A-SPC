@@ -2122,3 +2122,93 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* Sprint 10: privacy-aware, backend-authoritative online members */
+.sg-workspace-mode .sg-online-members {
+  margin: 15px 2px 4px;
+  padding: 12px 4px 10px;
+  border-top: 1px solid var(--spc-border);
+}
+.sg-workspace-mode .sg-online-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 4px 9px;
+  color: var(--spc-muted);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.sg-workspace-mode .sg-online-heading > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sg-workspace-mode .sg-online-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--spc-success);
+}
+.sg-workspace-mode .sg-online-count {
+  padding: 2px 6px;
+  border-radius: 8px;
+  color: var(--spc-success);
+  background: var(--spc-success-bg);
+  font-size: 10px;
+}
+.sg-workspace-mode .sg-online-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sg-workspace-mode .sg-online-member {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 3px;
+  border-radius: 7px;
+}
+.sg-workspace-mode .sg-online-member:hover {
+  background: var(--spc-surface-hover);
+}
+.sg-workspace-mode .sg-online-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+  font-size: 9px;
+  font-weight: 750;
+}
+.sg-workspace-mode .sg-online-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--spc-text);
+  font-size: 11px;
+}
+.sg-workspace-mode .sg-online-role {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--spc-muted);
+  text-transform: capitalize;
+}
+.sg-workspace-mode .sg-online-role.owner { color: var(--spc-purple); }
+.sg-workspace-mode .sg-online-role.admin { color: var(--spc-success); }
+.sg-workspace-mode .sg-online-empty {
+  margin: 3px 4px 7px;
+  color: var(--spc-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}

@@ -37,6 +37,7 @@ import {
 } from "../../components/common/ConfirmModal.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
+import { getOnlineGroupMembers } from "../../services/presenceService.js";
 
 import {
   addStudyGroupMember,
@@ -354,6 +355,10 @@ function GroupStudyPage() {
 
   const [membersLoading, setMembersLoading] =
     useState(false);
+
+  const [onlineMembers, setOnlineMembers] = useState([]);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [onlineLoading, setOnlineLoading] = useState(false);
 
   const [memberEmail, setMemberEmail] =
     useState("");
@@ -851,6 +856,50 @@ function GroupStudyPage() {
       setMembersLoading(false);
     }
   }
+
+  /* =======================================================
+     ONLINE MEMBERS (account-wide presence, scoped to this group)
+     ======================================================= */
+
+  useEffect(() => {
+    const groupId = selectedGroup?.id;
+    if (!groupId || !selectedGroup?.is_member || !accessToken) {
+      setOnlineMembers([]);
+      setOnlineCount(0);
+      setOnlineLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    let stopped = false;
+    setOnlineLoading(true);
+
+    const loadOnline = async () => {
+      if (stopped || cancelled) return;
+      try {
+        const result = await getOnlineGroupMembers(accessToken, groupId);
+        if (cancelled) return;
+        setOnlineMembers(Array.isArray(result?.items) ? result.items : []);
+        setOnlineCount(Number.isFinite(result?.online_count) ? result.online_count : 0);
+      } catch (error) {
+        if (cancelled) return;
+        setOnlineMembers([]);
+        setOnlineCount(0);
+        // A passive presence query must not refresh an expired token.
+        // Wait until genuine activity refreshes it before polling again.
+        if (error?.status === 401 || error?.status === 403) stopped = true;
+      } finally {
+        if (!cancelled) setOnlineLoading(false);
+      }
+    };
+
+    void loadOnline();
+    const timer = window.setInterval(loadOnline, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedGroup?.id, selectedGroup?.is_member, accessToken]);
 
   /* =======================================================
      CHANNELS
@@ -3253,6 +3302,36 @@ function GroupStudyPage() {
                           </button>
                         </div>
                       </form>
+                    )}
+
+                    {/* ONLINE MEMBERS — backend presence, no email addresses */}
+                    {selectedGroup.is_member && (
+                      <section className="sg-online-members" aria-label="Online group members">
+                        <div className="sg-online-heading">
+                          <span><span className="sg-online-dot" />Online Members</span>
+                          <span className="sg-online-count">{onlineCount}</span>
+                        </div>
+                        {onlineLoading && onlineMembers.length === 0 ? (
+                          <p className="sg-online-empty">Checking who's online...</p>
+                        ) : onlineMembers.length === 0 ? (
+                          <p className="sg-online-empty">No members online</p>
+                        ) : (
+                          <div className="sg-online-list">
+                            {onlineMembers.map((member) => {
+                              const name = member.full_name || "Student";
+                              const role = ["owner", "admin", "member"].includes(member.role)
+                                ? member.role : "member";
+                              return (
+                                <div className="sg-online-member" key={member.user_id}>
+                                  <div className="sg-online-avatar">{initials(name)}</div>
+                                  <div className="sg-online-name" title={name}>{name}</div>
+                                  <span className={`sg-online-role ${role}`}>{role}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </section>
                     )}
 
                     {/* MEMBERS */}

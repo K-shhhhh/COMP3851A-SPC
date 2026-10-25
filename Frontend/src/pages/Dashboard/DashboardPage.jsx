@@ -16,40 +16,18 @@ import { getNotes } from "../../services/noteService.js";
 import { getMyGroups } from "../../services/groupService.js";
 import "./dashboard.css";
 
-const SESSION_STARTED_AT_KEY = "spc_session_started_at";
+const SESSION_STARTED_AT_KEY = "spc_signed_in_at";
 
-function extractJwtIssuedAt(accessToken) {
-  if (!accessToken) return null;
-
+function getSessionStartedAt() {
   try {
-    const payloadPart = accessToken.split(".")[1];
-    if (!payloadPart) return null;
-
-    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      "=",
-    );
-    const payload = JSON.parse(window.atob(padded));
-    return Number.isFinite(payload?.iat) ? payload.iat * 1000 : null;
+    const existing = Number(sessionStorage.getItem(SESSION_STARTED_AT_KEY));
+    if (Number.isFinite(existing) && existing > 0) return existing;
+    const now = Date.now();
+    sessionStorage.setItem(SESSION_STARTED_AT_KEY, String(now));
+    return now;
   } catch {
-    return null;
+    return Date.now();
   }
-}
-
-function getSessionStartedAt(accessToken) {
-  const tokenIssuedAt = extractJwtIssuedAt(accessToken);
-  if (tokenIssuedAt) {
-    sessionStorage.setItem(SESSION_STARTED_AT_KEY, String(tokenIssuedAt));
-    return tokenIssuedAt;
-  }
-
-  const stored = Number(sessionStorage.getItem(SESSION_STARTED_AT_KEY));
-  if (Number.isFinite(stored) && stored > 0) return stored;
-
-  const now = Date.now();
-  sessionStorage.setItem(SESSION_STARTED_AT_KEY, String(now));
-  return now;
 }
 
 function formatDuration(totalSeconds) {
@@ -101,7 +79,7 @@ function DashboardPage() {
   const [sessionSeconds, setSessionSeconds] = useState(0);
 
   const sessionStartedAt = useMemo(
-    () => getSessionStartedAt(accessToken),
+    () => getSessionStartedAt(),
     [accessToken],
   );
 
@@ -215,9 +193,9 @@ function DashboardPage() {
               <Clock3 size={22} />
             </div>
             <div>
-              <span>Session Time</span>
+              <span>Signed in for</span>
               <strong>{formatDuration(sessionSeconds)}</strong>
-              <small>Current signed-in session</small>
+              <small>Logs out after 30 minutes of inactivity</small>
             </div>
           </div>
         </section>
