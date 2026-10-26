@@ -678,6 +678,31 @@ class AIResponseFeedback(Base):
     user: Mapped[User] = relationship(back_populates="ai_response_feedbacks")
 
 
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+
+    attempt_id: Mapped[int] = mapped_column(
+        BigInteger,
+        Identity(always=True),
+        primary_key=True,
+    )
+    student_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "users.user_id",
+            name="fk_student_user_id_for_quiz_attempts",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    topic: Mapped[str] = mapped_column(Text, nullable=False)
+    is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+
 class UserActivityLog(Base):
     __tablename__ = "user_activity_logs"
 
@@ -802,3 +827,5 @@ Index(
     postgresql_with={"m": 16, "ef_construction": 64},
     postgresql_ops={"vector_embedding": "vector_cosine_ops"},
 )
+
+Index("ix_quiz_attempts_student_attempted", QuizAttempt.student_user_id, QuizAttempt.attempted_at.desc())
