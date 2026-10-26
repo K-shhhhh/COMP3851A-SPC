@@ -35,6 +35,8 @@ import {
   uploadChatAttachment,
 } from "../../services/chatService.js";
 
+import { getNotes } from "../../services/noteService.js";
+
 import "./companion.css";
 
 const AUTH_ERROR_CODES = new Set([
@@ -153,6 +155,26 @@ function CompanionPage() {
     setIsAttachmentUploading,
   ] = useState(false);
 
+  /*
+   * AI Assistant answer settings.
+   * responseFormat "" means the AI follows what the student types.
+   * selectedNoteId "" means search all of the student's notes.
+   */
+  const [
+    responseFormat,
+    setResponseFormat,
+  ] = useState("");
+
+  const [
+    readyNotes,
+    setReadyNotes,
+  ] = useState([]);
+
+  const [
+    selectedNoteId,
+    setSelectedNoteId,
+  ] = useState("");
+
   const messagesEndRef =
     useRef(null);
 
@@ -180,6 +202,66 @@ function CompanionPage() {
    * Keep the AI wait timer accurate even if the browser delays
    * interval callbacks while the tab is in the background.
    */
+  /*
+   * Load the student's ready notes for the note picker.
+   * Reload when an attached PDF finishes processing.
+   */
+  useEffect(() => {
+    if (!accessToken) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadReadyNotes() {
+      try {
+        const result =
+          await getNotes(
+            accessToken,
+            {
+              status: "ready",
+              page: 1,
+              pageSize: 100,
+            },
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        const items =
+          result?.items || [];
+
+        setReadyNotes(items);
+
+        /*
+         * Go back to All my notes if the chosen note is gone.
+         */
+        setSelectedNoteId(
+          (current) =>
+            items.some(
+              (note) =>
+                String(note.id) ===
+                current,
+            )
+              ? current
+              : "",
+        );
+      } catch (err) {
+        console.error(
+          "Unable to load notes for the picker:",
+          err.code,
+        );
+      }
+    }
+
+    loadReadyNotes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, attachment?.status]);
+
   useEffect(() => {
     if (!aiWaiting) {
       return undefined;
@@ -1246,6 +1328,11 @@ function CompanionPage() {
           accessToken,
           chatId,
           content,
+          {
+            responseFormat,
+            noteId:
+              selectedNoteId,
+          },
         );
 
       /*
@@ -1315,6 +1402,16 @@ function CompanionPage() {
       }
 
       if (
+        err.code ===
+        "SELECTED_NOTE_UNAVAILABLE"
+      ) {
+        setSelectedNoteId("");
+
+        setError(
+          err.message ||
+            "That note is not available any more. Switched back to all of your notes.",
+        );
+      } else if (
         err.code ===
         "NO_PROCESSED_NOTES"
       ) {
@@ -2086,6 +2183,99 @@ function CompanionPage() {
                 handleAttachmentChange
               }
             />
+
+            {/* ANSWER FORMAT AND NOTE PICKER */}
+
+            <div className="response-format-control">
+
+              <label
+                className="response-format-label"
+                htmlFor="answer-format-select"
+              >
+                Format
+              </label>
+
+              <select
+                id="answer-format-select"
+                className="response-format-select"
+                value={
+                  responseFormat
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setResponseFormat(
+                    event
+                      .target
+                      .value,
+                  )
+                }
+                disabled={
+                  isSending
+                }
+              >
+                <option value="">
+                  Automatic
+                </option>
+                <option value="paragraph">
+                  Paragraph
+                </option>
+                <option value="bullet_points">
+                  Bullet points
+                </option>
+                <option value="table">
+                  Table
+                </option>
+              </select>
+
+              <label
+                className="response-format-label"
+                htmlFor="answer-note-select"
+              >
+                Note
+              </label>
+
+              <select
+                id="answer-note-select"
+                className="response-format-select"
+                value={
+                  selectedNoteId
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setSelectedNoteId(
+                    event
+                      .target
+                      .value,
+                  )
+                }
+                disabled={
+                  isSending
+                }
+              >
+                <option value="">
+                  All my notes
+                </option>
+                {readyNotes.map(
+                  (note) => (
+                    <option
+                      key={
+                        note.id
+                      }
+                      value={String(
+                        note.id,
+                      )}
+                    >
+                      {
+                        note.title
+                      }
+                    </option>
+                  ),
+                )}
+              </select>
+
+            </div>
 
             {/* MESSAGE INPUT */}
 
