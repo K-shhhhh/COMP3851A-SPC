@@ -114,21 +114,44 @@ export function getChatMessages(
  * POST /api/v1/chats/{chat_id}/messages
  *
  * The backend determines the current user from the access token.
- * Do not send user_id, owner_id or note_ids.
+ * Do not send user_id or owner_id.
  */
 export function sendChatMessage(
   accessToken,
   chatId,
   content,
+  {
+    responseFormat = null,
+    noteId = null,
+  } = {},
 ) {
+  const body = {
+    content,
+  };
+
+  /*
+   * Optional: "paragraph", "bullet_points" or "table".
+   * Leave it out so the AI follows what the student types.
+   */
+  if (responseFormat) {
+    body.response_format =
+      responseFormat;
+  }
+
+  /*
+   * Optional: limit the answer to one of the student's
+   * ready notes. Leave it out to search all notes.
+   */
+  if (noteId) {
+    body.note_id = Number(noteId);
+  }
+
   return apiRequest(
     `/chats/${chatId}/messages`,
     {
       method: "POST",
       accessToken,
-      body: JSON.stringify({
-        content,
-      }),
+      body: JSON.stringify(body),
     },
   );
 }
