@@ -2332,3 +2332,13 @@
   background: var(--spc-surface-hover);
   color: var(--spc-purple);
 }
+
+.ai-response-source-link {
+  color: var(--spc-purple);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ai-response-source-link:hover {
+  text-decoration: underline;
+}
