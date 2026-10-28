@@ -4,6 +4,8 @@ import {
   CheckCircle2,
   Clock3,
   FileText,
+  Target,
+  TrendingUp,
   Upload,
   Users,
 } from "lucide-react";
@@ -14,9 +16,23 @@ import AppShell from "../../components/layout/AppShell.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { getNotes } from "../../services/noteService.js";
 import { getMyGroups } from "../../services/groupService.js";
+import {
+  getLearningProgress,
+} from "../../services/learningProgressService.js";
 import "./dashboard.css";
 
 const SESSION_STARTED_AT_KEY = "spc_signed_in_at";
+
+const TOPIC_STATUS_LABELS = {
+  needs_review: "Needs review",
+  developing: "Developing",
+  good: "Good",
+  strong: "Strong",
+};
+
+function topicStatusLabel(status) {
+  return TOPIC_STATUS_LABELS[status] || status || "Unknown";
+}
 
 function getSessionStartedAt() {
   try {
@@ -78,6 +94,13 @@ function DashboardPage() {
   const [dashboardError, setDashboardError] = useState("");
   const [sessionSeconds, setSessionSeconds] = useState(0);
 
+  const [learningProgress, setLearningProgress] =
+    useState(null);
+  const [progressLoading, setProgressLoading] =
+    useState(true);
+  const [progressError, setProgressError] =
+    useState("");
+
   const sessionStartedAt = useMemo(
     () => getSessionStartedAt(),
     [accessToken],
@@ -132,6 +155,50 @@ function DashboardPage() {
       cancelled = true;
     };
   }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken) return undefined;
+
+    let cancelled = false;
+
+    async function loadLearningProgress() {
+      setProgressLoading(true);
+      setProgressError("");
+
+      try {
+        const result = await getLearningProgress(accessToken);
+
+        if (!cancelled) {
+          setLearningProgress(result);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "Unable to load learning progress:",
+            error,
+          );
+          setProgressError(
+            "Learning progress is temporarily unavailable.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setProgressLoading(false);
+        }
+      }
+    }
+
+    void loadLearningProgress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  const topicProgress =
+    learningProgress?.topics || [];
+  const reviewNext =
+    learningProgress?.review_next || [];
 
   return (
     <AppShell>
@@ -197,6 +264,130 @@ function DashboardPage() {
               <strong>{formatDuration(sessionSeconds)}</strong>
               <small>Logs out after 30 minutes of inactivity</small>
             </div>
+          </div>
+        </section>
+
+        <section className="dashboard-learning-grid">
+          <div className="dashboard-panel dashboard-progress-panel">
+            <div className="dashboard-panel-header">
+              <div>
+                <h2>
+                  <TrendingUp size={18} />
+                  Topic Coverage
+                </h2>
+                <p>
+                  Private progress calculated from your own quiz history
+                </p>
+              </div>
+            </div>
+
+            {progressLoading ? (
+              <div className="dashboard-progress-empty">
+                Loading learning progress...
+              </div>
+            ) : progressError ? (
+              <div className="dashboard-progress-empty">
+                {progressError}
+              </div>
+            ) : topicProgress.length === 0 ? (
+              <div className="dashboard-progress-empty">
+                <Target size={28} />
+                <strong>No quiz history yet</strong>
+                <span>
+                  Your topic coverage will appear here after you complete quizzes.
+                </span>
+              </div>
+            ) : (
+              <div className="dashboard-topic-list">
+                {topicProgress.map((topic) => (
+                  <div
+                    className="dashboard-topic-row"
+                    key={topic.topic}
+                  >
+                    <div className="dashboard-topic-heading">
+                      <strong>{topic.topic}</strong>
+                      <span
+                        className={`dashboard-topic-status dashboard-topic-status-${topic.status}`}
+                      >
+                        {topicStatusLabel(topic.status)}
+                      </span>
+                    </div>
+
+                    <div className="dashboard-topic-metrics">
+                      <span>
+                        {topic.correct}/{topic.attempts} correct
+                      </span>
+                      <strong>{topic.accuracy_percent}%</strong>
+                    </div>
+
+                    <div className="dashboard-topic-track">
+                      <span
+                        style={{
+                          width: `${Math.max(
+                            0,
+                            Math.min(
+                              100,
+                              topic.accuracy_percent,
+                            ),
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="dashboard-panel dashboard-review-panel">
+            <div className="dashboard-panel-header">
+              <div>
+                <h2>
+                  <Target size={18} />
+                  Review Next
+                </h2>
+                <p>
+                  Your weakest topics are prioritised first
+                </p>
+              </div>
+            </div>
+
+            {progressLoading ? (
+              <div className="dashboard-progress-empty">
+                Finding your next topics...
+              </div>
+            ) : progressError ? (
+              <div className="dashboard-progress-empty">
+                Recommendations are unavailable right now.
+              </div>
+            ) : reviewNext.length === 0 ? (
+              <div className="dashboard-progress-empty">
+                Complete a quiz to get personalised recommendations.
+              </div>
+            ) : (
+              <ol className="dashboard-review-list">
+                {reviewNext.map((topic) => (
+                  <li key={topic.topic}>
+                    <span>
+                      <strong>{topic.topic}</strong>
+                      <small>
+                        {topicStatusLabel(topic.status)}
+                      </small>
+                    </span>
+                    <b>{topic.accuracy_percent}%</b>
+                  </li>
+                ))}
+              </ol>
+            )}
+
+            {learningProgress?.total_attempts > 0 && (
+              <p className="dashboard-progress-summary">
+                Based on {learningProgress.total_attempts} quiz{" "}
+                {learningProgress.total_attempts === 1
+                  ? "attempt"
+                  : "attempts"}.
+              </p>
+            )}
           </div>
         </section>
 
