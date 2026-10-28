@@ -131,6 +131,24 @@ quality and cost on the answer test set first (`Backend/tests/quality`).
 
 To go back: set `CHAT_MODEL=` to nothing, then run `sh scripts/staging.sh up -d backend` again.
 
+### Compare two models with the answer test set
+
+`scripts/run_quality_set.py` asks all 45 questions in
+`Backend/tests/quality/answer_quality_set.csv` through the API, scores what it
+can by itself and saves a filled in copy under `Backend/tests/quality/results/`.
+It takes about 5 to 10 minutes per run and makes its own throwaway account.
+
+```bash
+python3 scripts/run_quality_set.py https://168-119-99-65.sslip.io --label "llama-3.1-8b"
+# switch the model as above, then
+python3 scripts/run_quality_set.py https://168-119-99-65.sslip.io --label "llama-3.3-70b"
+```
+
+Copy the result files to your laptop with
+`scp "<deploy-user>@168.119.99.65:/opt/spc-staging/Backend/tests/quality/results/*.csv" .`
+and fill in the one column the script leaves empty (`score_no_invention_0_to_1`).
+`Backend/tests/quality/README.md` explains the scores.
+
 ## 5. Uploads stuck in "queued" or "processing"
 
 An upload is stuck when it has been waiting or processing for a long time and
@@ -170,6 +188,27 @@ PY
 Step 4. Watch it finish with `sh scripts/staging.sh logs -f --tail=50 worker`.
 If it fails again, read the reason with the failure query in
 `scripts/monitor_stats.sql` before trying a third time.
+
+### Slow uploads (picture heavy PDFs)
+
+Every upload writes one timing line to the worker log:
+
+```bash
+sh scripts/staging.sh logs --tail=500 worker | grep -E "timing|PDF processed"
+```
+
+`PDF processed in ...` splits the extract step into text and tables, the safety
+check and the extra wait for picture descriptions. The picture settings can be
+changed in `.env.staging` without a code change, then
+`sh scripts/staging.sh up -d worker`:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `MAX_CAPTIONED_IMAGES` | 8 | How many of the largest safe pictures get an AI description. Lower is faster |
+| `CAPTION_WORKERS` | 3 | How many descriptions are requested at the same time |
+| `MAX_IMAGE_SIDE_PX` | 1280 | Pictures are shrunk to this size before the safety check and the description |
+
+Every picture is still safety checked, whatever these values are.
 
 ## 6. Restart things safely
 
@@ -276,14 +315,14 @@ Tick each line and write the date. Do 1 before 2, so nobody is locked out.
 | --- | --- | --- |
 | Website will not load | Caddy or nginx down | `sudo systemctl status caddy`, then `sh scripts/staging.sh ps`, then restart nginx |
 | Certificate warning | Caddy could not renew | `sudo journalctl -u caddy --no-pager \| tail -30`. Check port 80 is open |
-| Everyone gets logged out | The access token lasts `ACCESS_TOKEN_EXPIRE_MINUTES` (15 by default), and the frontend does not call the refresh endpoint yet, or `SECRET_KEY` changed | Expected after that many minutes until the frontend uses `/api/v1/auth/refresh`. As a stopgap set `ACCESS_TOKEN_EXPIRE_MINUTES=120` in `.env.staging` and run `sh scripts/staging.sh up -d backend`. If logouts are sooner than set, check nobody edited `SECRET_KEY` |
+| Everyone gets logged out | The refresh session ended (`SESSION_IDLE_TIMEOUT_MINUTES`, 30 by default, or `SESSION_ABSOLUTE_TIMEOUT_HOURS`, 12), the refresh cookie was blocked, or `SECRET_KEY` changed | The frontend renews the 15 minute access token by itself through `/api/v1/auth/refresh` while the student is active. Logouts after 30 idle minutes are expected. If active students are logged out, check that the site is opened over https (the cookie is secure only) and that nobody edited `SECRET_KEY` |
 | Questions fail with a provider error | `INFERENCE_API_KEY` wrong, no credits, or model name wrong | Check the OpenRouter account. Check `CHAT_MODEL`. Read `logs --tail=100 backend` |
 | Every upload ends `failed` | Embedding model missing or provider down | Read the failure reasons with `scripts/monitor_stats.sql`. For a missing model run `sh scripts/staging.sh exec ollama ollama pull nomic-embed-text` |
 | Uploads sit in `queued` | Worker stopped or busy | `sh scripts/staging.sh ps`, then section 5 |
 | Answers got slower | Model provider slow, or Ollama reloading | Compare the answer times in the monitor output with the smoke test baseline |
 | Disk is full | Logs, old images, Ollama or note storage | `docker system df`. Free space with `docker image prune -f` and `docker builder prune -f`. Never prune volumes |
 | Backend unhealthy, "relation does not exist" | Old database volume | See `Backend/docs/STAGING_GO_LIVE.md` section 2B |
-| A private group shows up under Public | The list could show a slow reply for the wrong filter. Fixed in the branch `krish/sprint10-quality` | If the fix is not deployed yet, tell testers to reload the page. After deploying, check by opening Private Groups then Public Groups in the menu |
+| A private group shows up under Public | A slow reply for the old filter used to overwrite the new one. Fixed on main | Check by opening Private Groups then Public Groups in the menu several times. If it comes back, note the steps and the browser |
 
 ## 10. Rules that keep the data safe
 

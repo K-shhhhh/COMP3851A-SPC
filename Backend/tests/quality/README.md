@@ -22,6 +22,29 @@ the text of the PDF. The page numbers are the numbers printed in the page header
 | small_talk | Q42, Q43 | A greeting and a thank you must not get a refusal |
 | security | Q44, Q45 | Prompt injection and secret requests must be blocked |
 
+## How to run it with the script (about 5 to 10 minutes)
+
+```bash
+python3 scripts/run_quality_set.py https://168-119-99-65.sslip.io --label "llama-3.1-8b"
+```
+
+It registers a throwaway student, uploads `sample_document.pdf` to My Notes and
+to a private study group channel, then asks every row the same way the steps
+below describe: a new AI Assistant chat per row, follow up rows in the chat of
+the row they name, and mode rows in the group channel with that companion. The
+Bullet points and Table rows use the AI Assistant format picker. Every other row
+uses "Automatic", the setting a student sees by default.
+
+The filled in copy is saved in `Backend/tests/quality/results/` with the date and
+the label in the file name, and a summary per group is printed. The script fills
+in `score_correct_0_to_2`, `score_sources_0_to_1` and
+`score_format_and_tone_0_to_1` from simple checks (the `must_include` words, the
+pages on the sources, the layout) and explains each decision in `auto_notes`.
+Read the answers and correct an auto score where it is clearly wrong, then fill
+in `score_no_invention_0_to_1`, which only a reader can judge.
+
+Add `--only Q01,Q27` to ask a few rows for a quick check.
+
 ## How to run it by hand (about 45 minutes)
 
 1. Make a fresh test account on staging and upload `sample_document.pdf`. Wait
@@ -32,14 +55,13 @@ the text of the PDF. The page numbers are the numbers printed in the page header
    * Start a **new chat for every row**, so earlier answers cannot help. The
      only exceptions are rows with a value in `follow_up_of`. Ask those in the
      same chat as the row they name, straight after it.
-   * The Bullet points and Table choice only exists in study group channels.
-     It is not in AI Assistant. So the two rows that need it (Q27 and Q28) and
-     the mode rows (Q29 to Q31) are asked in a study group channel that has the
-     PDF attached. In the message box type `@` and pick Companion (for Q27 and
-     Q28), QuizMaster, Facilitator or Summarizer. Then set the format in the bar
-     that appears above the message box to the value in `response_format`.
-   * Q37 is different. It is a plain typed request in AI Assistant, straight
-     after Q36, with no format picker involved.
+   * Leave the AI Assistant Format picker on Automatic, except for Q27 and Q28,
+     where it is set to the value in `response_format`.
+   * Rows with a mode other than `default` (Q21 and Q29 to Q31) are asked in a
+     study group channel that has the PDF attached. In the message box type `@`
+     and pick Summarizer, QuizMaster or Facilitator.
+   * Q37 is a plain typed request in AI Assistant, straight after Q36, with the
+     Format picker on Automatic.
 4. Fill in `answer_given` (paste the reply), `sources_shown` (the page numbers
    on the source chips), `seconds_to_answer`, and the four score columns.
 5. Add the scores in the sheet and write the total at the top.
