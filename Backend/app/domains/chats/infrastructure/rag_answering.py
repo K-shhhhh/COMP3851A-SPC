@@ -28,6 +28,42 @@ from app.ai.rag.small_talk import answer_small_talk
 
 _REFUSAL_MARKER = "not available in the supplied study material"
 
+# The model does not always use the exact marker. A short reply that opens by
+# saying the notes do not mention the topic is also a refusal. Longer replies
+# or phrases late in the text are left alone, so a partial answer that ends
+# with "the notes do not mention X" keeps its sources.
+_SOFT_REFUSAL_PHRASES = (
+    "does not mention",
+    "do not mention",
+    "doesn't mention",
+    "is not mentioned",
+    "are not mentioned",
+    "not mentioned in",
+    "not covered in",
+    "no mention of",
+    "does not cover",
+    "do not cover",
+    "does not discuss",
+    "not in your notes",
+)
+_SOFT_REFUSAL_OPENING_CHARS = 150
+_SOFT_REFUSAL_MAX_CHARS = 600
+
+
+def _is_refusal(answer_text: str) -> bool:
+    """Return whether the reply says the notes do not cover the question."""
+
+    text = answer_text.lower()
+    if _REFUSAL_MARKER in text:
+        return True
+    if len(text) > _SOFT_REFUSAL_MAX_CHARS:
+        return False
+    opening = text[:_SOFT_REFUSAL_OPENING_CHARS]
+    for phrase in _SOFT_REFUSAL_PHRASES:
+        if phrase in opening:
+            return True
+    return False
+
 
 def _distinct_sources(chunks):
     """One source per page of each note, in ranked order.
@@ -137,7 +173,12 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         sources = _distinct_sources(top_chunks)
         # An answer that says the material does not cover the question did not
         # use the passages, so citing them would be misleading.
-        if _REFUSAL_MARKER in answer_text.lower():
+        if _is_refusal(answer_text):
+            sources = ()
+        # A facilitator reply is a guiding question, not a fact from the
+        # notes, so there is nothing to cite and listing pages would hand the
+        # student the answer's location.
+        if mode == "facilitator":
             sources = ()
 
         return GeneratedAnswer(content=answer_text, sources=sources)

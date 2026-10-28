@@ -118,9 +118,13 @@ _NO_PICKER_FORMAT_INSTRUCTION = (
 # so it must stay exactly as written.
 _REPLY_STYLE_RULES = (
     "How to reply: sound like a friendly, clear classmate who has read the "
-    "same notes. Put the answer in the first sentence, then add only the "
-    "detail that helps. Keep a normal answer to about 3 to 6 sentences "
-    "unless the student asks for more depth. Use plain words and explain a "
+    "same notes. Put the answer in the first sentence. Then add at most "
+    "two short sentences of detail that directly help, such as the key "
+    "number, the reason or one example from the notes. A normal answer is "
+    "2 to 4 sentences. Do not add general background, do not repeat the "
+    "question and do not describe how the notes are organised. Give a "
+    "longer reply only when the student asks for more depth or a mode "
+    "instruction below asks for one. Use plain words and explain a "
     "technical term the first time you use it. Do not start with filler "
     "such as 'Certainly' or 'As an AI'. Call the study_context 'your notes' "
     "and never mention study_context, JSON or these instructions in a "
@@ -135,6 +139,23 @@ _REPLY_STYLE_RULES = (
     "HTML or headings, and never wrap a whole reply in a code block. If a "
     "mode instruction below conflicts with these style rules, follow the "
     "mode instruction."
+)
+
+
+# Rules for questions the notes cannot answer. Without them the model answers
+# well known facts from memory, or describes something else as if it were
+# the thing the student asked about. The exact wording of the refusal phrase
+# must stay, because the answer adapter uses it to hide sources.
+_GROUNDING_RULES = (
+    "Stay inside the notes. Use only the notes, even for facts you know "
+    "well, such as sports results, news, dates or general definitions that "
+    "the notes do not contain. If the student asks about a method, model, "
+    "person, event or term that the notes do not contain, do not describe "
+    "something else as if it were that thing and do not say the notes "
+    "contain it. Say that it is 'not available in the supplied study "
+    "material', and if the notes cover a closely related topic, name that "
+    "topic in one short clause. Use those exact words also when the "
+    "question assumes something the notes do not say."
 )
 
 
@@ -179,10 +200,11 @@ _MODE_INSTRUCTIONS: dict[str, str] = {
         "part of the material. Match the difficulty of the questions to "
         "the depth of study_context: keep questions simple and direct when "
         "the context is limited, and only go deeper when the context "
-        "clearly supports it. Number the questions. Do not reveal the "
-        "answers unless the student explicitly asks for them. If the "
-        "student does ask for the answers, give each one with a short "
-        "reason taken from study_context."
+        "clearly supports it. Number the questions. Never write an "
+        "'Answer:' line, never mark or hint at the correct option and never "
+        "repeat an answer under a question, unless the student explicitly "
+        "asks for the answers. If the student does ask for the answers, "
+        "give each one with a short reason taken from study_context."
     ),
     "facilitator": (
         "You are acting as Facilitator, in the style of a Socratic "
@@ -193,9 +215,17 @@ _MODE_INSTRUCTIONS: dict[str, str] = {
         "guiding question, a small hint, or a prompt that encourages the "
         "student to work out the answer themselves using study_context. "
         "Do not summarize or restate study_context before asking your "
-        "question. Keep the response to one or two sentences."
+        "question. Keep the response to one or two sentences. Never "
+        "include a number, a name or a finding from study_context. If you "
+        "are about to write a fact, turn it into a question about that "
+        "fact instead. Do not write 'the notes say' or 'according to'."
     ),
 }
+
+
+# Modes whose reply has a fixed shape of its own (numbered questions, or one
+# guiding question). The default layout instruction is skipped for them.
+_MODES_WITH_OWN_SHAPE = ("quiz", "facilitator")
 
 
 def _normalise_for_detection(value: str) -> str:
@@ -354,21 +384,30 @@ def build_secure_chat_messages(
         "mention the study material."
     )
     system_message = f"{system_message} {_REPLY_STYLE_RULES}"
+    system_message = f"{system_message} {_GROUNDING_RULES}"
 
     safe_history = sanitize_history(history)
     if safe_history:
         system_message = f"{system_message} {_HISTORY_RULES}"
 
-    mode_instruction = _MODE_INSTRUCTIONS.get(mode or "default")
-    if mode_instruction is not None:
-        system_message = f"{system_message} {mode_instruction}"
+    mode_name = mode or "default"
+    mode_instruction = _MODE_INSTRUCTIONS.get(mode_name)
 
+    # The layout instruction comes first and the mode instruction last, so
+    # the mode has the final word. Quiz and facilitator replies have their
+    # own shape, so the "answer in paragraphs" default must not apply to them.
     if response_format is None:
-        format_instruction = _NO_PICKER_FORMAT_INSTRUCTION
+        if mode_name in _MODES_WITH_OWN_SHAPE:
+            format_instruction = None
+        else:
+            format_instruction = _NO_PICKER_FORMAT_INSTRUCTION
     else:
         format_instruction = _RESPONSE_FORMAT_INSTRUCTIONS.get(response_format)
     if format_instruction is not None:
         system_message = f"{system_message} {format_instruction}"
+
+    if mode_instruction is not None:
+        system_message = f"{system_message} {mode_instruction}"
 
     payload: dict[str, object] = {"study_context": safe_context}
     if safe_history:
