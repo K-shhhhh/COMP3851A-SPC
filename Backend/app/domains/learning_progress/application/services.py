@@ -41,6 +41,13 @@ class LearningProgressService:
         topic: str,
         is_correct: bool,
     ) -> QuizAttempt:
+        """Record a graded result from trusted backend quiz logic.
+
+        This method is intentionally not exposed as a student HTTP endpoint.
+        The authenticated dashboard is read-only so students cannot submit
+        arbitrary correctness values and inflate their own progress.
+        """
+
         return await self.repository.record_attempt(
             student_user_id=student_user_id,
             topic=self._clean_topic(topic),
