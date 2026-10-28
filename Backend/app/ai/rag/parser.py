@@ -52,6 +52,12 @@ MAX_CAPTIONED_IMAGES = _env_int("MAX_CAPTIONED_IMAGES", 8, 0)
 # The descriptions are network bound, so a few can run at the same time.
 CAPTION_WORKERS = _env_int("CAPTION_WORKERS", 3, 1)
 
+# Pictures are shrunk until their longest side is at most this many pixels
+# before the safety check and the description. A slide photo is often 2000 to
+# 4000 pixels wide, which made every upload to the vision model several hundred
+# kilobytes and slowed the answer down. NudeNet looks at 320 pixels anyway.
+MAX_IMAGE_SIDE_PX = _env_int("MAX_IMAGE_SIDE_PX", 1280, 320)
+
 UNSAFE_LABELS = {
     "EXPOSED_BREAST_F",
     "EXPOSED_GENITALIA_F",
@@ -88,7 +94,7 @@ def is_image_safe(image_bytes: bytes) -> bool:
     return True
 
 
-def caption_image(image_bytes: bytes, max_retries: int = 3) -> str:
+def caption_image(image_bytes: bytes, max_retries: int = 3, mime_type: str = "image/jpeg") -> str:
     """
     Captions an image via a free-tier vision model. Free-tier model
     availability is unreliable (rate limits, provider-side rejections) --
@@ -96,7 +102,7 @@ def caption_image(image_bytes: bytes, max_retries: int = 3) -> str:
     rather than failing the ENTIRE document over one flaky image call.
     """
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
-    data_uri = f"data:image/jpeg;base64,{b64_image}"
+    data_uri = f"data:{mime_type};base64,{b64_image}"
 
     last_error = None
     for attempt in range(max_retries):
@@ -141,6 +147,60 @@ def _page_number(entry: Dict) -> int:
     return entry["page_num"]
 
 
+_EXTENSION_MIME_TYPES = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+}
+
+
+def prepare_image(doc, xref: int) -> tuple[bytes, str]:
+    """Return a small RGB JPEG of one embedded picture and its mime type.
+
+    Shrinking first makes the safety check and the upload to the vision model
+    much cheaper. Converting to JPEG also means the mime type sent to the model
+    is always right (PDF pictures are often PNG, which used to be sent labelled
+    as JPEG). If PyMuPDF cannot convert a picture, the original bytes are used
+    with their real mime type, so nothing is skipped.
+    """
+    try:
+        pix = fitz.Pixmap(doc, xref)
+        if pix.alpha:
+            pix = fitz.Pixmap(pix, 0)            # drop transparency
+        if pix.colorspace is None or pix.colorspace.n not in (1, 3):
+            pix = fitz.Pixmap(fitz.csRGB, pix)   # CMYK and others become RGB
+
+        factor = 0
+        longest = max(pix.width, pix.height)
+        while longest / (2 ** factor) > MAX_IMAGE_SIDE_PX:
+            factor += 1
+        if factor:
+            pix.shrink(factor)                   # divides both sides by 2 ** factor
+
+        return pix.tobytes("jpg", jpg_quality=85), "image/jpeg"
+    except Exception as error:  # unusual encodings (JBIG2, JPX masks, ...)
+        logger.info("Using the original bytes for image xref %s: %s", xref, error)
+        extracted = doc.extract_image(xref)
+        mime_type = _EXTENSION_MIME_TYPES.get(extracted.get("ext", "").lower(), "image/png")
+        return extracted["image"], mime_type
+
+
+def _page_has_drawings(page) -> bool:
+    """True if the page has vector lines or boxes.
+
+    find_tables() with its default "lines" strategy builds tables only from
+    drawn lines, so a page without any drawings can never contain one. Skipping
+    it there saves about a quarter of a second per page, which adds up on slide
+    decks that are mostly pictures.
+    """
+    try:
+        return len(page.get_drawings()) > 0
+    except Exception:
+        return True   # if in doubt, look for tables as before
+
+
 def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[Dict]:
     """
     Extracts text, tables, and images (captioned) from a PDF, one page at a time.
@@ -148,11 +208,19 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
     image_mode="strict": one unsafe image anywhere rejects the whole PDF (raises ValueError).
     image_mode="lenient": unsafe images are skipped and logged; the rest of the PDF still processes.
 
+    Every page keeps its full text. Tables found on a page are added as extra
+    entries, so the rows stay together for search without losing the prose
+    around them (earlier, a page with a table kept only the table).
+
     EVERY distinct image gets the safety check, whatever its size or rank. Only the
-    AI description is limited to the MAX_CAPTIONED_IMAGES largest safe images,
-    and those descriptions are requested a few at a time.
+    AI description is limited to the MAX_CAPTIONED_IMAGES largest safe images.
+    The largest images are checked first and each one is sent for its
+    description as soon as it passes, so the descriptions (slow, network bound)
+    run while the remaining safety checks and the text and table extraction
+    (local CPU) continue.
     """
     assert image_mode in ("strict", "lenient")
+    started = time.perf_counter()
     doc = fitz.open(file_path)
     pages_out = []
     flagged_images = []
@@ -160,23 +228,11 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
     seen_xrefs = set()
     skipped_duplicate = 0
     skipped_small = 0
+    table_pages = 0
 
+    # Pass 1: list the pictures. This only reads metadata, so it is quick.
     for page_index, page in enumerate(doc):
         page_num = page_index + 1
-
-        tables = page.find_tables()
-        if tables.tables:
-            for table in tables:
-                table_data = table.extract()
-                rows = []
-                for row in table_data:
-                    clean_row = [str(cell).strip() for cell in row if cell is not None]
-                    rows.append(" | ".join(clean_row))
-                pages_out.append({"page_num": page_num, "content": "\n".join(rows), "type": "table"})
-        else:
-            text = page.get_text()
-            if text.strip():
-                pages_out.append({"page_num": page_num, "content": text, "type": "text"})
 
         for img in page.get_images(full=True):
             xref = img[0]
@@ -197,46 +253,87 @@ def extract_structured_pdf(file_path: str, image_mode: str = "strict") -> List[D
 
             candidates.append({"page_num": page_num, "xref": xref, "area": width * height})
 
-    # Safety check on every candidate: fast, local, one at a time.
-    safe_candidates = []
-    for candidate in sorted(candidates, key=_page_then_xref):
-        image_bytes = doc.extract_image(candidate["xref"])["image"]
-        if not is_image_safe(image_bytes):
-            if image_mode == "strict":
-                raise ValueError(f"Unsafe image detected on page {candidate['page_num']} -- PDF rejected entirely.")
-            flagged_images.append({"page_num": candidate["page_num"], "xref": candidate["xref"]})
-            continue
-        safe_candidates.append(candidate)
+    # Largest first: these are the ones that get a description, so their
+    # safety check runs first and their description can start straight away.
+    largest_first = sorted(candidates, key=_page_then_xref)
+    largest_first.sort(key=_image_area, reverse=True)
 
-    # Describe only the largest ones: they carry the most information.
-    skipped_over_limit = 0
-    if len(safe_candidates) > MAX_CAPTIONED_IMAGES:
-        largest_first = sorted(safe_candidates, key=_image_area, reverse=True)
-        chosen = largest_first[:MAX_CAPTIONED_IMAGES]
-        skipped_over_limit = len(safe_candidates) - len(chosen)
-    else:
-        chosen = list(safe_candidates)
-    chosen.sort(key=_page_then_xref)
+    safety_seconds = 0.0
+    chosen = []
+    pool = ThreadPoolExecutor(max_workers=CAPTION_WORKERS)
+    try:
+        # Pass 2: safety check every picture. In strict mode one unsafe picture
+        # stops here, before any text work. Only pictures that passed are ever
+        # sent to the vision model.
+        for candidate in largest_first:
+            image_bytes, mime_type = prepare_image(doc, candidate["xref"])
 
-    # The descriptions are network bound, so a few run at the same time.
-    captioned = 0
-    if chosen:
-        with ThreadPoolExecutor(max_workers=CAPTION_WORKERS) as pool:
-            futures = []
-            for candidate in chosen:
-                image_bytes = doc.extract_image(candidate["xref"])["image"]
-                futures.append(pool.submit(caption_image, image_bytes))
-            for candidate, future in zip(chosen, futures):
-                pages_out.append({"page_num": candidate["page_num"], "content": future.result(), "type": "image"})
-                captioned += 1
+            check_started = time.perf_counter()
+            safe = is_image_safe(image_bytes)
+            safety_seconds += time.perf_counter() - check_started
+
+            if not safe:
+                if image_mode == "strict":
+                    raise ValueError(f"Unsafe image detected on page {candidate['page_num']} -- PDF rejected entirely.")
+                flagged_images.append({"page_num": candidate["page_num"], "xref": candidate["xref"]})
+                continue
+
+            if len(chosen) < MAX_CAPTIONED_IMAGES:
+                future = pool.submit(caption_image, image_bytes, 3, mime_type)
+                chosen.append((candidate, future))
+
+        # Pass 3: text and tables, while the descriptions are being written.
+        text_started = time.perf_counter()
+        for page_index, page in enumerate(doc):
+            page_num = page_index + 1
+
+            text = page.get_text()
+            if text.strip():
+                pages_out.append({"page_num": page_num, "content": text, "type": "text"})
+
+            if _page_has_drawings(page):
+                tables = page.find_tables()
+                if tables.tables:
+                    table_pages += 1
+                for table in tables:
+                    table_data = table.extract()
+                    rows = []
+                    for row in table_data:
+                        clean_row = [str(cell).strip() for cell in row if cell is not None]
+                        rows.append(" | ".join(clean_row))
+                    table_text = "\n".join(rows)
+                    if table_text.strip():
+                        pages_out.append({"page_num": page_num, "content": table_text, "type": "table"})
+        text_seconds = time.perf_counter() - text_started
+
+        chosen.sort(key=lambda item: _page_then_xref(item[0]))
+        caption_wait_started = time.perf_counter()
+        for candidate, future in chosen:
+            pages_out.append({"page_num": candidate["page_num"], "content": future.result(), "type": "image"})
+        caption_wait_seconds = time.perf_counter() - caption_wait_started
+    finally:
+        # On a rejected PDF, do not wait for descriptions nobody will use.
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    captioned = len(chosen)
+    safe_count = len(candidates) - len(flagged_images)
+    skipped_over_limit = max(0, safe_count - captioned)
 
     # Stable sort: a page's text and tables stay in front of its pictures.
     pages_out.sort(key=_page_number)
 
     logger.info(
-        "Image processing: %d captioned, %d skipped to stay within the limit of %d, "
-        "%d skipped as duplicates, %d skipped as too small",
+        "PDF processed in %.1fs: %d pages (text and tables %.1fs, %d pages with tables), "
+        "%d images safety checked in %.1fs, %d captioned (extra wait for descriptions %.1fs), "
+        "%d skipped to stay within the limit of %d, %d skipped as duplicates, %d skipped as too small",
+        time.perf_counter() - started,
+        len(doc),
+        text_seconds,
+        table_pages,
+        len(candidates),
+        safety_seconds,
         captioned,
+        caption_wait_seconds,
         skipped_over_limit,
         MAX_CAPTIONED_IMAGES,
         skipped_duplicate,

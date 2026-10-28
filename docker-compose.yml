@@ -121,6 +121,9 @@ services:
       ENABLE_KNOWLEDGE_GRAPH_GENERATION: ${ENABLE_KNOWLEDGE_GRAPH_GENERATION:-false}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       NOTE_STORAGE_DIRECTORY: /app/storage/notes
+      MAX_CAPTIONED_IMAGES: ${MAX_CAPTIONED_IMAGES:-8}
+      CAPTION_WORKERS: ${CAPTION_WORKERS:-3}
+      MAX_IMAGE_SIDE_PX: ${MAX_IMAGE_SIDE_PX:-1280}
     volumes:
       - note_uploads:/app/storage/notes
     depends_on:

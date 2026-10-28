@@ -98,10 +98,10 @@ _RESPONSE_FORMAT_INSTRUCTIONS: dict[str, str] = {
 }
 
 
-# Used when no layout was chosen in the app. Personal AI Assistant has no
-# format picker, so the student asks for a layout in their own words. The old
-# default forced plain paragraphs and refused "use bullet points" or "put that
-# in a table". Study group channels still send an explicit picker value.
+# Used when no layout was chosen in the app (the "Automatic" choice in the
+# AI Assistant format picker), so the student can ask for a layout in their own
+# words. The old default forced plain paragraphs and refused "use bullet
+# points" or "put that in a table". A picker value, when chosen, wins.
 _NO_PICKER_FORMAT_INSTRUCTION = (
     "No layout was chosen in the app. Unless the student asks for a "
     "particular layout, answer in one to three short paragraphs. If the "

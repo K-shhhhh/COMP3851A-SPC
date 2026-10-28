@@ -7,6 +7,7 @@ separate process from FastAPI.
 
 import asyncio
 import logging
+import time
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -104,20 +105,52 @@ async def _process_attachment_async(attachment_id: int, object_path: str) -> Non
             )
 
             try:
+                started = time.perf_counter()
                 pages = extract_structured_pdf(
                     object_path,
                     image_mode="strict",
                 )
+                extracted_at = time.perf_counter()
+
+                # Show the student that work is moving on a long PDF, instead
+                # of sitting at 1% until the very end.
+                await attachment_repository.update_processing_status(
+                    attachment_id=attachment_id,
+                    processing_status=NoteProcessingStatus.PROCESSING,
+                    processing_progress=60,
+                )
+
                 chunks = chunk_documents(
                     pages,
                     chunk_size_words=350,
                     overlap_words=60,
                 )
                 embedded_chunks = embed_chunks(chunks, attachment_id)
+                embedded_at = time.perf_counter()
+
+                await attachment_repository.update_processing_status(
+                    attachment_id=attachment_id,
+                    processing_status=NoteProcessingStatus.PROCESSING,
+                    processing_progress=90,
+                )
 
                 await chunk_repository.replace_embedded_attachment_chunks(
                     attachment_id=attachment_id,
                     chunks=embedded_chunks,
+                )
+                saved_at = time.perf_counter()
+
+                # One line per upload, so slow stages can be found in the logs:
+                # sh scripts/staging.sh logs worker | grep "Attachment .* timing"
+                logger.info(
+                    "Attachment %s timing: extract %.1fs, chunk and embed %.1fs "
+                    "(%d chunks), save %.1fs, total %.1fs",
+                    attachment_id,
+                    extracted_at - started,
+                    embedded_at - extracted_at,
+                    len(embedded_chunks),
+                    saved_at - embedded_at,
+                    saved_at - started,
                 )
 
                 # The note is fully searchable as soon as its chunks are saved,
