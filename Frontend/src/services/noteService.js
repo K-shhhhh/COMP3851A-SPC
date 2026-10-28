@@ -1,4 +1,7 @@
-import { apiRequest } from "./apiClient.js";
+import {
+  apiBlobRequest,
+  apiRequest,
+} from "./apiClient.js";
 
 /**
  * Upload a PDF note.
@@ -87,6 +90,18 @@ export function getNoteStatus(accessToken, noteId) {
 export function deleteNote(accessToken, noteId) {
   return apiRequest(`/notes/${noteId}`, {
     method: "DELETE",
+    accessToken,
+  });
+}
+
+/**
+ * Fetch the original private PDF after backend authorization.
+ *
+ * GET /api/v1/notes/{note_id}/file
+ */
+export function getNotePdf(accessToken, noteId) {
+  return apiBlobRequest(`/notes/${noteId}/file`, {
+    method: "GET",
     accessToken,
   });
 }

@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 
 import {
+  Link,
   useSearchParams,
 } from "react-router-dom";
 
@@ -40,6 +41,9 @@ import { useAuth } from "../../contexts/AuthContext.jsx";
 import SimpleMarkdown from "../../components/chat/SimpleMarkdown.jsx";
 import ReportDialog from "../../components/reports/ReportDialog.jsx";
 import { getOnlineGroupMembers } from "../../services/presenceService.js";
+import {
+  citationViewerPath,
+} from "../../utils/citationLinks.js";
 
 import {
   addStudyGroupMember,
@@ -3636,15 +3640,18 @@ function GroupStudyPage() {
                                                 <div className="ai-response-source-list">
                                                   {aiResponse.sources.map(
                                                     (source, sourceIndex) => (
-                                                      <span
+                                                      <Link
+                                                        className="ai-response-source-link"
                                                         key={`${source.note_id}-${source.chunk_id}-${sourceIndex}`}
+                                                        to={citationViewerPath(source)}
+                                                        title="Open cited PDF page"
                                                       >
                                                         {source.note_title ||
                                                           "Study material"}
                                                         {source.page != null
                                                           ? ` · p. ${source.page}`
-                                                          : ""}
-                                                      </span>
+                                                          : " · p. 1"}
+                                                      </Link>
                                                     ),
                                                   )}
                                                 </div>

@@ -3529,3 +3529,18 @@
   height: 100%;
   min-height: 0;
 }
+
+.message-source-link {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--spc-purple);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  cursor: pointer;
+}
+
+.message-source-link:hover {
+  text-decoration: underline;
+}

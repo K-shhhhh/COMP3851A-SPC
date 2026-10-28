@@ -64,6 +64,58 @@ async function sendRequest(path, options, accessToken) {
   return payload;
 }
 
+async function sendBlobRequest(path, options, accessToken) {
+  const headers = new Headers(options.headers);
+  if (!headers.has("Accept")) headers.set("Accept", "application/pdf");
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  else headers.delete("Authorization");
+
+  let response;
+  try {
+    response = await fetch(`${integrationConfig.apiBaseUrl}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    throw new ApiError("Unable to reach the backend.", { retryable: true });
+  }
+
+  if (!response.ok) {
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      // Binary endpoints may return a non-JSON proxy/server error.
+    }
+
+    const validation = Array.isArray(payload?.detail);
+    const legacyMessage =
+      typeof payload?.detail === "string" ? payload.detail : null;
+
+    throw new ApiError(
+      payload?.error?.message || legacyMessage || "The request failed.",
+      {
+        status: response.status,
+        code:
+          payload?.error?.code ||
+          (validation ? "VALIDATION_ERROR" : "HTTP_ERROR"),
+        details:
+          payload?.error?.details ??
+          (validation ? payload.detail : null),
+        retryable:
+          payload?.error?.retryable ??
+          (response.status >= 500 || response.status === 429),
+        requestId:
+          payload?.request_id ||
+          response.headers.get("X-Request-ID"),
+      },
+    );
+  }
+
+  return response.blob();
+}
+
 /**
  * Protected calls use the latest token, even when a React callback captured
  * an older one. Retry a TOKEN_EXPIRED failure at most once after refresh.
@@ -113,6 +165,115 @@ export async function apiRequest(path, options = {}) {
     if (!skipAuthRefresh && ["TOKEN_INVALID", "TOKEN_REVOKED", "SESSION_REQUIRED", "SESSION_EXPIRED"].includes(error.code)) {
       auth?.onInvalidSession?.();
     }
+    throw error;
+  }
+}
+
+/**
+ * Fetch an authenticated binary response such as a private PDF.
+ * Uses the same token-refresh/session handling rules as apiRequest.
+ */
+export async function apiBlobRequest(path, options = {}) {
+  const {
+    accessToken,
+    skipAuthRefresh = false,
+    skipAuthHandling = false,
+    ...fetchOptions
+  } = options;
+
+  const auth = getAuthBridge();
+  const protectedCall = Boolean(accessToken);
+
+  if (
+    protectedCall &&
+    auth?.getAccessToken &&
+    !auth.getAccessToken()
+  ) {
+    throw new ApiError(
+      "The session has ended.",
+      {
+        status: 401,
+        code: "SESSION_EXPIRED",
+      },
+    );
+  }
+
+  const currentToken = protectedCall
+    ? (auth?.getAccessToken?.() || accessToken)
+    : null;
+
+  try {
+    return await sendBlobRequest(
+      path,
+      fetchOptions,
+      currentToken,
+    );
+  } catch (error) {
+    if (
+      !(error instanceof ApiError) ||
+      !protectedCall ||
+      skipAuthHandling
+    ) {
+      throw error;
+    }
+
+    if (
+      !skipAuthRefresh &&
+      auth?.getAccessToken?.() &&
+      auth.getAccessToken() !== currentToken
+    ) {
+      return sendBlobRequest(
+        path,
+        fetchOptions,
+        auth.getAccessToken(),
+      );
+    }
+
+    if (
+      error.code === "TOKEN_EXPIRED" &&
+      !skipAuthRefresh &&
+      auth?.refreshAccessToken
+    ) {
+      const replacement =
+        await auth.refreshAccessToken();
+
+      if (!replacement) {
+        throw error;
+      }
+
+      try {
+        return await sendBlobRequest(
+          path,
+          fetchOptions,
+          replacement,
+        );
+      } catch (retryError) {
+        if (
+          [
+            "TOKEN_INVALID",
+            "TOKEN_REVOKED",
+            "TOKEN_EXPIRED",
+          ].includes(retryError?.code)
+        ) {
+          auth?.onInvalidSession?.();
+        }
+
+        throw retryError;
+      }
+    }
+
+    if (
+      !skipAuthRefresh &&
+      [
+        "TOKEN_INVALID",
+        "TOKEN_REVOKED",
+        "SESSION_REQUIRED",
+        "SESSION_EXPIRED",
+      ].includes(error.code)
+    ) {
+      auth?.onInvalidSession?.();
+    }
+
     throw error;
   }
 }

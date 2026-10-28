@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   BookOpen,
@@ -36,6 +37,9 @@ import {
 } from "../../services/chatService.js";
 
 import { getNotes } from "../../services/noteService.js";
+import {
+  citationViewerPath,
+} from "../../utils/citationLinks.js";
 
 import "./companion.css";
 
@@ -2002,10 +2006,17 @@ function CompanionPage() {
                                 (
                                   source,
                                 ) => (
-                                  <span
+                                  <Link
+                                    className="message-source-link"
                                     key={
-                                      source.chunk_id
+                                      `${source.note_id}-${source.chunk_id}`
                                     }
+                                    to={
+                                      citationViewerPath(
+                                        source,
+                                      )
+                                    }
+                                    title="Open cited PDF page"
                                   >
                                     {
                                       source.note_title
@@ -2013,8 +2024,8 @@ function CompanionPage() {
 
                                     {source.page
                                       ? ` — page ${source.page}`
-                                      : ""}
-                                  </span>
+                                      : " — page 1"}
+                                  </Link>
                                 ),
                               )}
 
