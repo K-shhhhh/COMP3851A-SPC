@@ -109,16 +109,6 @@ from app.domains.notifications.domain.repository import NotificationPreferenceRe
 from app.domains.reports.application.services import ReportService
 from app.domains.reports.domain.repository import ReportRepository
 
-from app.domains.learning_progress.application.services import (
-    LearningProgressService,
-)
-from app.domains.learning_progress.domain.repository import (
-    LearningProgressRepository,
-)
-from app.domains.learning_progress.infrastructure.repository import (
-    PostgreSQLLearningProgressRepository,
-)
-
 from app.domains.analytics.application.services import AnalyticsService
 from app.domains.analytics.domain.repository import AnalyticsRepository
 from app.domains.analytics.infrastructure.repository import PostgreSQLAnalyticsRepository
@@ -543,26 +533,6 @@ def get_report_service(
     repository: ReportRepository = Depends(get_report_repository),
 ) -> ReportService:
     return ReportService(repository)
-
-
-# ---------- Learning progress ----------
-
-def get_learning_progress_repository(
-    session: AsyncSession = Depends(get_db_session),
-) -> LearningProgressRepository:
-    """Return private PostgreSQL quiz-history persistence."""
-
-    return PostgreSQLLearningProgressRepository(session)
-
-
-def get_learning_progress_service(
-    repository: LearningProgressRepository = Depends(
-        get_learning_progress_repository
-    ),
-) -> LearningProgressService:
-    """Construct authenticated student learning-progress use cases."""
-
-    return LearningProgressService(repository)
 
 
 # ---------- Analytics ----------
