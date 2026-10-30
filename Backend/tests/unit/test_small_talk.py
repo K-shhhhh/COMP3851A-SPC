@@ -131,7 +131,9 @@ async def test_each_page_of_a_note_is_listed_once(monkeypatch) -> None:
     monkeypatch.setattr(
         rag_answering,
         "generate_answer",
-        lambda question, context, *, response_format=None, mode=None: "An answer.",
+        lambda question, context, *, response_format=None, mode=None: (
+            "An answer. [[SOURCE_IDS:1,3,4]]"
+        ),
     )
     generator = rag_answering.KrishRagAnswerGenerator(top_k=5, rank_chunks=False)
     chunks = (

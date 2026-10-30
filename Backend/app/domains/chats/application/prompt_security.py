@@ -159,6 +159,19 @@ _GROUNDING_RULES = (
 )
 
 
+# Retrieved passages are labelled by the RAG adapter. This private marker lets
+# the adapter return citations for passages the answer actually used, rather
+# than incorrectly displaying every top-k search candidate. The adapter strips
+# the marker before persisting or returning the answer.
+_SOURCE_SELECTION_RULES = (
+    "Each retrieved passage in study_context is labelled [SOURCE N]. "
+    "At the very end of every response, append exactly "
+    "'[[SOURCE_IDS:1,2]]', replacing 1,2 with only the source numbers that "
+    "directly support the response. Use '[[SOURCE_IDS:]]' when no passage "
+    "supports the response. Do not mention these source IDs anywhere else."
+)
+
+
 # Added only when earlier turns of the chat are supplied.
 _HISTORY_RULES = (
     "The payload may include conversation_history, the last few messages of "
@@ -385,6 +398,7 @@ def build_secure_chat_messages(
     )
     system_message = f"{system_message} {_REPLY_STYLE_RULES}"
     system_message = f"{system_message} {_GROUNDING_RULES}"
+    system_message = f"{system_message} {_SOURCE_SELECTION_RULES}"
 
     safe_history = sanitize_history(history)
     if safe_history:

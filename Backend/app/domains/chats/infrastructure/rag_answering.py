@@ -19,6 +19,7 @@ from app.domains.chats.domain.followups import build_retrieval_query
 from app.domains.chats.domain.retrieval import GroundingChunk
 
 import asyncio
+import re
 
 from app.ai.rag.embedding import embed_text
 from app.ai.rag.vector_store import cosine_similarity
@@ -48,6 +49,15 @@ _SOFT_REFUSAL_PHRASES = (
 )
 _SOFT_REFUSAL_OPENING_CHARS = 150
 _SOFT_REFUSAL_MAX_CHARS = 600
+
+# The model selects the retrieved passages that actually support its answer.
+# This marker is removed before the reply is persisted or returned to the UI.
+# If a provider omits it, we conservatively cite only the highest-ranked
+# passage instead of presenting every retrieved chunk as if it were used.
+_SOURCE_IDS_MARKER = re.compile(
+    r"\s*\[\[\s*SOURCE_IDS\s*:\s*([0-9,\s]*)\]\]\s*$",
+    re.IGNORECASE,
+)
 
 
 def _is_refusal(answer_text: str) -> bool:
@@ -82,6 +92,45 @@ def _distinct_sources(chunks):
         seen.add(key)
         sources.append(source)
     return tuple(sources)
+
+
+def _labelled_context(chunks: list[GroundingChunk]) -> str:
+    """Give each retrieved passage a stable ID for citation selection."""
+
+    return "\n\n".join(
+        f"[SOURCE {index}]\n{chunk.content}"
+        for index, chunk in enumerate(chunks, start=1)
+    )
+
+
+def _selected_source_chunks(
+    answer_text: str,
+    chunks: list[GroundingChunk],
+) -> tuple[str, list[GroundingChunk]]:
+    """Strip the private marker and return only passages the model used.
+
+    A missing marker can happen during a provider/model transition. The safe
+    fallback is the first semantic-search result, not all top-k candidates.
+    Invalid IDs are ignored rather than becoming fabricated citations.
+    """
+
+    match = _SOURCE_IDS_MARKER.search(answer_text)
+    if match is None:
+        return answer_text.strip(), chunks[:1]
+
+    cleaned_answer = answer_text[: match.start()].rstrip()
+    selected: list[GroundingChunk] = []
+    seen_indexes: set[int] = set()
+    for raw_id in match.group(1).split(","):
+        raw_id = raw_id.strip()
+        if not raw_id.isdigit():
+            continue
+        index = int(raw_id)
+        if index in seen_indexes or index < 1 or index > len(chunks):
+            continue
+        seen_indexes.add(index)
+        selected.append(chunks[index - 1])
+    return cleaned_answer, selected
 
 
 class KrishRagAnswerGenerator(ChatAnswerGenerator):
@@ -153,8 +202,10 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
             # PostgreSQL has already applied HNSW cosine ranking and LIMIT.
             top_chunks = list(chunks[: self.top_k])
 
-        # Build the context block directly from .content.
-        context = "\n\n".join(chunk.content for chunk in top_chunks)
+        # Label passages so the model can tell us which retrieved chunks
+        # actually support the answer. Retrieval candidates are not citations
+        # until the answer uses them.
+        context = _labelled_context(top_chunks)
 
         # Generate the grounded answer off the event loop.
         generation_options = {"response_format": response_format, "mode": mode}
@@ -169,8 +220,13 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
             generate_answer, question, context, **generation_options
         )
 
-        # Carry over each used chunk's citation information.
-        sources = _distinct_sources(top_chunks)
+        # Keep only the passages selected by the grounded answer. The private
+        # selection marker never reaches chat history or the frontend.
+        answer_text, source_chunks = _selected_source_chunks(
+            answer_text,
+            top_chunks,
+        )
+        sources = _distinct_sources(source_chunks)
         # An answer that says the material does not cover the question did not
         # use the passages, so citing them would be misleading.
         if _is_refusal(answer_text):
