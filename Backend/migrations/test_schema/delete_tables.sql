@@ -4,6 +4,13 @@
 /* Delete this line and the last line to uncomment the script.
 
 -- Drop tables
+DROP TABLE IF EXISTS report_activity_events CASCADE;
+DROP TABLE IF EXISTS report_notes CASCADE;
+DROP TABLE IF EXISTS evidence CASCADE;
+DROP TABLE IF EXISTS user_reports CASCADE;
+DROP TABLE IF EXISTS audit_events CASCADE;
+DROP TABLE IF EXISTS notification_preferences CASCADE;
+DROP TABLE IF EXISTS user_profiles CASCADE;
 DROP TABLE IF EXISTS user_activity_logs CASCADE;
 DROP TABLE IF EXISTS ai_response_feedbacks CASCADE;
 DROP TABLE IF EXISTS ai_response_sources CASCADE;
@@ -22,6 +29,11 @@ DROP TABLE IF EXISTS users CASCADE;
 
 -- Drop PostgreSQL ENUM types
 DROP TYPE IF EXISTS actions CASCADE;
+DROP TYPE IF EXISTS report_activity_actions CASCADE;
+DROP TYPE IF EXISTS report_outcomes CASCADE;
+DROP TYPE IF EXISTS report_category CASCADE;
+DROP TYPE IF EXISTS report_status CASCADE;
+DROP TYPE IF EXISTS report_target_type CASCADE;
 DROP TYPE IF EXISTS ratings CASCADE;
 DROP TYPE IF EXISTS ai_modes CASCADE;
 DROP TYPE IF EXISTS attachment_status CASCADE;

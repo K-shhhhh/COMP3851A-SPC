@@ -1,5 +1,5 @@
 /*
-Version: 8
+Version: 8.1
 
 Existing tables:	users, user_profiles, notification_preferences,
                     groups, memberships, channels, messages, message_mentions, 
@@ -9,14 +9,14 @@ Existing tables:	users, user_profiles, notification_preferences,
                     user_reports, evidence, report_notes, report_activity_events,
                 	audit_events, user_activity_logs
 
-New tables: user_profiles, notification_preferences, user_reports, evidence, report_notes, report_activity_events, audit_events 
+Updated tables: user_reports, report_activity_events, audit_events (indexes & partial uniqueness)
 
-Updated tables: users
+Changes:    Added partial unique indexes on USER_REPORTS table to prevent the same reporter from creating duplicate active ('submitted', 'under_review') reports for the same
+            message, group, or file target.
+            Added composite keyset indexes on USER_REPORTS  and AUDIT_EVENTS tables for stable opaque cursor pagination.
+            Aligned ix_report_activity_events_audit_event_id as a partial unique index to enforce the 0..1-to-0..1 link between REPORT_ACTIVITY_EVENTS and AUDIT_EVENTS tables.
 
-Changes:    Added new 7 tables for user profiles, notifications, reports and event logs.
-
-Notes:	Deletion rules may be implemented as required in future updates.
-		Besides, future updates should focus more on constraints and indexes of the tables related to knowledge graph, AI responses and activity logs.
+Notes:	N/A
 */
 
 create extension if not exists vector;
@@ -508,13 +508,28 @@ create index if not exists ix_knowledge_edges_active_graph on knowledge_edges (g
 -- My Notes: owner filtering and newest-first pagination.
 create index if not exists ix_attachments_active_library_owner_uploaded on attachments (uploaded_by, uploaded_at desc) where deleted_at is null and show_in_library is true;
 
--- User Reports: reporter history, admin status filtering, and polymorphic targets
+-- User Reports: reporter history, cursor pagination, admin status filtering, and polymorphic targets
 create index if not exists ix_user_reports_reporter_user_id on user_reports (reporter_user_id);
+create index if not exists ix_user_reports_reporter_created_id on user_reports (reporter_user_id, created_at desc, report_id desc);
+create index if not exists ix_user_reports_created_id on user_reports (created_at desc, report_id desc);
 create index if not exists ix_user_reports_status_created on user_reports (status, created_at desc);
 create index if not exists ix_user_reports_target_type on user_reports (target_type, created_at desc);
 create index if not exists ix_user_reports_target_message_id on user_reports (target_message_id) where target_message_id is not null;
 create index if not exists ix_user_reports_target_group_id on user_reports (target_group_id) where target_group_id is not null;
 create index if not exists ix_user_reports_target_file_id on user_reports (target_file_id) where target_file_id is not null;
+
+-- Partial uniqueness preventing duplicate active ('submitted', 'under_review') reports by the same reporter for the same target
+create unique index if not exists uq_user_reports_active_reporter_message
+    on user_reports (reporter_user_id, target_message_id)
+    where status in ('submitted', 'under_review') and target_message_id is not null;
+
+create unique index if not exists uq_user_reports_active_reporter_group
+    on user_reports (reporter_user_id, target_group_id)
+    where status in ('submitted', 'under_review') and target_group_id is not null;
+
+create unique index if not exists uq_user_reports_active_reporter_file
+    on user_reports (reporter_user_id, target_file_id)
+    where status in ('submitted', 'under_review') and target_file_id is not null;
 
 -- Evidence: lookup by report
 create index if not exists ix_evidence_report_id on evidence (report_id);
@@ -528,12 +543,13 @@ create index if not exists ix_report_activity_events_report_id_timestamp on repo
 create index if not exists ix_report_activity_events_actor_id on report_activity_events (actor_id);
 create index if not exists ix_report_activity_events_evidence_id on report_activity_events (evidence_id) where evidence_id is not null;
 create index if not exists ix_report_activity_events_report_note_id on report_activity_events (report_note_id) where report_note_id is not null;
-create index if not exists ix_report_activity_events_audit_event_id on report_activity_events (audit_event_id) where audit_event_id is not null;
+create unique index if not exists ix_report_activity_events_audit_event_id on report_activity_events (audit_event_id) where audit_event_id is not null;
 
--- Audit Events: admin governance action trails and target lookup
+-- Audit Events: admin governance action trails, target lookup, and cursor pagination
 create index if not exists ix_audit_events_admin_timestamp on audit_events (admin_id, event_timestamp desc);
 create index if not exists ix_audit_events_target on audit_events (target_type, target_id, event_timestamp desc);
 create index if not exists ix_audit_events_event_timestamp on audit_events (event_timestamp desc);
+create index if not exists ix_audit_events_timestamp_id on audit_events (event_timestamp desc, audit_event_id desc);
 
 -- User Activity Logs: user activity history and action auditing
 create index if not exists ix_user_activity_logs_user_created on user_activity_logs (user_id, created_at desc);

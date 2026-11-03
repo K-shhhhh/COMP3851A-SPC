@@ -14,8 +14,7 @@ Changes:    Renamed attribute "current_admin" to "current_owner" and a new const
             Added "show_in_library" attribute in Attachments table.
             Restructured Knowledge_Graphs, Knowledge_Nodes and Knowledge_Edges tables: attributes, relationships, constraints and their indexes.
 
-Notes:	Deletion rules may be implemented as required in future updates.
-		Besides, future updates should focus more on constraints and indexes of the tables related to knowledge graph, AI responses and activity logs.
+Notes:	N/A
 */
 
 create extension if not exists vector;

@@ -11,8 +11,7 @@ Updated tables: attachments, users
 Changes:    Added new attributes "processing_started_at" and "processing_completed_at" in Attachments table.
             Added new attribute "show_online_status" in Users table.
 
-Notes:	Deletion rules may be implemented as required in future updates.
-		Besides, future updates should focus more on constraints and indexes of the tables related to knowledge graph, AI responses and activity logs.
+Notes:	N/A
 */
 
 create extension if not exists vector;

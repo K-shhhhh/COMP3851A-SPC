@@ -885,9 +885,21 @@ class UserReport(Base):
         back_populates="reports",
         foreign_keys=[target_file_id],
     )
-    evidence_items: Mapped[list[Evidence]] = relationship(back_populates="report")
-    notes: Mapped[list[ReportNote]] = relationship(back_populates="report")
-    activity_events: Mapped[list[ReportActivityEvent]] = relationship(back_populates="report")
+    evidence_items: Mapped[list[Evidence]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    notes: Mapped[list[ReportNote]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    activity_events: Mapped[list[ReportActivityEvent]] = relationship(
+        back_populates="report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Evidence(Base):
@@ -916,9 +928,8 @@ class Evidence(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     report: Mapped[UserReport] = relationship(back_populates="evidence_items")
-    report_activity_event: Mapped[ReportActivityEvent | None] = relationship(
+    report_activity_events: Mapped[list[ReportActivityEvent]] = relationship(
         back_populates="evidence",
-        uselist=False,
     )
 
 
@@ -977,7 +988,10 @@ class AuditEvent(Base):
         back_populates="audit_events",
         foreign_keys=[admin_id],
     )
-    # Not all report activity events trigger an audit event (0..1 to 0..1).
+
+    # Multiplicity: 0..1 to 0..1 with ReportActivityEvent.
+    # Storing the optional audit_event_id only in REPORT_ACTIVITY_EVENTS is enough...
+    # AUDIT_EVENTS does not store activity_event_id, preventing circular references.
     report_activity_event: Mapped[ReportActivityEvent | None] = relationship(
         back_populates="audit_event",
         uselist=False,
@@ -1019,9 +1033,14 @@ class ReportActivityEvent(Base):
         ForeignKey("report_notes.note_id", name="fk_report_note_id_for_report_activity_events"),
     )
     summary: Mapped[str | None] = mapped_column(Text)
+    
+    # Multiplicity: 0..1 to 0..1 with AuditEvent.
+    # audit_event_id is a nullable, unique foreign key to AUDIT_EVENTS.audit_event_id.
+    # Storing it only in REPORT_ACTIVITY_EVENTS prevents invalid references without creating a circular relationship.
     audit_event_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("audit_events.audit_event_id", name="fk_audit_event_id_for_report_activity_events"),
+        unique=True,
     )
     event_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -1031,7 +1050,7 @@ class ReportActivityEvent(Base):
         foreign_keys=[actor_id],
     )
     evidence: Mapped[Evidence | None] = relationship(
-        back_populates="report_activity_event",
+        back_populates="report_activity_events",
         foreign_keys=[evidence_id],
         uselist=False,
     )
@@ -1174,6 +1193,17 @@ Index(
 
 Index("ix_user_reports_reporter_user_id", UserReport.reporter_user_id)
 Index(
+    "ix_user_reports_reporter_created_id",
+    UserReport.reporter_user_id,
+    UserReport.created_at.desc(),
+    UserReport.report_id.desc(),
+)
+Index(
+    "ix_user_reports_created_id",
+    UserReport.created_at.desc(),
+    UserReport.report_id.desc(),
+)
+Index(
     "ix_user_reports_status_created",
     UserReport.status,
     UserReport.created_at.desc(),
@@ -1197,6 +1227,36 @@ Index(
     "ix_user_reports_target_file_id",
     UserReport.target_file_id,
     postgresql_where=UserReport.target_file_id.is_not(None),
+)
+Index(
+    "uq_user_reports_active_reporter_message",
+    UserReport.reporter_user_id,
+    UserReport.target_message_id,
+    unique=True,
+    postgresql_where=UserReport.status.in_(
+        [ReportStatus.SUBMITTED, ReportStatus.UNDER_REVIEW]
+    )
+    & UserReport.target_message_id.is_not(None),
+)
+Index(
+    "uq_user_reports_active_reporter_group",
+    UserReport.reporter_user_id,
+    UserReport.target_group_id,
+    unique=True,
+    postgresql_where=UserReport.status.in_(
+        [ReportStatus.SUBMITTED, ReportStatus.UNDER_REVIEW]
+    )
+    & UserReport.target_group_id.is_not(None),
+)
+Index(
+    "uq_user_reports_active_reporter_file",
+    UserReport.reporter_user_id,
+    UserReport.target_file_id,
+    unique=True,
+    postgresql_where=UserReport.status.in_(
+        [ReportStatus.SUBMITTED, ReportStatus.UNDER_REVIEW]
+    )
+    & UserReport.target_file_id.is_not(None),
 )
 
 Index("ix_evidence_report_id", Evidence.report_id)
@@ -1227,6 +1287,7 @@ Index(
 Index(
     "ix_report_activity_events_audit_event_id",
     ReportActivityEvent.audit_event_id,
+    unique=True,
     postgresql_where=ReportActivityEvent.audit_event_id.is_not(None),
 )
 
@@ -1242,6 +1303,11 @@ Index(
     AuditEvent.event_timestamp.desc(),
 )
 Index("ix_audit_events_event_timestamp", AuditEvent.event_timestamp.desc())
+Index(
+    "ix_audit_events_timestamp_id",
+    AuditEvent.event_timestamp.desc(),
+    AuditEvent.audit_event_id.desc(),
+)
 
 Index(
     "ix_user_activity_logs_user_created",
