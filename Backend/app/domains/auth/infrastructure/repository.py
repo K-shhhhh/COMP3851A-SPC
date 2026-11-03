@@ -8,7 +8,7 @@ and are exposed as strings to the domain and API layers.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,9 @@ from app.domains.auth.domain.exceptions import (
 from app.domains.auth.domain.models import (
     User,
     UserCredentials,
+)
+from app.domains.auth.domain.password_repository import (
+    PasswordChangeRepository,
 )
 from app.domains.auth.domain.repository import AuthRepository
 from app.models.orm_models import (
@@ -31,11 +34,78 @@ from app.models.orm_models import (
 )
 
 
-class PostgreSQLAuthRepository(AuthRepository):
-    """Persist authentication data using one request-scoped session."""
+class PostgreSQLPasswordChangeRepository(PasswordChangeRepository):
+    """Persist authenticated password changes for active, non-deleted users."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def get_password_hash(self, user_id: str) -> str | None:
+        """Return the active user's password hash, never plaintext."""
+
+        try:
+            parsed_user_id = uuid.UUID(user_id)
+        except (TypeError, ValueError):
+            return None
+
+        statement = select(ORMUser.password_hash).where(
+            ORMUser.user_id == parsed_user_id,
+            ORMUser.status == ActivityStatus.ACTIVE,
+            ORMUser.deleted_at.is_(None),
+        )
+
+        return await self.session.scalar(statement)
+
+    async def update_password_hash(
+        self,
+        *,
+        user_id: str,
+        password_hash: str,
+    ) -> bool:
+        """Atomically replace the hash and return whether a row was updated."""
+
+        try:
+            parsed_user_id = uuid.UUID(user_id)
+        except (TypeError, ValueError):
+            return False
+
+        now = datetime.now(timezone.utc)
+        statement = (
+            update(ORMUser)
+            .where(
+                ORMUser.user_id == parsed_user_id,
+                ORMUser.status == ActivityStatus.ACTIVE,
+                ORMUser.deleted_at.is_(None),
+            )
+            .values(
+                password_hash=password_hash,
+                last_updated_at=now,
+            )
+            .returning(ORMUser.user_id)
+        )
+
+        try:
+            result = await self.session.execute(statement)
+            updated_id = result.scalar_one_or_none()
+            if updated_id is None:
+                return False
+
+            await self.session.commit()
+            return True
+
+        except Exception:
+            await self.session.rollback()
+            raise
+
+
+class PostgreSQLAuthRepository(
+    PostgreSQLPasswordChangeRepository,
+    AuthRepository,
+):
+    """Persist authentication data using one request-scoped session."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session)
 
     @staticmethod
     def _to_domain_user(orm_user: ORMUser) -> User:
