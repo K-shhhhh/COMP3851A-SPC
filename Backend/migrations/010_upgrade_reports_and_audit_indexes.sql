@@ -1,5 +1,5 @@
 /*
-Version: 8.1
+Version: 10
 
 Changes:    Aligned with test_schema/008_1_create_initial_test_schema.sql:
             - Added partial unique indexes on USER_REPORTS table to prevent the same reporter from creating duplicate active ('submitted', 'under_review') reports for the same

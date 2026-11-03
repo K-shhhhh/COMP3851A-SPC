@@ -14,6 +14,16 @@ mutations require a reason containing 10–1000 characters.
 Administration data is supplied by request-scoped PostgreSQL repositories. No
 hard-coded administration data is returned.
 
+## Database migration
+
+For an existing Version 8 database, apply these migrations in order:
+
+1. `009_add_profiles_reports_and_audit.sql`
+2. `010_upgrade_reports_and_audit_indexes.sql`
+
+Fresh Docker volumes load the complete Version 8.1 schema snapshot
+automatically.
+
 ## Endpoints
 
 ### Identity and dashboard
