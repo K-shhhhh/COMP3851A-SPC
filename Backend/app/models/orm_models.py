@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Computed, DateTime, Float, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, Text, UniqueConstraint, func, text)
+from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Computed, DateTime, Float, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, String, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -65,6 +65,51 @@ class AIMode(str, enum.Enum):
 class Rating(str, enum.Enum):
     GOOD = "good"
     BAD = "bad"
+
+
+class ReportTargetType(str, enum.Enum):
+    MESSAGE = "message"
+    GROUP = "group"
+    FILE = "file"
+
+
+class ReportStatus(str, enum.Enum):
+    SUBMITTED = "submitted"
+    UNDER_REVIEW = "under_review"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
+
+
+class ReportCategory(str, enum.Enum):
+    HARASSMENT_BULLYING = "harassment_bullying"
+    HATE_DISCRIMINATION = "hate_discrimination"
+    SPAM_SCAM = "spam_scam"
+    INAPPROPRIATE_CONTENT = "inappropriate_content"
+    ACADEMIC_MISCONDUCT = "academic_misconduct"
+    PRIVACY_VIOLATION = "privacy_violation"
+    IMPERSONATION = "impersonation"
+    DANGEROUS_CONTENT = "dangerous_content"
+    OTHER = "other"
+
+
+class ReportOutcome(str, enum.Enum):
+    NO_VIOLATION = "no_violation"
+    DUPLICATE = "duplicate"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+    CONTENT_REMOVED = "content_removed"
+    USER_DEACTIVATED = "user_deactivated"
+    GROUP_REMOVED = "group_removed"
+    FILE_REMOVED = "file_removed"
+
+
+class ReportActivityAction(str, enum.Enum):
+    REPORT_SUBMITTED = "report_submitted"
+    REVIEW_STARTED = "review_started"
+    NOTE_ADDED = "note_added"
+    EVIDENCE_VIEWED = "evidence_viewed"
+    GOVERNANCE_ACTION = "governance_action"
+    RESOLVED = "resolved"
+    DISMISSED = "dismissed"
 
 
 class Action(str, enum.Enum):
@@ -147,12 +192,87 @@ class User(Base):
     ai_response_feedbacks: Mapped[list[AIResponseFeedback]] = relationship(
         back_populates="user"
     )
+    profile: Mapped[UserProfile | None] = relationship(
+        back_populates="user",
+        uselist=False,
+    )
+    notification_preference: Mapped[NotificationPreference | None] = relationship(
+        back_populates="user",
+        uselist=False,
+    )
+    reports_submitted: Mapped[list[UserReport]] = relationship(
+        back_populates="reporter",
+        foreign_keys="UserReport.reporter_user_id",
+    )
+    report_notes: Mapped[list[ReportNote]] = relationship(
+        back_populates="admin",
+        foreign_keys="ReportNote.admin_id",
+    )
+    audit_events: Mapped[list[AuditEvent]] = relationship(
+        back_populates="admin",
+        foreign_keys="AuditEvent.admin_id",
+    )
+    report_activity_events: Mapped[list[ReportActivityEvent]] = relationship(
+        back_populates="actor",
+        foreign_keys="ReportActivityEvent.actor_id",
+    )
     # This privacy setting controls whether the account may appear in online
     # member lists. Actual presence remains temporary Redis state.
     show_online_status: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         server_default=text("true"),
+    )
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    __table_args__ = (
+        CheckConstraint(
+            "year_of_study is null or year_of_study between 1 and 10",
+            name="ck_year_of_study",
+        ),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_user_id_for_user_profiles"),
+        primary_key=True,
+    )
+    bio: Mapped[str | None] = mapped_column(String(500))
+    programme: Mapped[str | None] = mapped_column(String(120))
+    year_of_study: Mapped[int | None] = mapped_column(Integer)
+
+    user: Mapped[User] = relationship(
+        back_populates="profile",
+        uselist=False,
+        single_parent=True,
+    )
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_user_id_for_notification_preferences"),
+        primary_key=True,
+    )
+    new_group_messages: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+    )
+    group_mentions: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+    )
+
+    user: Mapped[User] = relationship(
+        back_populates="notification_preference",
+        uselist=False,
+        single_parent=True,
     )
 
 
@@ -211,6 +331,10 @@ class Group(Base):
     )
     channels: Mapped[list[Channel]] = relationship(back_populates="group")
     attachments: Mapped[list[Attachment]] = relationship(back_populates="group")
+    reports: Mapped[list[UserReport]] = relationship(
+        back_populates="target_group",
+        foreign_keys="UserReport.target_group_id",
+    )
 
 
 class Membership(Base):
@@ -316,6 +440,10 @@ class Message(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    reports: Mapped[list[UserReport]] = relationship(
+        back_populates="target_message",
+        foreign_keys="UserReport.target_message_id",
+    )
 
 
 class MessageMention(Base):
@@ -415,6 +543,10 @@ class Attachment(Base):
     # A graph may not exist yet while the attachment is awaiting processing.
     knowledge_graph: Mapped[KnowledgeGraph | None] = relationship(
         back_populates="attachment", uselist=False,
+    )
+    reports: Mapped[list[UserReport]] = relationship(
+        back_populates="target_file",
+        foreign_keys="UserReport.target_file_id",
     )
 
 
@@ -678,6 +810,242 @@ class AIResponseFeedback(Base):
     user: Mapped[User] = relationship(back_populates="ai_response_feedbacks")
 
 
+class UserReport(Base):
+    __tablename__ = "user_reports"
+    __table_args__ = (
+        CheckConstraint(
+            "(target_type = 'message' and target_message_id is not null and target_group_id is null and target_file_id is null) or "
+            "(target_type = 'group'   and target_group_id is not null and target_message_id is null and target_file_id is null) or "
+            "(target_type = 'file'    and target_file_id is not null and target_message_id is null and target_group_id is null)",
+            name="chk_target_matches_type",
+        ),
+    )
+
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    reporter_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_reporter_user_id_for_user_reports"),
+        nullable=False,
+    )
+    target_type: Mapped[ReportTargetType] = mapped_column(
+        pg_enum(ReportTargetType, "report_target_type"),
+        nullable=False,
+    )
+    target_message_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("messages.message_id", name="fk_target_message_id_for_user_reports"),
+    )
+    target_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("groups.group_id", name="fk_target_group_id_for_user_reports"),
+    )
+    target_file_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("attachments.attachment_id", name="fk_target_file_id_for_user_reports"),
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[ReportCategory] = mapped_column(
+        pg_enum(ReportCategory, "report_category"),
+        nullable=False,
+    )
+    status: Mapped[ReportStatus] = mapped_column(
+        pg_enum(ReportStatus, "report_status"),
+        nullable=False,
+        server_default=text("'submitted'"),
+    )
+    target_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    limited_context_snapshot: Mapped[list[dict[str, Any]] | dict[str, Any] | None] = mapped_column(JSONB)
+    outcome: Mapped[ReportOutcome | None] = mapped_column(
+        pg_enum(ReportOutcome, "report_outcomes"),
+        nullable=True,
+    )
+    internal_resolution_reason: Mapped[str | None] = mapped_column(Text)
+    public_summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    case_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    reporter: Mapped[User] = relationship(
+        back_populates="reports_submitted",
+        foreign_keys=[reporter_user_id],
+    )
+    target_message: Mapped[Message | None] = relationship(
+        back_populates="reports",
+        foreign_keys=[target_message_id],
+    )
+    target_group: Mapped[Group | None] = relationship(
+        back_populates="reports",
+        foreign_keys=[target_group_id],
+    )
+    target_file: Mapped[Attachment | None] = relationship(
+        back_populates="reports",
+        foreign_keys=[target_file_id],
+    )
+    evidence_items: Mapped[list[Evidence]] = relationship(back_populates="report")
+    notes: Mapped[list[ReportNote]] = relationship(back_populates="report")
+    activity_events: Mapped[list[ReportActivityEvent]] = relationship(back_populates="report")
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "file_size_bytes > 0",
+            name="ck_evidence_file_size",
+        ),
+    )
+
+    evidence_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user_reports.report_id", name="fk_report_id_for_evidence"),
+        nullable=False,
+    )
+    private_storage_key: Mapped[str] = mapped_column(Text, nullable=False)
+    file_name: Mapped[str] = mapped_column(Text, nullable=False)
+    file_type: Mapped[str] = mapped_column(Text, nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    report: Mapped[UserReport] = relationship(back_populates="evidence_items")
+    report_activity_event: Mapped[ReportActivityEvent | None] = relationship(
+        back_populates="evidence",
+        uselist=False,
+    )
+
+
+class ReportNote(Base):
+    __tablename__ = "report_notes"
+
+    note_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user_reports.report_id", name="fk_report_id_for_report_notes"),
+        nullable=False,
+    )
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_admin_id_for_report_notes"),
+        nullable=False,
+    )
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    report: Mapped[UserReport] = relationship(back_populates="notes")
+    admin: Mapped[User] = relationship(
+        back_populates="report_notes",
+        foreign_keys=[admin_id],
+    )
+    report_activity_event: Mapped[ReportActivityEvent | None] = relationship(
+        back_populates="report_note",
+        uselist=False,
+    )
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    audit_event_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    admin_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_admin_id_for_audit_events"),
+        nullable=False,
+    )
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    target_type: Mapped[str] = mapped_column(Text, nullable=False)
+    target_id: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    event_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    admin: Mapped[User] = relationship(
+        back_populates="audit_events",
+        foreign_keys=[admin_id],
+    )
+    # Not all report activity events trigger an audit event (0..1 to 0..1).
+    report_activity_event: Mapped[ReportActivityEvent | None] = relationship(
+        back_populates="audit_event",
+        uselist=False,
+    )
+
+
+class ReportActivityEvent(Base):
+    __tablename__ = "report_activity_events"
+
+    activity_event_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    report_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user_reports.report_id", name="fk_report_id_for_report_activity_events"),
+        nullable=False,
+    )
+    actor_type: Mapped[UserRole] = mapped_column(
+        pg_enum(UserRole, "user_roles"),
+        nullable=False,
+    )
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_actor_id_for_report_activity_events"),
+        nullable=False,
+    )
+    action: Mapped[ReportActivityAction] = mapped_column(
+        pg_enum(ReportActivityAction, "report_activity_actions"),
+        nullable=False,
+    )
+    evidence_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("evidence.evidence_id", name="fk_evidence_id_for_report_activity_events"),
+    )
+    report_note_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("report_notes.note_id", name="fk_report_note_id_for_report_activity_events"),
+    )
+    summary: Mapped[str | None] = mapped_column(Text)
+    audit_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("audit_events.audit_event_id", name="fk_audit_event_id_for_report_activity_events"),
+    )
+    event_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    report: Mapped[UserReport] = relationship(back_populates="activity_events")
+    actor: Mapped[User] = relationship(
+        back_populates="report_activity_events",
+        foreign_keys=[actor_id],
+    )
+    evidence: Mapped[Evidence | None] = relationship(
+        back_populates="report_activity_event",
+        foreign_keys=[evidence_id],
+        uselist=False,
+    )
+    report_note: Mapped[ReportNote | None] = relationship(
+        back_populates="report_activity_event",
+        foreign_keys=[report_note_id],
+        uselist=False,
+    )
+    audit_event: Mapped[AuditEvent | None] = relationship(
+        back_populates="report_activity_event",
+        foreign_keys=[audit_event_id],
+        uselist=False,
+    )
+
 
 class UserActivityLog(Base):
     __tablename__ = "user_activity_logs"
@@ -802,4 +1170,86 @@ Index(
     postgresql_using="hnsw",
     postgresql_with={"m": 16, "ef_construction": 64},
     postgresql_ops={"vector_embedding": "vector_cosine_ops"},
+)
+
+Index("ix_user_reports_reporter_user_id", UserReport.reporter_user_id)
+Index(
+    "ix_user_reports_status_created",
+    UserReport.status,
+    UserReport.created_at.desc(),
+)
+Index(
+    "ix_user_reports_target_type",
+    UserReport.target_type,
+    UserReport.created_at.desc(),
+)
+Index(
+    "ix_user_reports_target_message_id",
+    UserReport.target_message_id,
+    postgresql_where=UserReport.target_message_id.is_not(None),
+)
+Index(
+    "ix_user_reports_target_group_id",
+    UserReport.target_group_id,
+    postgresql_where=UserReport.target_group_id.is_not(None),
+)
+Index(
+    "ix_user_reports_target_file_id",
+    UserReport.target_file_id,
+    postgresql_where=UserReport.target_file_id.is_not(None),
+)
+
+Index("ix_evidence_report_id", Evidence.report_id)
+
+Index(
+    "ix_report_notes_report_id_created",
+    ReportNote.report_id,
+    ReportNote.created_at,
+)
+Index("ix_report_notes_admin_id", ReportNote.admin_id)
+
+Index(
+    "ix_report_activity_events_report_id_timestamp",
+    ReportActivityEvent.report_id,
+    ReportActivityEvent.event_timestamp,
+)
+Index("ix_report_activity_events_actor_id", ReportActivityEvent.actor_id)
+Index(
+    "ix_report_activity_events_evidence_id",
+    ReportActivityEvent.evidence_id,
+    postgresql_where=ReportActivityEvent.evidence_id.is_not(None),
+)
+Index(
+    "ix_report_activity_events_report_note_id",
+    ReportActivityEvent.report_note_id,
+    postgresql_where=ReportActivityEvent.report_note_id.is_not(None),
+)
+Index(
+    "ix_report_activity_events_audit_event_id",
+    ReportActivityEvent.audit_event_id,
+    postgresql_where=ReportActivityEvent.audit_event_id.is_not(None),
+)
+
+Index(
+    "ix_audit_events_admin_timestamp",
+    AuditEvent.admin_id,
+    AuditEvent.event_timestamp.desc(),
+)
+Index(
+    "ix_audit_events_target",
+    AuditEvent.target_type,
+    AuditEvent.target_id,
+    AuditEvent.event_timestamp.desc(),
+)
+Index("ix_audit_events_event_timestamp", AuditEvent.event_timestamp.desc())
+
+Index(
+    "ix_user_activity_logs_user_created",
+    UserActivityLog.user_id,
+    UserActivityLog.created_at.desc(),
+)
+Index(
+    "ix_user_activity_logs_action_created",
+    UserActivityLog.user_action,
+    UserActivityLog.created_at.desc(),
 )
