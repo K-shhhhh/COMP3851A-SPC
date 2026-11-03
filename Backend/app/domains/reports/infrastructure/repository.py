@@ -33,6 +33,7 @@ from app.domains.reports.domain.models import (
     ReportTargetType,
 )
 from app.domains.reports.domain.repository import ReportRepository
+from app.domains.reports.domain.storage import EvidenceStorage
 from app.models.orm_models import (
     ActivityStatus,
     Attachment as ORMAttachment,
@@ -82,9 +83,15 @@ class PostgreSQLReportRepository(ReportRepository):
     MAX_EVIDENCE_BYTES = 5 * 1024 * 1024
     ALLOWED_EVIDENCE_TYPES = frozenset({"image/jpeg", "image/png"})
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        evidence_storage: EvidenceStorage | None = None,
+    ) -> None:
         self.session = session
         self._session = session
+        self._evidence_storage = evidence_storage
 
     async def create_report(
         self,
@@ -117,6 +124,7 @@ class PostgreSQLReportRepository(ReportRepository):
 
         self._validate_evidence_uploads(evidence)
 
+        stored_evidence_keys: list[str] = []
         try:
             reporter = await self._session.scalar(
                 select(ORMUser)
@@ -189,29 +197,23 @@ class PostgreSQLReportRepository(ReportRepository):
             await self._session.flush()
 
             orm_evidence_items: list[ORMEvidence] = []
+            if evidence and self._evidence_storage is None:
+                raise RuntimeError("Private evidence storage is not configured.")
             for upload in evidence:
                 evidence_uuid = uuid.uuid4()
                 safe_filename = self._sanitize_evidence_filename(
                     upload.filename, upload.content_type
                 )
-                # NEXT UPDATE (Private Evidence Object Storage):
-                # Private evidence storage implementations are not ready yet.
-                # When the private object-storage adapter (e.g. EvidenceStorage)
-                # is implemented in the next update:
-                # 1. Inject the private storage port into PostgreSQLReportRepository
-                #    (never store proof images under a public bucket or public URL).
-                # 2. Persist ``upload.content`` bytes under a backend-generated
-                #    opaque key (such as ``private_storage_key`` below) before
-                #    committing the database transaction.
-                # 3. Coordinate rollback/compensation (delete staged private
-                #    blobs if PostgreSQL commit fails, or sweep staged keys via
-                #    an idempotent cleanup/outbox worker) so orphaned files do
-                #    not remain in private storage.
-                # 4. Continue omitting ``private_storage_key`` from all domain
-                #    and HTTP responses.
+                suffix = ".jpg" if upload.content_type == "image/jpeg" else ".png"
                 private_storage_key = (
-                    f"private/reports/{report_uuid}/evidence/{evidence_uuid}"
+                    f"reports/{report_uuid}/evidence/{evidence_uuid}{suffix}"
                 )
+                assert self._evidence_storage is not None
+                await self._evidence_storage.store_evidence(
+                    private_storage_key,
+                    upload.content,
+                )
+                stored_evidence_keys.append(private_storage_key)
                 orm_evidence = ORMEvidence(
                     evidence_id=evidence_uuid,
                     report_id=report_uuid,
@@ -238,6 +240,7 @@ class PostgreSQLReportRepository(ReportRepository):
             await self._session.commit()
         except IntegrityError as exc:
             await self._session.rollback()
+            await self._delete_staged_evidence(stored_evidence_keys)
             if self._is_duplicate_active_report_violation(exc):
                 raise DuplicateReportError(
                     "You already have an active report for this target."
@@ -245,9 +248,21 @@ class PostgreSQLReportRepository(ReportRepository):
             raise
         except Exception:
             await self._session.rollback()
+            await self._delete_staged_evidence(stored_evidence_keys)
             raise
 
         return self._to_domain_report(orm_report, orm_evidence_items)
+
+    async def _delete_staged_evidence(self, keys: list[str]) -> None:
+        if self._evidence_storage is None:
+            return
+        for key in keys:
+            try:
+                await self._evidence_storage.delete_evidence(key)
+            except Exception:
+                # The database transaction has already rolled back. Storage
+                # cleanup is best-effort and may be retried by maintenance.
+                pass
 
     async def list_reports(
         self,

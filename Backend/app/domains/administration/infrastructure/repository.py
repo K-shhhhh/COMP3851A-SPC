@@ -8,7 +8,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select, update
@@ -24,6 +24,8 @@ from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
     AdminAttachmentPage,
     AdminAttachmentSummary,
+    AdminAuditEvent,
+    AdminAuditEventPage,
     AdminEvidenceFile,
     AdminGroupChannel,
     AdminGroupDetails,
@@ -45,14 +47,11 @@ from app.domains.administration.domain.models import (
     AdministrationAttachmentStatus,
     AdministrationGroupStatus,
     AdministrationGroupVisibility,
-    AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
     DashboardSnapshot,
     GovernanceActionResult,
-    SystemLogEntry,
-    SystemLogPage,
-    SystemStatus,
+    ProcessingFailure,
 )
 from app.domains.administration.domain.repository import (
     AdministrationRepository,
@@ -65,6 +64,7 @@ from app.domains.reports.domain.models import (
     ReportStatus,
     ReportTargetType,
 )
+from app.domains.reports.domain.storage import EvidenceStorage, EvidenceStorageError
 from app.models.orm_models import (
     ActivityStatus,
     Attachment as ORMAttachment,
@@ -184,28 +184,168 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
         *,
         attachment_storage: AttachmentStorage | None = None,
         processing_dispatcher: AttachmentProcessingDispatcher | None = None,
+        evidence_storage: EvidenceStorage | None = None,
     ) -> None:
         self.session = session
         self._session = session
         self._attachment_storage = attachment_storage
         self._processing_dispatcher = processing_dispatcher
-
-    # ------------------------------------------------------------------
-    # Intentionally skipped operational endpoints
-    # ------------------------------------------------------------------
-
-    async def get_system_status(self) -> SystemStatus:
-        """Intentionally skipped per task scope."""
-
-        raise NotImplementedError(
-            "get_system_status is intentionally skipped in this task."
-        )
+        self._evidence_storage = evidence_storage
 
     async def get_dashboard(self) -> DashboardSnapshot:
-        """Intentionally skipped per task scope."""
+        """Return concise administration metrics without operational health data."""
 
-        raise NotImplementedError(
-            "get_dashboard is intentionally skipped in this task."
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(hours=24)
+
+        active_users = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMUser).where(
+                    ORMUser.deleted_at.is_(None),
+                    ORMUser.status == ActivityStatus.ACTIVE,
+                )
+            )
+            or 0
+        )
+        active_groups = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMGroup).where(
+                    ORMGroup.deleted_at.is_(None),
+                    ORMGroup.group_type.in_(_STUDY_GROUP_TYPES),
+                )
+            )
+            or 0
+        )
+        stored_notes = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMAttachment).where(
+                    ORMAttachment.deleted_at.is_(None)
+                )
+            )
+            or 0
+        )
+        failure_conditions = (
+            ORMAttachment.deleted_at.is_(None),
+            ORMAttachment.processing_status == AttachmentStatus.FAILED,
+            func.coalesce(
+                ORMAttachment.processing_completed_at,
+                ORMAttachment.last_updated_at,
+                ORMAttachment.uploaded_at,
+            )
+            >= since,
+        )
+        processing_failures_24h = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMAttachment).where(
+                    *failure_conditions
+                )
+            )
+            or 0
+        )
+        open_reports = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMUserReport).where(
+                    ORMUserReport.status.in_(
+                        (ORMReportStatus.SUBMITTED, ORMReportStatus.UNDER_REVIEW)
+                    )
+                )
+            )
+            or 0
+        )
+        under_review_reports = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMUserReport).where(
+                    ORMUserReport.status == ORMReportStatus.UNDER_REVIEW
+                )
+            )
+            or 0
+        )
+        recently_submitted_reports = int(
+            await self._session.scalar(
+                select(func.count()).select_from(ORMUserReport).where(
+                    ORMUserReport.created_at >= since
+                )
+            )
+            or 0
+        )
+
+        failure_rows = (
+            await self._session.execute(
+                select(ORMAttachment, ORMUser.fullname)
+                .join(ORMUser, ORMUser.user_id == ORMAttachment.uploaded_by)
+                .where(*failure_conditions)
+                .order_by(
+                    func.coalesce(
+                        ORMAttachment.processing_completed_at,
+                        ORMAttachment.last_updated_at,
+                        ORMAttachment.uploaded_at,
+                    ).desc(),
+                    ORMAttachment.attachment_id.desc(),
+                )
+                .limit(5)
+            )
+        ).all()
+        recent_failures = tuple(
+            ProcessingFailure(
+                attachment_id=attachment.attachment_id,
+                title=attachment.title,
+                file_name=attachment.file_name,
+                uploader_name=uploader_name,
+                safe_error=(
+                    self._sanitize_operational_message(attachment.processing_error)
+                    or "Processing failed."
+                ),
+                occurred_at=(
+                    attachment.processing_completed_at
+                    or attachment.last_updated_at
+                    or attachment.uploaded_at
+                ),
+            )
+            for attachment, uploader_name in failure_rows
+        )
+
+        audit_rows = (
+            await self._session.execute(
+                select(ORMAuditEvent, ORMUser.fullname)
+                .join(ORMUser, ORMUser.user_id == ORMAuditEvent.admin_id)
+                .order_by(
+                    ORMAuditEvent.event_timestamp.desc(),
+                    ORMAuditEvent.audit_event_id.desc(),
+                )
+                .limit(5)
+            )
+        ).all()
+        recent_audit_events = tuple(
+            self._to_audit_event(audit, admin_name)
+            for audit, admin_name in audit_rows
+        )
+
+        report_rows = list(
+            (
+                await self._session.scalars(
+                    select(ORMUserReport)
+                    .order_by(
+                        ORMUserReport.created_at.desc(),
+                        ORMUserReport.report_id.desc(),
+                    )
+                    .limit(5)
+                )
+            ).all()
+        )
+
+        return DashboardSnapshot(
+            active_users=active_users,
+            active_study_groups=active_groups,
+            stored_notes=stored_notes,
+            processing_failures_24h=processing_failures_24h,
+            open_reports=open_reports,
+            under_review_reports=under_review_reports,
+            recently_submitted_reports=recently_submitted_reports,
+            recent_processing_failures=recent_failures,
+            recent_audit_events=recent_audit_events,
+            recent_reports=tuple(
+                self._to_admin_report_summary(row) for row in report_rows
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -1118,47 +1258,22 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
         )
 
     # ------------------------------------------------------------------
-    # Audit Event Logs (implemented under system_logs methods for now)
+    # Immutable administrative audit events
     # ------------------------------------------------------------------
 
-    # CONTRACT UPDATE NOTE FOR OTHER DEVELOPER (audit_events vs system_logs):
-    # Currently, ``AdministrationRepository`` only defines ``list_system_logs``
-    # and ``get_system_log`` returning ``SystemLogEntry(event_id, occurred_at,
-    # severity, service, message, request_id)``, while the database schema v8/v8.1
-    # persists administrative compliance records in ``audit_events``
-    # (``audit_event_id``, ``admin_id``, ``action``, ``target_type``,
-    # ``target_id``, ``reason``, ``event_timestamp``).
-    #
-    # Recommended contract updates in a follow-up PR:
-    # 1. In ``administration/domain/models.py`` (and ``presentation/schemas.py``),
-    #    add ``AdminAuditEvent`` and ``AdminAuditEventPage`` with explicit fields:
-    #    - ``audit_event_id: str``
-    #    - ``admin_id: str``
-    #    - ``admin_name: str | None``
-    #    - ``action: str``
-    #    - ``target_type: str``
-    #    - ``target_id: str``
-    #    - ``reason: str | None``
-    #    - ``event_timestamp: datetime``
-    #    - ``request_id: str | None`` (if an optional correlation column is added)
-    # 2. In ``administration/domain/repository.py`` and ``application/services.py``,
-    #    add ``list_audit_events(*, admin_id, action, target_type, target_id,
-    #    occurred_from, occurred_to, cursor, limit) -> AdminAuditEventPage`` and
-    #    ``get_audit_event(audit_event_id: str) -> AdminAuditEvent | None`` (or
-    #    replace ``list_system_logs`` / ``get_system_log`` if operational logs are
-    #    not retained separately).
-    async def list_system_logs(
+    async def list_audit_events(
         self,
         *,
-        severity: AdministrationLogSeverity | None,
-        service: str | None,
-        request_id: str | None,
+        admin_id: str | None,
+        action: str | None,
+        target_type: str | None,
+        target_id: str | None,
         occurred_from: datetime | None,
         occurred_to: datetime | None,
         cursor: str | None,
         limit: int,
-    ) -> SystemLogPage:
-        """Query immutable governance ``audit_events`` mapped to ``SystemLogPage``."""
+    ) -> AdminAuditEventPage:
+        """Query immutable governance events with stable keyset pagination."""
 
         self._validate_limit(limit)
         if occurred_from and occurred_to and occurred_from > occurred_to:
@@ -1172,32 +1287,22 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             else None
         )
 
-        # Governance audit events have informational compliance severity.
-        if (
-            severity is not None
-            and severity != AdministrationLogSeverity.INFO
-        ):
-            return SystemLogPage(items=(), next_cursor=None)
-
         conditions = []
-        if service is not None:
-            normalized_service = service.strip().lower()
-            if normalized_service and normalized_service not in _AUDIT_SERVICE_ALIASES:
-                conditions.append(
-                    or_(
-                        func.lower(ORMAuditEvent.target_type)
-                        == normalized_service,
-                        func.lower(ORMAuditEvent.action) == normalized_service,
-                    )
+        if admin_id is not None:
+            parsed_admin = self._parse_uuid(admin_id)
+            if parsed_admin is None:
+                raise AdministrationValidationError(
+                    "admin_id must be a valid UUID."
                 )
-
-        if request_id is not None:
-            # audit_events in schema v8/v8.1 does not store a request_id column;
-            # allow exact lookup by audit_event_id UUID or return empty safely.
-            maybe_event_uuid = self._parse_uuid(request_id)
-            if maybe_event_uuid is None:
-                return SystemLogPage(items=(), next_cursor=None)
-            conditions.append(ORMAuditEvent.audit_event_id == maybe_event_uuid)
+            conditions.append(ORMAuditEvent.admin_id == parsed_admin)
+        if action is not None:
+            conditions.append(func.lower(ORMAuditEvent.action) == action.lower())
+        if target_type is not None:
+            conditions.append(
+                func.lower(ORMAuditEvent.target_type) == target_type.lower()
+            )
+        if target_id is not None:
+            conditions.append(ORMAuditEvent.target_id == target_id)
 
         if occurred_from is not None:
             conditions.append(ORMAuditEvent.event_timestamp >= occurred_from)
@@ -1218,8 +1323,9 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
 
         rows = list(
             (
-                await self._session.scalars(
-                    select(ORMAuditEvent)
+                await self._session.execute(
+                    select(ORMAuditEvent, ORMUser.fullname)
+                    .join(ORMUser, ORMUser.user_id == ORMAuditEvent.admin_id)
                     .where(*conditions)
                     .order_by(
                         ORMAuditEvent.event_timestamp.desc(),
@@ -1234,31 +1340,38 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
         next_cursor = (
             self._encode_uuid_cursor(
                 kind="audit_events",
-                timestamp=page_rows[-1].event_timestamp,
-                entity_id=page_rows[-1].audit_event_id,
+                timestamp=page_rows[-1][0].event_timestamp,
+                entity_id=page_rows[-1][0].audit_event_id,
             )
             if has_more and page_rows
             else None
         )
 
-        items = tuple(self._to_audit_system_log_entry(row) for row in page_rows)
-        return SystemLogPage(items=items, next_cursor=next_cursor)
+        items = tuple(
+            self._to_audit_event(audit, admin_name)
+            for audit, admin_name in page_rows
+        )
+        return AdminAuditEventPage(items=items, next_cursor=next_cursor)
 
-    async def get_system_log(self, event_id: str) -> SystemLogEntry | None:
-        """Load one immutable ``audit_events`` row mapped to ``SystemLogEntry``."""
+    async def get_audit_event(
+        self, audit_event_id: str
+    ) -> AdminAuditEvent | None:
+        """Load one sanitized immutable governance event."""
 
-        audit_uuid = self._parse_uuid(event_id)
+        audit_uuid = self._parse_uuid(audit_event_id)
         if audit_uuid is None:
             return None
 
-        row = await self._session.scalar(
-            select(ORMAuditEvent).where(
-                ORMAuditEvent.audit_event_id == audit_uuid
+        row = (
+            await self._session.execute(
+                select(ORMAuditEvent, ORMUser.fullname)
+                .join(ORMUser, ORMUser.user_id == ORMAuditEvent.admin_id)
+                .where(ORMAuditEvent.audit_event_id == audit_uuid)
             )
-        )
+        ).first()
         if row is None:
             return None
-        return self._to_audit_system_log_entry(row)
+        return self._to_audit_event(row[0], row[1])
 
     # ------------------------------------------------------------------
     # Report Management
@@ -1361,25 +1474,6 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             next_cursor=next_cursor,
         )
 
-    # CONTRACT UPDATE NOTE FOR OTHER DEVELOPER (AdminReportActivity & ReportNote):
-    # 1. ``AdminReportActivity`` in ``administration/domain/models.py`` (and
-    #    ``AdminReportActivityResponse`` in ``presentation/schemas.py``)
-    #    currently defines ``administrator_user_id: str | None`` and
-    #    ``administrator_name: str | None``. However, ``report_activity_events``
-    #    persists ``actor_type`` ('student' | 'admin') and ``actor_id`` because
-    #    the initial ``report_submitted`` timeline event has a student actor.
-    #    Another developer should update ``AdminReportActivity`` to expose
-    #    ``actor_id: str``, ``actor_name: str``, and ``actor_type: str`` instead
-    #    of ``administrator_user_id`` / ``administrator_name``. Under the frozen
-    #    contract, non-admin actors map ``administrator_user_id`` and
-    #    ``administrator_name`` to ``None`` so student reporters are not
-    #    mislabeled as administrators.
-    # 2. ``report_notes`` is stored in its own append-only table linked via
-    #    ``report_activity_events.report_note_id``. ``AdminReportDetails`` does
-    #    not currently include a dedicated ``notes`` collection, so ``note_added``
-    #    timeline items surface the note text through ``AdminReportActivity.summary``.
-    #    If structured notes are later needed separately in the UI, add
-    #    ``notes: tuple[AdminReportNote, ...]`` to ``AdminReportDetails``.
     async def get_report(self, report_id: str) -> AdminReportDetails | None:
         """Load one report's preserved snapshot, bounded context, evidence, and timeline."""
 
@@ -1448,16 +1542,9 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
                     or note_text
                     or activity.action.value
                 ),
-                administrator_user_id=(
-                    str(activity.actor_id)
-                    if activity.actor_type == ORMUserRole.ADMIN
-                    else None
-                ),
-                administrator_name=(
-                    actor_name
-                    if activity.actor_type == ORMUserRole.ADMIN
-                    else None
-                ),
+                actor_id=str(activity.actor_id),
+                actor_name=actor_name,
+                actor_type=AdministrationUserRole(activity.actor_type.value),
                 occurred_at=activity.event_timestamp,
             )
             for activity, actor_name, note_text in activity_rows
@@ -1949,7 +2036,30 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
                 await self._session.rollback()
                 return None
 
+            if self._evidence_storage is None:
+                raise AdministrationConflictError(
+                    "Private evidence storage is not configured."
+                )
+            try:
+                content = await self._evidence_storage.read_evidence(
+                    evidence.private_storage_key
+                )
+            except EvidenceStorageError as exc:
+                raise AdministrationConflictError(
+                    "The report evidence is temporarily unavailable."
+                ) from exc
+
             now = datetime.now(timezone.utc)
+            audit_event = ORMAuditEvent(
+                audit_event_id=uuid.uuid4(),
+                admin_id=admin_uuid,
+                action="report_evidence_viewed",
+                target_type="evidence",
+                target_id=str(evidence.evidence_id),
+                reason="Evidence viewed during authorized report investigation.",
+                event_timestamp=now,
+            )
+            self._session.add(audit_event)
             self._session.add(
                 ORMReportActivityEvent(
                     activity_event_id=uuid.uuid4(),
@@ -1958,6 +2068,7 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
                     actor_id=admin_uuid,
                     action=ORMReportActivityAction.EVIDENCE_VIEWED,
                     evidence_id=evidence.evidence_id,
+                    audit_event_id=audit_event.audit_event_id,
                     summary=f"Viewed evidence '{evidence.file_name}'.",
                     event_timestamp=now,
                 )
@@ -1967,22 +2078,11 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             await self._session.rollback()
             raise
 
-        # NEXT UPDATE (Private Evidence Object Storage):
-        # Private evidence storage implementations are not ready yet.
-        # In the next update, once the private object-storage adapter (e.g.
-        # EvidenceStorage) is implemented:
-        # 1. Inject ``evidence_storage`` into ``PostgreSQLAdministrationRepository``.
-        # 2. Validate and stream/read raw bytes from private storage using
-        #    ``evidence.private_storage_key`` (never expose ``private_storage_key``
-        #    or serve evidence from a public URL).
-        # 3. Replace the placeholder ``b""`` below with the bytes returned by
-        #    ``await self._evidence_storage.read_evidence(evidence.private_storage_key)``
-        #    while preserving the immutable ``evidence_viewed`` activity record.
         return AdminEvidenceFile(
             evidence_id=str(evidence.evidence_id),
             filename=evidence.file_name,
             content_type=evidence.file_type,
-            content=b"",
+            content=content,
         )
 
     # ------------------------------------------------------------------
@@ -2290,28 +2390,20 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             else AdministrationAttachmentSource.STUDY_GROUP
         )
 
-    @classmethod
-    def _to_audit_system_log_entry(
-        cls,
+    @staticmethod
+    def _to_audit_event(
         audit: ORMAuditEvent,
-    ) -> SystemLogEntry:
-        raw_message = (
-            f"Admin {audit.admin_id} performed '{audit.action}' "
-            f"on {audit.target_type}:{audit.target_id}"
-        )
-        if audit.reason:
-            raw_message = f"{raw_message} — reason: {audit.reason}"
-        safe_message = (
-            cls._sanitize_operational_message(raw_message)
-            or f"Audit event {audit.action} on {audit.target_type}"
-        )
-        return SystemLogEntry(
-            event_id=str(audit.audit_event_id),
-            occurred_at=audit.event_timestamp,
-            severity=AdministrationLogSeverity.INFO,
-            service=_AUDIT_SERVICE_NAME,
-            message=safe_message,
-            request_id=None,
+        admin_name: str | None,
+    ) -> AdminAuditEvent:
+        return AdminAuditEvent(
+            audit_event_id=str(audit.audit_event_id),
+            admin_id=str(audit.admin_id),
+            admin_name=admin_name,
+            action=audit.action,
+            target_type=audit.target_type,
+            target_id=audit.target_id,
+            reason=audit.reason,
+            event_timestamp=audit.event_timestamp,
         )
 
     @staticmethod

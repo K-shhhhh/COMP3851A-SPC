@@ -101,7 +101,7 @@ class StubAdministrationRepository:
         self.last_actor = actor
         return GovernanceActionResult(str(attachment_id), "queued", NOW)
 
-    async def list_system_logs(self, **_):
+    async def list_audit_events(self, **_):
         raise AssertionError("invalid ranges must fail before persistence")
 
     @staticmethod
@@ -216,15 +216,16 @@ async def test_only_failed_active_attachment_can_be_retried() -> None:
 
 
 @pytest.mark.asyncio
-async def test_system_log_range_must_be_ordered() -> None:
+async def test_audit_event_range_must_be_ordered() -> None:
     repository = StubAdministrationRepository()
     service = AdministrationService(repository)
 
     with pytest.raises(AdministrationValidationError, match="occurred_from"):
-        await service.list_system_logs(
-            severity=None,
-            service=None,
-            request_id=None,
+        await service.list_audit_events(
+            admin_id=None,
+            action=None,
+            target_type=None,
+            target_id=None,
             occurred_from=datetime(2026, 10, 25, tzinfo=timezone.utc),
             occurred_to=NOW,
             cursor=None,

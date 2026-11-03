@@ -12,6 +12,8 @@ from datetime import datetime
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
     AdminAttachmentPage,
+    AdminAuditEvent,
+    AdminAuditEventPage,
     AdminEvidenceFile,
     AdminGroupDetails,
     AdminGroupPage,
@@ -26,23 +28,15 @@ from app.domains.administration.domain.models import (
     AdministrationAttachmentStatus,
     AdministrationGroupStatus,
     AdministrationGroupVisibility,
-    AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
     DashboardSnapshot,
     GovernanceActionResult,
-    SystemLogEntry,
-    SystemLogPage,
-    SystemStatus,
 )
 from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 
 
 class AdministrationRepository(ABC):
-    @abstractmethod
-    async def get_system_status(self) -> SystemStatus:
-        raise NotImplementedError
-
     @abstractmethod
     async def get_dashboard(self) -> DashboardSnapshot:
         raise NotImplementedError
@@ -168,21 +162,22 @@ class AdministrationRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def list_system_logs(
+    async def list_audit_events(
         self,
         *,
-        severity: AdministrationLogSeverity | None,
-        service: str | None,
-        request_id: str | None,
+        admin_id: str | None,
+        action: str | None,
+        target_type: str | None,
+        target_id: str | None,
         occurred_from: datetime | None,
         occurred_to: datetime | None,
         cursor: str | None,
         limit: int,
-    ) -> SystemLogPage:
+    ) -> AdminAuditEventPage:
         raise NotImplementedError
 
     @abstractmethod
-    async def get_system_log(self, event_id: str) -> SystemLogEntry | None:
+    async def get_audit_event(self, audit_event_id: str) -> AdminAuditEvent | None:
         raise NotImplementedError
 
     @abstractmethod

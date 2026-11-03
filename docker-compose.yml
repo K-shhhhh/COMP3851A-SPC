@@ -79,9 +79,11 @@ services:
       RAG_SEMANTIC_SEARCH_TOP_K: ${RAG_SEMANTIC_SEARCH_TOP_K:-5}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       NOTE_STORAGE_DIRECTORY: /app/storage/notes
+      EVIDENCE_STORAGE_DIRECTORY: /app/storage/evidence
       MAX_NOTE_UPLOAD_SIZE_BYTES: ${MAX_NOTE_UPLOAD_SIZE_BYTES:-10485760}
     volumes:
       - note_uploads:/app/storage/notes
+      - report_evidence:/app/storage/evidence
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,7 +149,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-pgvector.sql:ro
-      - ./Backend/migrations/006_1_create_initial_test_schema.sql:/docker-entrypoint-initdb.d/02-application-schema.sql:ro
+      - ./Backend/migrations/008_1_create_initial_test_schema.sql:/docker-entrypoint-initdb.d/02-application-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-spc_backend} -d ${POSTGRES_DB:-spc}"]
       interval: 10s
@@ -197,6 +199,7 @@ volumes:
   redis_data:
   pgadmin_data:
   note_uploads:
+  report_evidence:
   ollama_data:
 
 networks:

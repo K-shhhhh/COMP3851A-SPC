@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # Private location for original uploaded learning materials.
     NOTE_STORAGE_DIRECTORY: Path = REPOSITORY_ROOT / "storage" / "notes"
 
+    # Private, non-public storage for screenshots submitted with reports.
+    EVIDENCE_STORAGE_DIRECTORY: Path = REPOSITORY_ROOT / "storage" / "evidence"
+
     # Current sprint accepts PDF files up to 10 MiB.
     MAX_NOTE_UPLOAD_SIZE_BYTES: int = 10 * 1024 * 1024
 

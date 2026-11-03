@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_administration_service, get_current_user
+from app.api.dependencies import (
+    get_administration_service,
+    get_auth_service,
+    get_current_user,
+)
 from app.domains.administration.domain.models import (
     AdminReportDetails,
     AdminReportSummary,
@@ -34,7 +38,7 @@ class StubAdministrationService:
             under_review_reports=1,
             recently_submitted_reports=2,
             recent_processing_failures=(),
-            recent_system_events=(),
+            recent_audit_events=(),
             recent_reports=(),
         )
 
@@ -59,6 +63,9 @@ def user(role: str) -> User:
 
 
 def test_administration_requires_authentication() -> None:
+    # Authentication rejects the missing bearer token before using the service.
+    # Override it so this isolated contract test does not open a database session.
+    app.dependency_overrides[get_auth_service] = lambda: object()
     client = TestClient(app)
     try:
         response = client.get("/api/v1/administration/me")
@@ -108,18 +115,6 @@ def test_admin_identity_dashboard_and_governance_contract() -> None:
         app.dependency_overrides.clear()
 
 
-def test_admin_data_returns_explicit_pending_integration_error() -> None:
-    app.dependency_overrides[get_current_user] = lambda: user("admin")
-    client = TestClient(app)
-    try:
-        response = client.get("/api/v1/administration/system-status")
-        assert response.status_code == 503
-        assert response.json()["error"]["code"] == "PERSISTENCE_NOT_CONFIGURED"
-    finally:
-        client.close()
-        app.dependency_overrides.clear()
-
-
 def test_admin_report_management_contract_is_exposed_without_assignment() -> None:
     paths = app.openapi()["paths"]
     expected = {
@@ -140,3 +135,11 @@ def test_admin_report_management_contract_is_exposed_without_assignment() -> Non
     ).lower()
     assert "priority" not in report_contract
     assert "assigned" not in report_contract
+
+
+def test_operational_status_removed_and_audit_events_exposed() -> None:
+    paths = app.openapi()["paths"]
+    assert "/api/v1/administration/system-status" not in paths
+    assert "/api/v1/administration/system-logs" not in paths
+    assert "/api/v1/administration/audit-events" in paths
+    assert "/api/v1/administration/audit-events/{audit_event_id}" in paths

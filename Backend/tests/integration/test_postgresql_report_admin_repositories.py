@@ -34,6 +34,7 @@ from app.domains.reports.domain.models import (
 from app.domains.reports.infrastructure.repository import (
     PostgreSQLReportRepository,
 )
+from app.domains.reports.infrastructure.local_storage import LocalEvidenceStorage
 from app.models.orm_models import (
     ActivityStatus,
     Attachment,
@@ -85,7 +86,8 @@ async def _reset_tables(engine) -> None:
 
 
 @pytest.mark.asyncio
-async def test_postgresql_report_and_admin_governance_workflow() -> None:
+async def test_postgresql_report_and_admin_governance_workflow(tmp_path) -> None:
+    evidence_storage = LocalEvidenceStorage(tmp_path / "evidence")
     """Verify atomic snapshots, duplicate prevention, governance audit, and read-only closure."""
 
     engine = create_async_engine(TEST_DATABASE_URL, pool_pre_ping=True)
@@ -198,7 +200,9 @@ async def test_postgresql_report_and_admin_governance_workflow() -> None:
 
         # Outsider cannot report private group message
         async with session_factory() as session:
-            report_repo = PostgreSQLReportRepository(session)
+            report_repo = PostgreSQLReportRepository(
+                session, evidence_storage=evidence_storage
+            )
             with pytest.raises(ReportPermissionDeniedError):
                 await report_repo.create_report(
                     reporter_user_id=str(outsider_id),
@@ -212,7 +216,9 @@ async def test_postgresql_report_and_admin_governance_workflow() -> None:
 
         # Member creates message report with bounded +/-2 context & duplicate check
         async with session_factory() as session:
-            report_repo = PostgreSQLReportRepository(session)
+            report_repo = PostgreSQLReportRepository(
+                session, evidence_storage=evidence_storage
+            )
             msg_report = await report_repo.create_report(
                 reporter_user_id=str(reporter_id),
                 target_type=ReportTargetType.MESSAGE,
@@ -271,7 +277,9 @@ async def test_postgresql_report_and_admin_governance_workflow() -> None:
 
         # Admin workflow: start review -> note -> evidence view x2 -> action -> resolve
         async with session_factory() as session:
-            admin_repo = PostgreSQLAdministrationRepository(session)
+            admin_repo = PostgreSQLAdministrationRepository(
+                session, evidence_storage=evidence_storage
+            )
             actor = AdministrationActor(
                 user_id=str(admin_1_id),
                 reason="Confirmed policy breach during moderation",
@@ -330,16 +338,21 @@ async def test_postgresql_report_and_admin_governance_workflow() -> None:
                     note="Cannot mutate resolved report.",
                 )
 
-            audit_page = await admin_repo.list_system_logs(
-                severity=None,
-                service=None,
-                request_id=None,
+            audit_page = await admin_repo.list_audit_events(
+                admin_id=None,
+                action=None,
+                target_type=None,
+                target_id=None,
                 occurred_from=None,
                 occurred_to=None,
                 cursor=None,
                 limit=10,
             )
-            assert len(audit_page.items) == 1
+            assert len(audit_page.items) == 3
+            assert {event.action for event in audit_page.items} == {
+                "report_evidence_viewed",
+                "remove_message",
+            }
 
             activities = (
                 await session.scalars(
@@ -349,9 +362,9 @@ async def test_postgresql_report_and_admin_governance_workflow() -> None:
                     )
                 )
             ).all()
-            assert len(activities) == 6
+            assert len(activities) == 7
 
             audits = (await session.scalars(select(AuditEvent))).all()
-            assert len(audits) == 1
+            assert len(audits) == 3
     finally:
         await engine.dispose()

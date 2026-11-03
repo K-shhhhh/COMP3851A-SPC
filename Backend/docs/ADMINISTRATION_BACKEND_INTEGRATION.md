@@ -11,21 +11,19 @@ All routes use the `/api/v1/administration` prefix and require an active user
 whose account role is `admin`. UI visibility is not authorization. Governance
 mutations require a reason containing 10–1000 characters.
 
-The administration repository is deliberately unconfigured until the database
-adapter is supplied. Authenticated administrators receive
-`503 PERSISTENCE_NOT_CONFIGURED`; no hard-coded operational data is returned.
+Administration data is supplied by request-scoped PostgreSQL repositories. No
+hard-coded administration data is returned.
 
 ## Endpoints
 
 ### Identity and dashboard
 
 - `GET /administration/me`
-- `GET /administration/system-status`
 - `GET /administration/dashboard`
 
 The dashboard contains active-user, active-study-group, stored-note, and recent
-processing-failure counts plus sanitized recent operational events. Report
-statistics plus open, under-review, and recently submitted report counts.
+processing-failure counts, recent audit events, and report statistics. Runtime
+health monitoring is deliberately outside the Admin Portal.
 
 ### Users
 
@@ -59,14 +57,14 @@ List filters are `search`, `status`, `source`, `include_removed`, `cursor`, and
 `limit`. Only failed, non-removed attachments may be retried. Processing errors
 returned by the adapter must be safe for administrator display.
 
-### System logs
+### Audit events
 
-- `GET /administration/system-logs`
-- `GET /administration/system-logs/{event_id}`
+- `GET /administration/audit-events`
+- `GET /administration/audit-events/{audit_event_id}`
 
-Filters are `severity`, `service`, `request_id`, `occurred_from`, `occurred_to`,
-`cursor`, and `limit`. Logs are read-only and must be sanitized. There are no
-edit, clear, or delete endpoints.
+Filters are `admin_id`, `action`, `target_type`, `target_id`, `occurred_from`,
+`occurred_to`, `cursor`, and `limit`. Audit events are immutable and read-only.
+There are no edit, clear, or delete endpoints.
 
 ### Reports
 
@@ -95,10 +93,9 @@ only and must not be exposed to reported users.
 
 ## Database adapter requirements
 
-Implement `AdministrationRepository` in
-`app/domains/administration/infrastructure/repository.py` and change
-`get_administration_repository` to construct it with a request-scoped database
-session.
+`PostgreSQLAdministrationRepository` is constructed with a request-scoped
+database session plus the private attachment/evidence storage and processing
+dispatcher dependencies.
 
 Every governance mutation must atomically:
 

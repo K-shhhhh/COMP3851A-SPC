@@ -1,4 +1,4 @@
-"""Admin-only HTTP boundary for governance and operational visibility."""
+"""Admin-only HTTP boundary for governance and immutable audit visibility."""
 
 from contextlib import contextmanager
 from datetime import datetime
@@ -21,13 +21,14 @@ from app.domains.administration.domain.models import (
     AdministrationAttachmentStatus,
     AdministrationGroupStatus,
     AdministrationGroupVisibility,
-    AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
 )
 from app.domains.administration.presentation.schemas import (
     AdminAttachmentDetailsResponse,
     AdminAttachmentPageResponse,
+    AdminAuditEventPageResponse,
+    AdminAuditEventResponse,
     AdminGroupDetailsResponse,
     AdminGroupPageResponse,
     AdminMeResponse,
@@ -42,9 +43,6 @@ from app.domains.administration.presentation.schemas import (
     DashboardResponse,
     GovernanceActionRequest,
     GovernanceActionResponse,
-    SystemLogPageResponse,
-    SystemLogResponse,
-    SystemStatusResponse,
 )
 from app.domains.auth.domain.models import User
 from app.domains.reports.domain.models import ReportStatus, ReportTargetType
@@ -87,13 +85,6 @@ async def get_admin_identity(
     )
 
 
-@router.get("/system-status", response_model=SystemStatusResponse)
-async def get_system_status(
-    service: AdministrationService = Depends(get_administration_service),
-) -> SystemStatusResponse:
-    return SystemStatusResponse.model_validate(await service.get_system_status())
-
-
 @router.get("/dashboard", response_model=DashboardResponse)
 async def get_dashboard(
     service: AdministrationService = Depends(get_administration_service),
@@ -110,14 +101,15 @@ async def list_users(
     limit: int = Query(default=25, ge=1, le=100),
     service: AdministrationService = Depends(get_administration_service),
 ) -> AdminUserPageResponse:
-    page = await service.list_users(
-        search=search,
-        status=status,
-        role=role,
-        cursor=cursor,
-        limit=limit,
-    )
-    return AdminUserPageResponse.model_validate(page)
+    with administration_errors():
+        page = await service.list_users(
+            search=search,
+            status=status,
+            role=role,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AdminUserPageResponse.model_validate(page)
 
 
 @router.get("/users/{user_id}", response_model=AdminUserDetailsResponse)
@@ -170,14 +162,15 @@ async def list_groups(
     limit: int = Query(default=25, ge=1, le=100),
     service: AdministrationService = Depends(get_administration_service),
 ) -> AdminGroupPageResponse:
-    page = await service.list_groups(
-        search=search,
-        visibility=visibility,
-        status=status,
-        cursor=cursor,
-        limit=limit,
-    )
-    return AdminGroupPageResponse.model_validate(page)
+    with administration_errors():
+        page = await service.list_groups(
+            search=search,
+            visibility=visibility,
+            status=status,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AdminGroupPageResponse.model_validate(page)
 
 
 @router.get("/study-groups/{group_id}", response_model=AdminGroupDetailsResponse)
@@ -231,15 +224,16 @@ async def list_attachments(
     limit: int = Query(default=25, ge=1, le=100),
     service: AdministrationService = Depends(get_administration_service),
 ) -> AdminAttachmentPageResponse:
-    page = await service.list_attachments(
-        search=search,
-        status=status,
-        source=source,
-        include_removed=include_removed,
-        cursor=cursor,
-        limit=limit,
-    )
-    return AdminAttachmentPageResponse.model_validate(page)
+    with administration_errors():
+        page = await service.list_attachments(
+            search=search,
+            status=status,
+            source=source,
+            include_removed=include_removed,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AdminAttachmentPageResponse.model_validate(page)
 
 
 @router.get("/attachments/{attachment_id}", response_model=AdminAttachmentDetailsResponse)
@@ -285,37 +279,41 @@ async def retry_attachment(
         return GovernanceActionResponse.model_validate(result)
 
 
-@router.get("/system-logs", response_model=SystemLogPageResponse)
-async def list_system_logs(
-    severity: AdministrationLogSeverity | None = None,
-    service_name: str | None = Query(default=None, alias="service", max_length=100),
-    request_id: str | None = Query(default=None, max_length=200),
+@router.get("/audit-events", response_model=AdminAuditEventPageResponse)
+async def list_audit_events(
+    admin_id: str | None = Query(default=None, max_length=100),
+    action: str | None = Query(default=None, max_length=100),
+    target_type: str | None = Query(default=None, max_length=100),
+    target_id: str | None = Query(default=None, max_length=200),
     occurred_from: datetime | None = None,
     occurred_to: datetime | None = None,
     cursor: str | None = Query(default=None, max_length=500),
     limit: int = Query(default=25, ge=1, le=100),
     administration_service: AdministrationService = Depends(get_administration_service),
-) -> SystemLogPageResponse:
+) -> AdminAuditEventPageResponse:
     with administration_errors():
-        page = await administration_service.list_system_logs(
-            severity=severity,
-            service=service_name,
-            request_id=request_id,
+        page = await administration_service.list_audit_events(
+            admin_id=admin_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
             occurred_from=occurred_from,
             occurred_to=occurred_to,
             cursor=cursor,
             limit=limit,
         )
-        return SystemLogPageResponse.model_validate(page)
+        return AdminAuditEventPageResponse.model_validate(page)
 
 
-@router.get("/system-logs/{event_id}", response_model=SystemLogResponse)
-async def get_system_log(
-    event_id: str,
+@router.get("/audit-events/{audit_event_id}", response_model=AdminAuditEventResponse)
+async def get_audit_event(
+    audit_event_id: str,
     service: AdministrationService = Depends(get_administration_service),
-) -> SystemLogResponse:
+) -> AdminAuditEventResponse:
     with administration_errors():
-        return SystemLogResponse.model_validate(await service.get_system_log(event_id))
+        return AdminAuditEventResponse.model_validate(
+            await service.get_audit_event(audit_event_id)
+        )
 
 
 @router.get("/reports", response_model=AdminReportPageResponse)
@@ -327,14 +325,15 @@ async def list_reports(
     limit: int = Query(default=25, ge=1, le=100),
     service: AdministrationService = Depends(get_administration_service),
 ) -> AdminReportPageResponse:
-    page = await service.list_reports(
-        search=search,
-        status=status,
-        target_type=target_type,
-        cursor=cursor,
-        limit=limit,
-    )
-    return AdminReportPageResponse.model_validate(page)
+    with administration_errors():
+        page = await service.list_reports(
+            search=search,
+            status=status,
+            target_type=target_type,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AdminReportPageResponse.model_validate(page)
 
 
 @router.get("/reports/{report_id}", response_model=AdminReportDetailsResponse)

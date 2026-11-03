@@ -25,7 +25,6 @@ from app.domains.administration.domain.models import (
     AdministrationAttachmentSource,
     AdministrationAttachmentStatus,
     AdministrationGroupStatus,
-    AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
 )
@@ -47,6 +46,7 @@ from app.domains.reports.domain.models import (
     ReportStatus,
     ReportTargetType,
 )
+from app.domains.reports.domain.storage import EvidenceStorage
 from app.domains.reports.infrastructure.repository import (
     PostgreSQLReportRepository,
 )
@@ -180,6 +180,20 @@ class RecordingDispatcher(AttachmentProcessingDispatcher):
         self.calls.append((attachment_id, object_path))
         if self.should_fail:
             raise RuntimeError("Redis broker unreachable")
+
+
+class RecordingEvidenceStorage(EvidenceStorage):
+    def __init__(self) -> None:
+        self.items: dict[str, bytes] = {}
+
+    async def store_evidence(self, key: str, data: bytes) -> None:
+        self.items[key] = data
+
+    async def read_evidence(self, key: str) -> bytes:
+        return self.items[key]
+
+    async def delete_evidence(self, key: str) -> bool:
+        return self.items.pop(key, None) is not None
 
 
 def _make_user(
@@ -368,7 +382,11 @@ async def test_create_message_report_snapshots_target_and_bounded_context_atomic
             [(target_msg, channel, group)],
         ],
     )
-    repo = PostgreSQLReportRepository(session)
+    evidence_storage = RecordingEvidenceStorage()
+    repo = PostgreSQLReportRepository(
+        session,
+        evidence_storage=evidence_storage,
+    )
     service = ReportService(repo)
 
     report = await service.create_report(
@@ -412,7 +430,8 @@ async def test_create_message_report_snapshots_target_and_bounded_context_atomic
         ORMReportActivityEvent,
     ]
     persisted_evidence = session.added[1]
-    assert persisted_evidence.private_storage_key.startswith("private/reports/")
+    assert persisted_evidence.private_storage_key.startswith("reports/")
+    assert evidence_storage.items[persisted_evidence.private_storage_key] == PNG_BYTES
     persisted_activity = session.added[2]
     assert persisted_activity.action == ORMReportActivityAction.REPORT_SUBMITTED
 
@@ -596,12 +615,12 @@ async def test_report_cursor_pagination_and_submitter_scoping_strip_private_keys
 # ---------------------------------------------------------------------------
 
 
-async def test_skipped_system_status_and_dashboard_raise_not_implemented() -> None:
+async def test_operational_status_removed_and_dashboard_is_available() -> None:
     repo = PostgreSQLAdministrationRepository(FakeAsyncSession())
-    with pytest.raises(NotImplementedError):
-        await repo.get_system_status()
-    with pytest.raises(NotImplementedError):
-        await repo.get_dashboard()
+    assert not hasattr(repo, "get_system_status")
+    dashboard = await repo.get_dashboard()
+    assert dashboard.active_users == 0
+    assert dashboard.recent_audit_events == ()
 
 
 async def test_admin_user_protections_and_atomic_audit_events() -> None:
@@ -772,7 +791,7 @@ async def test_attachment_sanitization_removal_and_retry_coordination() -> None:
     assert isinstance(remove_session.added[0], ORMAuditEvent)
 
 
-async def test_audit_event_logs_implemented_under_system_logs_contract() -> None:
+async def test_audit_events_use_dedicated_contract() -> None:
     admin_id = uuid.uuid4()
     audit_row = ORMAuditEvent(
         audit_event_id=uuid.uuid4(),
@@ -783,26 +802,29 @@ async def test_audit_event_logs_implemented_under_system_logs_contract() -> None
         reason="Spam study group removed after review",
         event_timestamp=NOW,
     )
-    session = FakeAsyncSession(scalars_queue=[[audit_row], audit_row])
+    session = FakeAsyncSession(
+        execute_queue=[[(audit_row, "Admin User")], [(audit_row, "Admin User")]]
+    )
     repo = PostgreSQLAdministrationRepository(session)
 
-    page = await repo.list_system_logs(
-        severity=AdministrationLogSeverity.INFO,
-        service=None,
-        request_id=None,
+    page = await repo.list_audit_events(
+        admin_id=None,
+        action=None,
+        target_type=None,
+        target_id=None,
         occurred_from=NOW - timedelta(hours=1),
         occurred_to=NOW + timedelta(hours=1),
         cursor=None,
         limit=10,
     )
     assert len(page.items) == 1
-    assert page.items[0].event_id == str(audit_row.audit_event_id)
-    assert page.items[0].severity == AdministrationLogSeverity.INFO
-    assert "remove_group" in page.items[0].message
+    assert page.items[0].audit_event_id == str(audit_row.audit_event_id)
+    assert page.items[0].admin_name == "Admin User"
+    assert page.items[0].action == "remove_group"
 
-    single = await repo.get_system_log(str(audit_row.audit_event_id))
+    single = await repo.get_audit_event(str(audit_row.audit_event_id))
     assert single is not None
-    assert single.event_id == str(audit_row.audit_event_id)
+    assert single.audit_event_id == str(audit_row.audit_event_id)
 
 
 async def test_admin_report_lifecycle_governance_actions_and_evidence_views() -> None:
@@ -883,9 +905,9 @@ async def test_admin_report_lifecycle_governance_actions_and_evidence_views() ->
         reviewed_details.report.target_description
         == "Student reported abusive message."
     )
-    # Student activity maps administrator_user_id / administrator_name to None
-    assert reviewed_details.activity[0].administrator_user_id is None
-    assert reviewed_details.activity[0].administrator_name is None
+    assert reviewed_details.activity[0].actor_id == str(reporter.user_id)
+    assert reviewed_details.activity[0].actor_name == reporter.fullname
+    assert reviewed_details.activity[0].actor_type == AdministrationUserRole.STUDENT
     assert len(start_session.added) == 1
     assert isinstance(start_session.added[0], ORMReportActivityEvent)
     assert (
@@ -923,7 +945,12 @@ async def test_admin_report_lifecycle_governance_actions_and_evidence_views() ->
     ev_session = FakeAsyncSession(
         scalars_queue=[admin, evidence_row, admin, evidence_row]
     )
-    ev_repo = PostgreSQLAdministrationRepository(ev_session)
+    evidence_storage = RecordingEvidenceStorage()
+    evidence_storage.items[evidence_row.private_storage_key] = PNG_BYTES
+    ev_repo = PostgreSQLAdministrationRepository(
+        ev_session,
+        evidence_storage=evidence_storage,
+    )
     ev_file_1 = await ev_repo.get_report_evidence(
         report_id=str(report_row.report_id),
         evidence_id=str(evidence_row.evidence_id),
@@ -937,11 +964,14 @@ async def test_admin_report_lifecycle_governance_actions_and_evidence_views() ->
     assert ev_file_1 is not None and ev_file_2 is not None
     assert ev_file_1.filename == "screenshot.png"
     assert not hasattr(ev_file_1, "private_storage_key")
-    assert len(ev_session.added) == 2
+    assert ev_file_1.content == PNG_BYTES
+    assert len(ev_session.added) == 4
     assert all(
         item.action == ORMReportActivityAction.EVIDENCE_VIEWED
         for item in ev_session.added
+        if isinstance(item, ORMReportActivityEvent)
     )
+    assert sum(isinstance(item, ORMAuditEvent) for item in ev_session.added) == 2
 
     # 4. resolve_report sets case_closed_at (mapped to resolved_at) and locks completed report read-only
     resolve_session = FakeAsyncSession(
@@ -1199,6 +1229,7 @@ async def test_postgresql_sql_compilation_and_pydantic_schema_contracts() -> Non
     from app.domains.administration.presentation.schemas import (
         AdminAttachmentDetailsResponse,
         AdminAttachmentPageResponse,
+        AdminAuditEventPageResponse,
         AdminGroupDetailsResponse,
         AdminGroupPageResponse,
         AdminReportDetailsResponse,
@@ -1206,7 +1237,6 @@ async def test_postgresql_sql_compilation_and_pydantic_schema_contracts() -> Non
         AdminUserDetailsResponse,
         AdminUserPageResponse,
         GovernanceActionResponse,
-        SystemLogPageResponse,
     )
     from app.domains.reports.presentation.schemas import (
         ReportListResponse,
@@ -1415,32 +1445,36 @@ async def test_postgresql_sql_compilation_and_pydantic_schema_contracts() -> Non
     ).get_attachment(88)
     AdminAttachmentDetailsResponse.model_validate(a_det)
 
-    log_page = await PostgreSQLAdministrationRepository(
+    audit_page = await PostgreSQLAdministrationRepository(
         FakeAsyncSession(
-            scalars_queue=[
+            execute_queue=[
                 [
-                    ORMAuditEvent(
-                        audit_event_id=uuid.uuid4(),
-                        admin_id=admin_1.user_id,
-                        action="reactivate_user",
-                        target_type="user",
-                        target_id=str(student.user_id),
-                        reason="Restored student account",
-                        event_timestamp=NOW,
+                    (
+                        ORMAuditEvent(
+                            audit_event_id=uuid.uuid4(),
+                            admin_id=admin_1.user_id,
+                            action="reactivate_user",
+                            target_type="user",
+                            target_id=str(student.user_id),
+                            reason="Restored student account",
+                            event_timestamp=NOW,
+                        ),
+                        admin_1.fullname,
                     )
                 ]
             ]
         )
-    ).list_system_logs(
-        severity=None,
-        service="administration.audit",
-        request_id=None,
+    ).list_audit_events(
+        admin_id=None,
+        action=None,
+        target_type=None,
+        target_id=None,
         occurred_from=None,
         occurred_to=None,
         cursor=None,
         limit=10,
     )
-    SystemLogPageResponse.model_validate(log_page)
+    AdminAuditEventPageResponse.model_validate(audit_page)
 
     deactivated_student = _make_user(
         role=ORMUserRole.STUDENT, status=ActivityStatus.DEACTIVATED

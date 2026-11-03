@@ -75,12 +75,19 @@ async def list_my_reports(
     current_user: User = Depends(get_current_user),
     service: ReportService = Depends(get_report_service),
 ) -> ReportListResponse:
-    page = await service.list_reports(
-        reporter_user_id=current_user.id,
-        status=report_status,
-        cursor=cursor,
-        limit=limit,
-    )
+    try:
+        page = await service.list_reports(
+            reporter_user_id=current_user.id,
+            status=report_status,
+            cursor=cursor,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise ApiError(
+            status_code=422,
+            code="INVALID_CURSOR",
+            message=str(exc),
+        ) from exc
     return ReportListResponse(
         items=[ReportResponse.model_validate(item) for item in page.items],
         next_cursor=page.next_cursor,

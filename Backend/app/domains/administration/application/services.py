@@ -15,6 +15,8 @@ from app.domains.administration.domain.exceptions import (
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
     AdminAttachmentPage,
+    AdminAuditEvent,
+    AdminAuditEventPage,
     AdminEvidenceFile,
     AdminGroupDetails,
     AdminGroupPage,
@@ -29,14 +31,10 @@ from app.domains.administration.domain.models import (
     AdministrationAttachmentStatus,
     AdministrationGroupStatus,
     AdministrationGroupVisibility,
-    AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
     DashboardSnapshot,
     GovernanceActionResult,
-    SystemLogEntry,
-    SystemLogPage,
-    SystemStatus,
 )
 from app.domains.administration.domain.repository import AdministrationRepository
 from app.domains.reports.domain.models import ReportStatus, ReportTargetType
@@ -45,9 +43,6 @@ from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 class AdministrationService:
     def __init__(self, repository: AdministrationRepository) -> None:
         self.repository = repository
-
-    async def get_system_status(self) -> SystemStatus:
-        return await self.repository.get_system_status()
 
     async def get_dashboard(self) -> DashboardSnapshot:
         return await self.repository.get_dashboard()
@@ -234,35 +229,37 @@ class AdministrationService:
         )
         return self._require_result(result, "The attachment was not found.")
 
-    async def list_system_logs(
+    async def list_audit_events(
         self,
         *,
-        severity: AdministrationLogSeverity | None,
-        service: str | None,
-        request_id: str | None,
+        admin_id: str | None,
+        action: str | None,
+        target_type: str | None,
+        target_id: str | None,
         occurred_from: datetime | None,
         occurred_to: datetime | None,
         cursor: str | None,
         limit: int,
-    ) -> SystemLogPage:
+    ) -> AdminAuditEventPage:
         if occurred_from and occurred_to and occurred_from > occurred_to:
             raise AdministrationValidationError(
                 "occurred_from must not be after occurred_to."
             )
-        return await self.repository.list_system_logs(
-            severity=severity,
-            service=self._clean_optional(service),
-            request_id=self._clean_optional(request_id),
+        return await self.repository.list_audit_events(
+            admin_id=self._clean_optional(admin_id),
+            action=self._clean_optional(action),
+            target_type=self._clean_optional(target_type),
+            target_id=self._clean_optional(target_id),
             occurred_from=occurred_from,
             occurred_to=occurred_to,
             cursor=cursor,
             limit=limit,
         )
 
-    async def get_system_log(self, event_id: str) -> SystemLogEntry:
-        event = await self.repository.get_system_log(event_id)
+    async def get_audit_event(self, audit_event_id: str) -> AdminAuditEvent:
+        event = await self.repository.get_audit_event(audit_event_id)
         if event is None:
-            raise AdministrationResourceNotFoundError("The system log was not found.")
+            raise AdministrationResourceNotFoundError("The audit event was not found.")
         return event
 
     async def list_reports(

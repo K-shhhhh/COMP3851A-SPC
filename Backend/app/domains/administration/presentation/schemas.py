@@ -9,8 +9,6 @@ from app.domains.administration.domain.models import (
     AdministrationAttachmentStatus,
     AdministrationGroupStatus,
     AdministrationGroupVisibility,
-    AdministrationHealth,
-    AdministrationLogSeverity,
     AdministrationUserRole,
     AdministrationUserStatus,
     AdminReportActivityType,
@@ -46,15 +44,6 @@ class GovernanceActionResponse(DomainResponse):
     changed_at: datetime
 
 
-class SystemStatusResponse(DomainResponse):
-    application_name: str
-    version: str
-    environment: str
-    overall_status: AdministrationHealth
-    database_status: AdministrationHealth
-    worker_status: AdministrationHealth
-
-
 class ProcessingFailureResponse(DomainResponse):
     attachment_id: int
     title: str
@@ -64,13 +53,15 @@ class ProcessingFailureResponse(DomainResponse):
     occurred_at: datetime
 
 
-class SystemLogResponse(DomainResponse):
-    event_id: str
-    occurred_at: datetime
-    severity: AdministrationLogSeverity
-    service: str
-    message: str
-    request_id: str | None
+class AdminAuditEventResponse(DomainResponse):
+    audit_event_id: str
+    admin_id: str
+    admin_name: str | None
+    action: str
+    target_type: str
+    target_id: str
+    reason: str | None
+    event_timestamp: datetime
 
 
 class DashboardResponse(DomainResponse):
@@ -82,7 +73,7 @@ class DashboardResponse(DomainResponse):
     under_review_reports: int
     recently_submitted_reports: int
     recent_processing_failures: tuple[ProcessingFailureResponse, ...]
-    recent_system_events: tuple[SystemLogResponse, ...]
+    recent_audit_events: tuple[AdminAuditEventResponse, ...]
     recent_reports: tuple["AdminReportSummaryResponse", ...]
 
 
@@ -169,8 +160,8 @@ class AdminAttachmentPageResponse(DomainResponse):
     next_cursor: str | None
 
 
-class SystemLogPageResponse(DomainResponse):
-    items: tuple[SystemLogResponse, ...]
+class AdminAuditEventPageResponse(DomainResponse):
+    items: tuple[AdminAuditEventResponse, ...]
     next_cursor: str | None
 
 
@@ -193,8 +184,9 @@ class AdminReportActivityResponse(DomainResponse):
     activity_id: str
     event_type: AdminReportActivityType
     summary: str
-    administrator_user_id: str | None
-    administrator_name: str | None
+    actor_id: str
+    actor_name: str
+    actor_type: AdministrationUserRole
     occurred_at: datetime
 
 

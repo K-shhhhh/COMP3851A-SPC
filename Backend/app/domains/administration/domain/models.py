@@ -17,12 +17,6 @@ from app.domains.reports.domain.models import (
 )
 
 
-class AdministrationHealth(StrEnum):
-    OPERATIONAL = "operational"
-    DEGRADED = "degraded"
-    UNAVAILABLE = "unavailable"
-
-
 class AdministrationUserRole(StrEnum):
     STUDENT = "student"
     ADMIN = "admin"
@@ -54,13 +48,6 @@ class AdministrationAttachmentSource(StrEnum):
     MY_NOTES = "my_notes"
     PERSONAL_CHAT = "personal_chat"
     STUDY_GROUP = "study_group"
-
-
-class AdministrationLogSeverity(StrEnum):
-    INFO = "info"
-    WARNING = "warning"
-    ERROR = "error"
-    CRITICAL = "critical"
 
 
 class AdminReportResolutionOutcome(StrEnum):
@@ -99,16 +86,6 @@ class AdministrationActor:
 
 
 @dataclass(frozen=True, slots=True)
-class SystemStatus:
-    application_name: str
-    version: str
-    environment: str
-    overall_status: AdministrationHealth
-    database_status: AdministrationHealth
-    worker_status: AdministrationHealth
-
-
-@dataclass(frozen=True, slots=True)
 class ProcessingFailure:
     attachment_id: int
     title: str
@@ -119,13 +96,17 @@ class ProcessingFailure:
 
 
 @dataclass(frozen=True, slots=True)
-class SystemLogEntry:
-    event_id: str
-    occurred_at: datetime
-    severity: AdministrationLogSeverity
-    service: str
-    message: str
-    request_id: str | None
+class AdminAuditEvent:
+    """Immutable, sanitized record of one administrative action."""
+
+    audit_event_id: str
+    admin_id: str
+    admin_name: str | None
+    action: str
+    target_type: str
+    target_id: str
+    reason: str | None
+    event_timestamp: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,8 +131,9 @@ class AdminReportActivity:
     activity_id: str
     event_type: AdminReportActivityType
     summary: str
-    administrator_user_id: str | None
-    administrator_name: str | None
+    actor_id: str
+    actor_name: str
+    actor_type: AdministrationUserRole
     occurred_at: datetime
 
 
@@ -195,7 +177,7 @@ class DashboardSnapshot:
     under_review_reports: int
     recently_submitted_reports: int
     recent_processing_failures: tuple[ProcessingFailure, ...]
-    recent_system_events: tuple[SystemLogEntry, ...]
+    recent_audit_events: tuple[AdminAuditEvent, ...]
     recent_reports: tuple[AdminReportSummary, ...]
 
 
@@ -293,8 +275,8 @@ class AdminAttachmentPage:
 
 
 @dataclass(frozen=True, slots=True)
-class SystemLogPage:
-    items: tuple[SystemLogEntry, ...]
+class AdminAuditEventPage:
+    items: tuple[AdminAuditEvent, ...]
     next_cursor: str | None
 
 
