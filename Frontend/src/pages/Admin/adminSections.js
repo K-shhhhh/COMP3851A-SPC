@@ -6,7 +6,7 @@ export const adminNavigation = [
   { to: "/admin/study-groups", label: "Study groups", Icon: UsersRound },
   { to: "/admin/attachments", label: "Attachments", Icon: HardDrive },
   { to: "/admin/reports", label: "Reports", Icon: ShieldAlert },
-  { to: "/admin/system-logs", label: "System logs", Icon: ScrollText },
+  { to: "/admin/audit-logs", label: "Audit logs", Icon: ScrollText },
 ];
 
 export function formatDate(value) {
@@ -58,12 +58,13 @@ export const adminCollections = {
       ["Submitted", "created_at", "date"],
     ],
   },
-  "system-logs": {
-    title: "System logs",
-    description: "Read-only sanitized system events with severity, service, and time filters.",
+  "audit-events": {
+    title: "Audit logs",
+    description: "Immutable governance actions showing who changed what, when, and why.",
     columns: [
-      ["Time", "occurred_at", "date"], ["Severity", "severity", "status"],
-      ["Service", "service"], ["Message", "message"], ["Request ID", "request_id"],
+      ["Time", "event_timestamp", "date"], ["Administrator", "admin_name"],
+      ["Action", "action"], ["Target", "target_type"], ["Target ID", "target_id"],
+      ["Reason", "reason"],
     ],
   },
 };

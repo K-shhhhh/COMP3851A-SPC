@@ -1290,8 +1290,9 @@
 }
 
 .group-member-filters button.active {
-  background: var(--spc-purple);
-  color: #ffffff;
+  background: rgba(124, 58, 237, .12);
+  color: var(--spc-purple);
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, .22);
 }
 
 .group-member-add-label {
@@ -1411,6 +1412,79 @@
 
 .group-details-member .member-role-badge {
   flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-transform: capitalize;
+}
+
+.group-details-member .member-role-badge.owner {
+  background: #fff5d8;
+  color: #b46b00;
+}
+
+.group-details-member .member-role-badge.admin {
+  background: #f0e9ff;
+  color: #7c2cff;
+}
+
+.group-details-member .member-role-badge.member {
+  background: #e9f8ef;
+  color: #238451;
+}
+
+.message-mention {
+  color: #d9c8ff;
+  font-weight: 800;
+}
+
+.group-message:not(.own-message) .message-mention {
+  color: var(--spc-purple);
+}
+
+.shared-file-message {
+  display: flex;
+  width: min(360px, 100%);
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--spc-border);
+  border-radius: 12px;
+  background: var(--spc-surface);
+  color: var(--spc-text);
+}
+
+.shared-file-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(124, 58, 237, .12);
+  color: var(--spc-purple);
+}
+
+.shared-file-message > span:last-child {
+  min-width: 0;
+}
+
+.shared-file-message strong,
+.shared-file-message small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-file-message strong { font-size: 11px; }
+.shared-file-message small { margin-top: 3px; color: var(--spc-muted); font-size: 9px; }
+
+.group-message:not(.own-message) .message-more-menu {
+  right: auto;
+  left: 0;
 }
 
 .group-member-menu-wrap {

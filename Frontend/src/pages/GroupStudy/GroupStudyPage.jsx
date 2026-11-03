@@ -98,6 +98,33 @@ const AI_MODES = [
   },
 ];
 
+const CHANNEL_FILE_PREFIX = "[[spc-file:";
+
+function encodeChannelFileMessage(attachmentId, fileName) {
+  return `${CHANNEL_FILE_PREFIX}${attachmentId}:${encodeURIComponent(fileName)}]]`;
+}
+
+function parseChannelFileMessage(content) {
+  const match = String(content || "").match(/^\[\[spc-file:(\d+):(.+)\]\]$/);
+  if (!match) return null;
+  try {
+    return { id: match[1], fileName: decodeURIComponent(match[2]) };
+  } catch {
+    return { id: match[1], fileName: "Shared study material.pdf" };
+  }
+}
+
+function MessageText({ children }) {
+  const parts = String(children || "").split(/(@[A-Za-z0-9_.-]+)/g);
+  return parts.map((part, index) =>
+    part.startsWith("@") ? (
+      <strong className="message-mention" key={`${part}-${index}`}>{part}</strong>
+    ) : (
+      <Fragment key={`text-${index}`}>{part}</Fragment>
+    ),
+  );
+}
+
 
 const DISCOVER_FILTERS = [
   { label: "All", value: "all" },
@@ -286,6 +313,9 @@ function GroupStudyPage() {
   const discoverRequestRef = useRef(0);
 
   const [search, setSearch] =
+    useState("");
+
+  const [myGroupsSearch, setMyGroupsSearch] =
     useState("");
 
   const [discoverCategory, setDiscoverCategory] =
@@ -1935,6 +1965,70 @@ function GroupStudyPage() {
     };
   }, []);
 
+  async function publishChannelAttachment(jobKey, job) {
+    const storedJobs = readStoredAttachmentJobs();
+    const storedJob = storedJobs[jobKey] || job;
+
+    if (!storedJob?.id || storedJob.announcementState === "posted" ||
+        storedJob.announcementState === "posting") {
+      return;
+    }
+
+    const postingJob = { ...storedJob, announcementState: "posting" };
+    writeStoredAttachmentJobs({ ...storedJobs, [jobKey]: postingJob });
+    persistAttachmentJobs((current) => ({
+      ...current,
+      [jobKey]: { ...(current[jobKey] || postingJob), announcementState: "posting" },
+    }));
+
+    try {
+      const result = await createGroupMessage(
+        accessToken,
+        storedJob.groupId,
+        storedJob.channelId,
+        {
+          content: encodeChannelFileMessage(storedJob.id, storedJob.fileName),
+          mentionedUserIds: [],
+        },
+      );
+      const createdMessage = result?.message || result?.user_message || result;
+      const latestJobs = readStoredAttachmentJobs();
+      const postedJob = {
+        ...(latestJobs[jobKey] || postingJob),
+        announcementState: "posted",
+        messageId: createdMessage?.id || null,
+      };
+      writeStoredAttachmentJobs({ ...latestJobs, [jobKey]: postedJob });
+      persistAttachmentJobs((current) => ({ ...current, [jobKey]: postedJob }));
+
+      if (
+        createdMessage?.id &&
+        selectedGroup?.id === storedJob.groupId &&
+        selectedChannel?.id === storedJob.channelId
+      ) {
+        setMessages((current) =>
+          current.some((item) => item.id === createdMessage.id)
+            ? current
+            : [...current, createdMessage],
+        );
+      }
+    } catch (error) {
+      const latestJobs = readStoredAttachmentJobs();
+      const retryableJob = {
+        ...(latestJobs[jobKey] || postingJob),
+        announcementState: null,
+      };
+      writeStoredAttachmentJobs({ ...latestJobs, [jobKey]: retryableJob });
+      persistAttachmentJobs((current) => ({ ...current, [jobKey]: retryableJob }));
+      if (
+        selectedGroup?.id === storedJob.groupId &&
+        selectedChannel?.id === storedJob.channelId
+      ) {
+        setPageError(`The PDF is ready, but its chat card could not be posted: ${apiMessage(error)}`);
+      }
+    }
+  }
+
   /*
    * Channel navigation only changes which job is displayed.
    * It never clears or cancels another channel's PDF job.
@@ -1980,6 +2074,17 @@ function GroupStudyPage() {
             : null,
         };
       });
+
+      if (result.status === "ready") {
+        const latestJob = readStoredAttachmentJobs()[jobKey];
+        await publishChannelAttachment(jobKey, {
+          ...(latestJob || {}),
+          id: attachmentId,
+          groupId,
+          channelId,
+          status: "ready",
+        });
+      }
 
       if (finished) {
         delete attachmentPollRefs.current[jobKey];
@@ -2122,7 +2227,9 @@ function GroupStudyPage() {
         [jobKey]: completedUploadJob,
       }));
 
-      if (!finished) {
+      if (result.status === "ready") {
+        await publishChannelAttachment(jobKey, completedUploadJob);
+      } else if (!finished) {
         pollAttachmentStatus(groupId, channelId, attachmentId, jobKey);
       }
     } catch (error) {
@@ -2493,14 +2600,19 @@ function GroupStudyPage() {
 
   const visibleGroups =
     useMemo(() => {
-      return activeView ===
-        "discover"
-        ? discoverGroups
-        : myGroups;
-    }, [
+      if (activeView === "discover") return discoverGroups;
+      const query = myGroupsSearch.trim().toLowerCase();
+      if (!query) return myGroups;
+      return myGroups.filter((group) =>
+        [group.name, group.subject, group.course, group.description]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query)),
+      );
+  }, [
       activeView,
       discoverGroups,
       myGroups,
+      myGroupsSearch,
     ]);
 
   const browseDiscoverGroups = useMemo(() => {
@@ -2636,14 +2748,44 @@ function GroupStudyPage() {
               </div>
             )}
 
+            {activeView === "mine" && (
+              <div className="sg-my-groups-controls">
+                <div className="sg-category-tabs" aria-label="Filter My Groups">
+                  {[
+                    ["all", "All"],
+                    ["public", "Public"],
+                    ["private", "Private"],
+                    ["owned", "Owned"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={myFilter === value ? "active" : ""}
+                      onClick={() => setMyFilter(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <label className="sg-browse-search">
+                  <Search size={17} />
+                  <input
+                    value={myGroupsSearch}
+                    onChange={(event) => setMyGroupsSearch(event.target.value)}
+                    placeholder="Search your groups..."
+                  />
+                </label>
+              </div>
+            )}
+
             {groupsLoading ? (
               <div className="sg-browse-empty">Loading groups...</div>
             ) : activeView === "mine" ? (
-              myGroups.length === 0 ? (
+              visibleGroups.length === 0 ? (
                 <div className="sg-browse-empty">You have not joined any study groups yet.</div>
               ) : (
                 <div className="sg-my-groups-list">
-                  {myGroups.map((group) => (
+                  {visibleGroups.map((group) => (
                     <button
                       key={group.id}
                       type="button"
@@ -3346,66 +3488,6 @@ function GroupStudyPage() {
                       </section>
                     )}
 
-                    {/* MEMBERS */}
-
-                    <div className="members-heading">
-                      <span>
-                        Members
-                      </span>
-
-                      <span>
-                        {members.length}
-                      </span>
-                    </div>
-
-                    {membersLoading ? (
-                      <div className="sg-small-empty">
-                        Loading...
-                      </div>
-                    ) : (
-                      members.map(
-                        (member) => {
-                          const name =
-                            member.full_name ||
-                            member.email ||
-                            "Student";
-
-                          const role =
-                            member.role ||
-                            "member";
-
-                          return (
-                            <div
-                              className="member-row"
-                              key={
-                                member.user_id
-                              }
-                            >
-                              <div className="member-avatar">
-                                {initials(
-                                  name,
-                                )}
-                              </div>
-
-                              <div className="member-info">
-                                <span>
-                                  {name}
-                                </span>
-
-                                <small>
-                                  {role}
-                                </small>
-                              </div>
-
-                              <span className={`member-role-badge ${role}`}>
-                                {role}
-                              </span>
-                            </div>
-                          );
-                        },
-                      )
-                    )}
-
                   </aside>
 
                   {/* CHAT */}
@@ -3492,13 +3574,17 @@ function GroupStudyPage() {
                                   item.author_id ===
                                   user?.id;
 
+                                const sharedFile =
+                                  parseChannelFileMessage(item.content);
+
                                 /*
                                  * AI-invoking messages cannot
                                  * be edited.
                                  */
                                 const canEdit =
                                   isOwnMessage &&
-                                  !item.ai_mode_used;
+                                  !item.ai_mode_used &&
+                                  !sharedFile;
 
                                 return (
                                   <Fragment
@@ -3530,9 +3616,19 @@ function GroupStudyPage() {
                                           </span>
                                         </div>
 
-                                        <p className="message-content">
-                                          {item.content}
-                                        </p>
+                                        {sharedFile ? (
+                                          <div className="shared-file-message">
+                                            <span className="shared-file-icon"><Paperclip size={18} /></span>
+                                            <span>
+                                              <strong>{sharedFile.fileName}</strong>
+                                              <small>Shared PDF study material</small>
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <p className="message-content">
+                                            <MessageText>{item.content}</MessageText>
+                                          </p>
+                                        )}
 
                                         <div className="message-actions">
                                           {canEdit && (
@@ -3561,7 +3657,43 @@ function GroupStudyPage() {
                                             </button>
                                           )}
 
-                                          {!isOwnMessage && (
+                                          {sharedFile && (
+                                            <div className="message-more-wrap">
+                                              <button
+                                                type="button"
+                                                className="message-more-button"
+                                                aria-label="File options"
+                                                title="File options"
+                                                onClick={() =>
+                                                  setMessageActionMenuId((current) =>
+                                                    current === `file-${item.id}` ? null : `file-${item.id}`,
+                                                  )
+                                                }
+                                              >
+                                                <MoreHorizontal size={15} />
+                                              </button>
+                                              {messageActionMenuId === `file-${item.id}` && (
+                                                <div className="message-more-menu">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setMessageActionMenuId(null);
+                                                      setReportTarget({
+                                                        type: "file",
+                                                        id: String(sharedFile.id),
+                                                        label: sharedFile.fileName,
+                                                      });
+                                                    }}
+                                                  >
+                                                    <Flag size={13} />
+                                                    Report file
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          {!isOwnMessage && !sharedFile && (
                                             <div className="message-more-wrap">
                                               <button
                                                 type="button"
@@ -4376,9 +4508,7 @@ function GroupStudyPage() {
                               </span>
                             </div>
 
-                            {member.email && (
-                              <small>{member.email}</small>
-                            )}
+                            <small>{role[0].toUpperCase() + role.slice(1)}</small>
                           </div>
 
                           {canOpenActions && (

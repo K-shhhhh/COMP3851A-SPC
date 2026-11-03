@@ -157,7 +157,7 @@ function App() {
           <Route path="study-groups" element={<AdminStudyGroupsPage />} />
           <Route path="attachments" element={<AdminAttachmentsPage />} />
           <Route path="reports" element={<AdminReportsPage />} />
-          <Route path="system-logs" element={<AdminCollectionPage section="system-logs" />} />
+          <Route path="audit-logs" element={<AdminCollectionPage section="audit-events" />} />
         </Route>
 
         <Route

@@ -29,10 +29,17 @@ export default function AdminCollectionPage({ section }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [auditFilters, setAuditFilters] = useState({
+    admin_id: "",
+    action: "",
+    target_type: "",
+    target_id: "",
+  });
 
   // Route switching remounts this element with a different section; reset pagination and filters.
   useEffect(() => {
     setInput(""); setSearch(""); setCursors([null]); setPage(0); setResult(null); setError(null); setSelectedUser(null); setRoleFilter("all"); setStatusFilter("all");
+    setAuditFilters({ admin_id: "", action: "", target_type: "", target_id: "" });
   }, [section]);
 
   useEffect(() => {
@@ -41,19 +48,26 @@ export default function AdminCollectionPage({ section }) {
     setLoading(true);
     setError(null);
     setResult(null);
-    getAdminCollection(section, accessToken, { search, cursor: cursors[page], signal: controller.signal })
+    getAdminCollection(section, accessToken, {
+      search,
+      cursor: cursors[page],
+      filters: section === "users"
+        ? {
+            role: roleFilter === "all" ? "" : roleFilter,
+            status: statusFilter === "all" ? "" : statusFilter,
+          }
+        : section === "audit-events" ? auditFilters : {},
+      signal: controller.signal,
+    })
       .then((data) => { if (!cancelled) setResult(data); })
       .catch((err) => { if (!cancelled && err?.name !== "AbortError") setError(err); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [accessToken, section, search, page, cursors, revision]);
+  }, [accessToken, section, search, page, cursors, revision, roleFilter, statusFilter, auditFilters]);
 
   if (!config) return <p>Unknown admin section.</p>;
   const rows = Array.isArray(result?.items) ? result.items : [];
-  const visibleRows = section === "users" ? rows.filter((user) =>
-    (roleFilter === "all" || user.role === roleFilter) &&
-    (statusFilter === "all" || user.status === statusFilter)
-  ) : rows;
+  const visibleRows = rows;
   function submitSearch(event) {
     event.preventDefault();
     if (search === input.trim() && page === 0) { setRevision((v) => v + 1); return; }
@@ -75,7 +89,7 @@ export default function AdminCollectionPage({ section }) {
       <section className="admin-panel admin-table-panel">
         <div className="admin-list-toolbar">
           <div><h2>All {config.title.toLowerCase()}</h2><p>Live records from the SPC backend</p></div>
-          {section !== "system-logs" && (
+          {section !== "audit-events" && (
             <form className="admin-search" onSubmit={submitSearch}>
               <label className="admin-search-field"><Search size={17} /><span className="admin-sr-only">Search {config.title}</span><input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Search records…" maxLength={200} /></label>
               <button className="admin-button admin-button-primary" type="submit">Search</button>
@@ -91,10 +105,27 @@ export default function AdminCollectionPage({ section }) {
             </label>
             <label>Status
               <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option>
+                <option value="all">All statuses</option><option value="active">Active</option><option value="deactivated">Deactivated</option>
               </select>
             </label>
-            <span>Role and status filters apply to the current page only.</span>
+            <span>Filters are applied across all users.</span>
+          </div>
+        )}
+        {section === "audit-events" && (
+          <div className="admin-user-filters" aria-label="Filter audit logs">
+            <label>Administrator ID
+              <input value={auditFilters.admin_id} onChange={(event) => setAuditFilters((current) => ({ ...current, admin_id: event.target.value.trim() }))} placeholder="UUID" />
+            </label>
+            <label>Action
+              <input value={auditFilters.action} onChange={(event) => setAuditFilters((current) => ({ ...current, action: event.target.value }))} placeholder="e.g. user_deactivated" />
+            </label>
+            <label>Target type
+              <input value={auditFilters.target_type} onChange={(event) => setAuditFilters((current) => ({ ...current, target_type: event.target.value }))} placeholder="user, group, file…" />
+            </label>
+            <label>Target ID
+              <input value={auditFilters.target_id} onChange={(event) => setAuditFilters((current) => ({ ...current, target_id: event.target.value }))} placeholder="Resource ID" />
+            </label>
+            <button className="admin-button admin-button-outline" type="button" onClick={() => setAuditFilters({ admin_id: "", action: "", target_type: "", target_id: "" })}>Clear filters</button>
           </div>
         )}
         <div className="admin-table-scroll">
@@ -103,7 +134,7 @@ export default function AdminCollectionPage({ section }) {
               {loading ? <tr><td colSpan={config.columns.length + (section === "users" ? 1 : 0)} className="admin-table-empty">Loading records…</td></tr>
                 : error ? <tr><td colSpan={config.columns.length + (section === "users" ? 1 : 0)} className="admin-table-empty">Data unavailable.</td></tr>
                 : visibleRows.length === 0 ? <tr><td colSpan={config.columns.length + (section === "users" ? 1 : 0)} className="admin-table-empty">No matching records found.</td></tr>
-                : visibleRows.map((row, idx) => <tr key={row.user_id || row.group_id || row.attachment_id || row.report_id || row.event_id || idx}>
+                : visibleRows.map((row, idx) => <tr key={row.user_id || row.group_id || row.attachment_id || row.report_id || row.audit_event_id || row.event_id || idx}>
                   {config.columns.map(([, key, kind]) => <td key={key}><TableValue value={row[key]} kind={kind} /></td>)}
                   {section === "users" && <td><button className="admin-button admin-button-outline" type="button" onClick={() => setSelectedUser(row)} aria-label={`View details for ${row.full_name || row.email || "user"}`}><Eye size={15} /> View</button></td>}
                 </tr>)}

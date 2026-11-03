@@ -15,23 +15,19 @@ export function getAdminDashboard(accessToken, signal) {
   return read("/dashboard", accessToken, signal);
 }
 
-export function getAdminSystemStatus(accessToken, signal) {
-  return read("/system-status", accessToken, signal);
-}
-
 const COLLECTION_PATHS = Object.freeze({
   users: "/users",
   "study-groups": "/study-groups",
   attachments: "/attachments",
   reports: "/reports",
-  "system-logs": "/system-logs",
+  "audit-events": "/audit-events",
 });
 
 export function getAdminCollection(section, accessToken, { search = "", cursor = null, limit = 20, filters = {}, signal } = {}) {
   const path = COLLECTION_PATHS[section];
   if (!path) throw new Error(`Unknown administration section: ${section}`);
   const params = new URLSearchParams({ limit: String(limit) });
-  if (search.trim() && section !== "system-logs") params.set("search", search.trim());
+  if (search.trim() && section !== "audit-events") params.set("search", search.trim());
   if (cursor) params.set("cursor", cursor);
   // Forward only filters supported by the existing administration API contract.
   const allowedFilters = {
@@ -39,7 +35,7 @@ export function getAdminCollection(section, accessToken, { search = "", cursor =
     "study-groups": ["visibility", "status"],
     attachments: ["status", "source", "include_removed"],
     reports: ["status", "target_type"],
-    "system-logs": ["severity", "service", "request_id", "occurred_from", "occurred_to"],
+    "audit-events": ["admin_id", "action", "target_type", "target_id", "occurred_from", "occurred_to"],
   };
   for (const key of allowedFilters[section] || []) {
     const value = filters[key];
@@ -75,10 +71,10 @@ export function getAdminReportDetails(reportId, accessToken, signal) {
   return read(`/reports/${encodeURIComponent(reportId)}`, accessToken, signal);
 }
 
-/** GET /administration/system-logs/{event_id}: sanitized event details only. */
-export function getAdminSystemLogDetails(eventId, accessToken, signal) {
+/** GET /administration/audit-events/{event_id}: immutable governance event details. */
+export function getAdminAuditEventDetails(eventId, accessToken, signal) {
   if (typeof eventId !== "string" || !eventId.trim() || eventId.length > 500) {
-    throw new Error("A valid system log event ID is required.");
+    throw new Error("A valid audit event ID is required.");
   }
-  return read(`/system-logs/${encodeURIComponent(eventId)}`, accessToken, signal);
+  return read(`/audit-events/${encodeURIComponent(eventId)}`, accessToken, signal);
 }

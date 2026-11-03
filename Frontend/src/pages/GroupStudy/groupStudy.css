@@ -2308,7 +2308,7 @@
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  z-index: 50;
+  z-index: 1400;
   min-width: 145px;
   padding: 5px;
   border: 1px solid var(--spc-border);

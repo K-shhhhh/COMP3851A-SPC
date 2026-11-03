@@ -25,7 +25,6 @@ import AdminCollectionPage from "./pages/Admin/AdminCollectionPage.jsx";
 import AdminStudyGroupsPage from "./pages/Admin/AdminStudyGroupsPage.jsx";
 import AdminAttachmentsPage from "./pages/Admin/AdminAttachmentsPage.jsx";
 import AdminReportsPage from "./pages/Admin/AdminReportsPage.jsx";
-import AdminSystemLogsPage from "./pages/Admin/AdminSystemLogsPage.jsx";
 
 import "./styles/styles.css";
 
@@ -138,7 +137,7 @@ function App() {
           <Route path="study-groups" element={<AdminStudyGroupsPage />} />
           <Route path="attachments" element={<AdminAttachmentsPage />} />
           <Route path="reports" element={<AdminReportsPage />} />
-          <Route path="system-logs" element={<AdminSystemLogsPage />} />
+          <Route path="audit-logs" element={<AdminCollectionPage section="audit-events" />} />
         </Route>
 
         <Route

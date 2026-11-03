@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, LoaderCircle, Pencil, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, CheckCircle2, LoaderCircle, Pencil, RefreshCw, X } from "lucide-react";
 import AppShell from "../../components/layout/AppShell.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { getMyProfile, updateMyProfile } from "../../services/profileService.js";
@@ -47,7 +47,6 @@ function toForm(profile) {
 
 export default function ProfilePage() {
   const { accessToken, user, refreshCurrentUser } = useAuth();
-  const nameInputRef = useRef(null);
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +54,7 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reloadCount, setReloadCount] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (!accessToken) return undefined;
@@ -121,6 +121,7 @@ export default function ProfilePage() {
       const updated = await updateMyProfile(accessToken, changedFields);
       setProfile(updated);
       setForm(toForm(updated));
+      setIsEditing(false);
       setNotice("Your profile has been updated successfully.");
       if (updated.full_name !== profile.full_name) {
         try { await refreshCurrentUser(); } catch { /* Profile itself is saved; header can update later. */ }
@@ -173,8 +174,16 @@ export default function ProfilePage() {
                   </span>
                 </div>
               </div>
-              <button className="account-button account-button-primary profile-edit-button" type="button" onClick={() => nameInputRef.current?.focus()}>
-                <Pencil size={19} /> Edit profile
+              <button className={`account-button ${isEditing ? "account-button-outline" : "account-button-primary"} profile-edit-button`} type="button" onClick={() => {
+                if (isEditing) {
+                  setForm(toForm(profile));
+                  setError("");
+                  setNotice("");
+                }
+                setIsEditing((current) => !current);
+              }}>
+                {isEditing ? <X size={19} /> : <Pencil size={19} />}
+                {isEditing ? "Cancel editing" : "Edit profile"}
               </button>
             </section>
 
@@ -184,32 +193,34 @@ export default function ProfilePage() {
                 <form onSubmit={save}>
                   <div className="profile-form-row">
                     <label htmlFor="profile-name">Display name</label>
-                    <input id="profile-name" ref={nameInputRef} className="account-field" type="text" maxLength={100} minLength={2} required value={form.full_name} onChange={(event) => change("full_name", event.target.value)} disabled={saving} />
+                    <input id="profile-name" className="account-field" type="text" maxLength={100} minLength={2} required value={form.full_name} onChange={(event) => change("full_name", event.target.value)} disabled={!isEditing || saving} />
                   </div>
                   <div className="profile-form-row">
                     <label htmlFor="profile-programme">Programme</label>
-                    <select id="profile-programme" className="account-field" value={form.programme} onChange={(event) => change("programme", event.target.value)} disabled={saving}>
+                    <select id="profile-programme" className="account-field" value={form.programme} onChange={(event) => change("programme", event.target.value)} disabled={!isEditing || saving}>
                       <option value="">Select a programme</option>
                       {programmes.map((programme) => <option value={programme} key={programme}>{programme}</option>)}
                     </select>
                   </div>
                   <div className="profile-form-row">
                     <label htmlFor="profile-year">Year of study</label>
-                    <select id="profile-year" className="account-field" value={form.year_of_study} onChange={(event) => change("year_of_study", event.target.value)} disabled={saving}>
+                    <select id="profile-year" className="account-field" value={form.year_of_study} onChange={(event) => change("year_of_study", event.target.value)} disabled={!isEditing || saving}>
                       <option value="">Select a year</option>
-                      {Array.from({ length: 10 }, (_, index) => index + 1).map((year) => <option key={year} value={year}>{yearLabel(year)}</option>)}
+                      {[1, 2, 3, 4].map((year) => <option key={year} value={year}>{yearLabel(year)}</option>)}
                     </select>
                   </div>
                   <div className="profile-form-row profile-bio-row">
                     <label htmlFor="profile-bio">Bio (optional)</label>
-                    <textarea id="profile-bio" className="account-field" rows={4} maxLength={500} value={form.bio} onChange={(event) => change("bio", event.target.value)} disabled={saving} />
+                    <textarea id="profile-bio" className="account-field" rows={4} maxLength={500} value={form.bio} onChange={(event) => change("bio", event.target.value)} disabled={!isEditing || saving} />
                   </div>
                   {error && <div className="account-feedback is-error" role="alert"><AlertCircle size={17} />{error}</div>}
                   {notice && <div className="account-feedback is-success" role="status"><CheckCircle2 size={17} />{notice}</div>}
-                  <button className="account-button account-button-primary profile-save-button" type="submit" disabled={saving || !dirty}>
-                    {saving && <LoaderCircle className="account-spin" size={17} />}
-                    {saving ? "Saving..." : "Save changes"}
-                  </button>
+                  {isEditing && (
+                    <button className="account-button account-button-primary profile-save-button" type="submit" disabled={saving || !dirty}>
+                      {saving && <LoaderCircle className="account-spin" size={17} />}
+                      {saving ? "Saving..." : "Save changes"}
+                    </button>
+                  )}
                 </form>
               </section>
 

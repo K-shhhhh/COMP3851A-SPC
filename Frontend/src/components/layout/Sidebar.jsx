@@ -7,7 +7,6 @@ import {
   Flag,
   FolderOpen,
   LayoutDashboard,
-  Lock,
   Menu,
   Settings,
   User,
@@ -34,35 +33,16 @@ function Sidebar({
     location.pathname === "/notes" ||
     location.pathname.startsWith("/notes/");
 
-  const isGroupsPage =
-    location.pathname === "/groups";
-
-  const groupView =
-    new URLSearchParams(
-      location.search,
-    ).get("view") || "public";
-
   const [
     notesOpen,
     setNotesOpen,
   ] = useState(isNotesPage);
-
-  const [
-    groupsOpen,
-    setGroupsOpen,
-  ] = useState(isGroupsPage);
 
   useEffect(() => {
     if (isNotesPage) {
       setNotesOpen(true);
     }
   }, [isNotesPage]);
-
-  useEffect(() => {
-    if (isGroupsPage) {
-      setGroupsOpen(true);
-    }
-  }, [isGroupsPage]);
 
   return (
     <aside
@@ -207,93 +187,15 @@ function Sidebar({
 
         {/* STUDY GROUPS */}
 
-        <div className="sidebar-section">
-          <button
-            type="button"
-            className="sidebar-section-title"
-            aria-expanded={groupsOpen}
-            onClick={() =>
-              setGroupsOpen(
-                (current) =>
-                  !current,
-              )
-            }
-            style={{
-              width: "100%",
-              border: 0,
-              background: "transparent",
-              cursor: "pointer",
-              textAlign: "left",
-              color: isGroupsPage
-                ? "var(--spc-purple)"
-                : "var(--spc-muted)",
-            }}
-          >
-            <div>
-              <Users size={19} />
-              <span>
-                Study Groups
-              </span>
-            </div>
-
-            <ChevronDown
-              size={16}
-              style={{
-                transform: groupsOpen
-                  ? "rotate(180deg)"
-                  : "rotate(0deg)",
-                transition:
-                  "transform 0.2s ease",
-              }}
-            />
-          </button>
-
-          {groupsOpen && (
-            <div className="sidebar-submenu">
-              <NavLink
-                to="/groups?view=public"
-                className={() =>
-                  `sidebar-sublink ${
-                    isGroupsPage &&
-                    groupView ===
-                      "public"
-                      ? "active"
-                      : ""
-                  }`
-                }
-              >
-                <Users
-                  size={17}
-                />
-
-                <span>
-                  Public Groups
-                </span>
-              </NavLink>
-
-              <NavLink
-                to="/groups?view=private"
-                className={() =>
-                  `sidebar-sublink ${
-                    isGroupsPage &&
-                    groupView ===
-                      "private"
-                      ? "active"
-                      : ""
-                  }`
-                }
-              >
-                <Lock
-                  size={17}
-                />
-
-                <span>
-                  Private Groups
-                </span>
-              </NavLink>
-            </div>
-          )}
-        </div>
+        <NavLink
+          to="/groups"
+          className={({ isActive }) =>
+            `sidebar-link ${isActive ? "active" : ""}`
+          }
+        >
+          <Users size={19} />
+          <span>Study Groups</span>
+        </NavLink>
 
         {/* KNOWLEDGE GRAPH */}
 
