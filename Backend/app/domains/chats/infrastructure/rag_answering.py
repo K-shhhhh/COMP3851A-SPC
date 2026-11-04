@@ -54,8 +54,10 @@ _SOFT_REFUSAL_MAX_CHARS = 600
 # This marker is removed before the reply is persisted or returned to the UI.
 # If a provider omits it, we conservatively cite only the highest-ranked
 # passage instead of presenting every retrieved chunk as if it were used.
+# The marker is matched anywhere in the reply, because the model sometimes
+# places it before a closing full stop instead of at the very end.
 _SOURCE_IDS_MARKER = re.compile(
-    r"\s*\[\[\s*SOURCE_IDS\s*:\s*([0-9,\s]*)\]\]\s*$",
+    r"\s*\[\[\s*SOURCE_IDS\s*:\s*([0-9,\s]*)\]\]",
     re.IGNORECASE,
 )
 
@@ -73,6 +75,41 @@ def _is_refusal(answer_text: str) -> bool:
         if phrase in opening:
             return True
     return False
+
+
+_FACILITATOR_FALLBACK_QUESTION = (
+    "What do you already know about this, and which part of your notes "
+    "could help you work it out?"
+)
+
+
+def _facilitator_question(answer_text: str) -> str:
+    """Reduce a facilitator reply to its final guiding question.
+
+    The model sometimes states findings before asking. Only the last question
+    is kept, so no fact from the notes reaches the student. A reply with no
+    question gets a neutral guiding question instead.
+    """
+
+    text = answer_text.strip()
+    last_mark = text.rfind("?")
+    if last_mark == -1:
+        return _FACILITATOR_FALLBACK_QUESTION
+
+    # Start of the final sentence: just after the last sentence break before it.
+    head = text[:last_mark]
+    start = 0
+    for separator in (". ", "! ", "? ", "\n"):
+        position = head.rfind(separator)
+        if position != -1:
+            candidate = position + len(separator)
+            if candidate > start:
+                start = candidate
+
+    question = text[start:last_mark + 1].strip()
+    if len(question) < 10:
+        return _FACILITATOR_FALLBACK_QUESTION
+    return question
 
 
 def _distinct_sources(chunks):
@@ -114,11 +151,13 @@ def _selected_source_chunks(
     Invalid IDs are ignored rather than becoming fabricated citations.
     """
 
-    match = _SOURCE_IDS_MARKER.search(answer_text)
-    if match is None:
+    matches = list(_SOURCE_IDS_MARKER.finditer(answer_text))
+    if not matches:
         return answer_text.strip(), chunks[:1]
 
-    cleaned_answer = answer_text[: match.start()].rstrip()
+    # The last marker decides the citations and every marker is removed.
+    match = matches[-1]
+    cleaned_answer = _SOURCE_IDS_MARKER.sub("", answer_text).strip()
     selected: list[GroundingChunk] = []
     seen_indexes: set[int] = set()
     for raw_id in match.group(1).split(","):
@@ -236,5 +275,8 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         # student the answer's location.
         if mode == "facilitator":
             sources = ()
+            # Keep only the guiding question so no finding is revealed.
+            if not _is_refusal(answer_text):
+                answer_text = _facilitator_question(answer_text)
 
         return GeneratedAnswer(content=answer_text, sources=sources)
