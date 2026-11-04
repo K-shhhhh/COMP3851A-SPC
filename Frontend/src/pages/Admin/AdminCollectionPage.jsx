@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Eye, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, Eye, X, UserCheck, UserX } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminCollection } from "../../services/adminService.js";
+import { getAdminCollection, setAdminUserActive } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
+import AdminActionDialog from "./AdminActionDialog.jsx";
 import { adminCollections, formatDate, formatSize } from "./adminSections.js";
 
 function TableValue({ value, kind }) {
@@ -27,6 +28,9 @@ export default function AdminCollectionPage({ section }) {
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [auditFilters, setAuditFilters] = useState({
@@ -77,6 +81,14 @@ export default function AdminCollectionPage({ section }) {
     if (!result?.next_cursor || loading) return;
     setCursors((current) => [...current.slice(0, page + 1), result.next_cursor]);
     setPage((current) => current + 1);
+  }
+  async function confirmUserAction(reason) {
+    setActionBusy(true); setActionError(null);
+    try {
+      await setAdminUserActive(pendingAction.user.user_id, pendingAction.activate, reason, accessToken);
+      setPendingAction(null); setSelectedUser(null); setRevision((value) => value + 1);
+    } catch (caught) { setActionError(caught); }
+    finally { setActionBusy(false); }
   }
 
   return (
@@ -136,7 +148,7 @@ export default function AdminCollectionPage({ section }) {
                 : visibleRows.length === 0 ? <tr><td colSpan={config.columns.length + (section === "users" ? 1 : 0)} className="admin-table-empty">No matching records found.</td></tr>
                 : visibleRows.map((row, idx) => <tr key={row.user_id || row.group_id || row.attachment_id || row.report_id || row.audit_event_id || row.event_id || idx}>
                   {config.columns.map(([, key, kind]) => <td key={key}><TableValue value={row[key]} kind={kind} /></td>)}
-                  {section === "users" && <td><button className="admin-button admin-button-outline" type="button" onClick={() => setSelectedUser(row)} aria-label={`View details for ${row.full_name || row.email || "user"}`}><Eye size={15} /> View</button></td>}
+                  {section === "users" && <td><div className="admin-row-actions"><button className="admin-button admin-button-outline" type="button" onClick={() => setSelectedUser(row)} aria-label={`View details for ${row.full_name || row.email || "user"}`}><Eye size={15} /> View</button><button className={`admin-button ${row.status === "active" ? "admin-button-danger" : "admin-button-primary"}`} type="button" onClick={() => { setActionError(null); setPendingAction({ user: row, activate: row.status !== "active" }); }}>{row.status === "active" ? <><UserX size={15}/> Deactivate</> : <><UserCheck size={15}/> Reactivate</>}</button></div></td>}
                 </tr>)}
             </tbody>
           </table>
@@ -156,10 +168,11 @@ export default function AdminCollectionPage({ section }) {
               {config.columns.map(([label, key, kind]) => <div key={key}><dt>{label}</dt><dd><TableValue value={selectedUser[key]} kind={kind}/></dd></div>)}
               <div><dt>User ID</dt><dd>{selectedUser.user_id || "—"}</dd></div>
             </dl>
-            <p className="admin-user-modal-note">Read-only view. Account changes will be available when the administration backend supports them.</p>
+            <p className="admin-user-modal-note">Account actions are audited and require a reason. Self-deactivation and deactivation of the final administrator are blocked by the backend.</p>
           </section>
         </div>
       )}
+      {pendingAction && <AdminActionDialog title={`${pendingAction.activate ? "Reactivate" : "Deactivate"} ${pendingAction.user.full_name || "this user"}?`} description={pendingAction.activate ? "This restores access to the account." : "This immediately prevents the user from accessing SPC. Their data is retained."} confirmLabel={pendingAction.activate ? "Reactivate user" : "Deactivate user"} danger={!pendingAction.activate} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmUserAction} />}
     </div>
   );
 }

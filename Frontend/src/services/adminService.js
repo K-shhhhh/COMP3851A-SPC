@@ -7,12 +7,29 @@ function read(path, accessToken, signal) {
   return apiRequest(`${PREFIX}${path}`, { method: "GET", accessToken, signal });
 }
 
+function mutate(path, accessToken, { method = "POST", body, signal } = {}) {
+  return apiRequest(`${PREFIX}${path}`, {
+    method,
+    accessToken,
+    signal,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
 export function getAdminIdentity(accessToken, signal) {
   return read("/me", accessToken, signal);
 }
 
 export function getAdminDashboard(accessToken, signal) {
   return read("/dashboard", accessToken, signal);
+}
+
+export function getAdminUserDetails(userId, accessToken, signal) {
+  return read(`/users/${encodeURIComponent(userId)}`, accessToken, signal);
+}
+
+export function setAdminUserActive(userId, active, reason, accessToken, signal) {
+  return mutate(`/users/${encodeURIComponent(userId)}/${active ? "reactivate" : "deactivate"}`, accessToken, { body: { reason }, signal });
 }
 
 const COLLECTION_PATHS = Object.freeze({
@@ -54,6 +71,10 @@ export function getAdminGroupDetails(groupId, accessToken, signal) {
   return read(`/study-groups/${encodeURIComponent(groupId)}`, accessToken, signal);
 }
 
+export function setAdminGroupActive(groupId, active, reason, accessToken, signal) {
+  return mutate(`/study-groups/${encodeURIComponent(groupId)}/${active ? "restore" : "remove"}`, accessToken, { body: { reason }, signal });
+}
+
 /** GET /administration/attachments/{attachment_id}: safe metadata and processing details only. */
 export function getAdminAttachmentDetails(attachmentId, accessToken, signal) {
   const parsed = Number(attachmentId);
@@ -63,12 +84,40 @@ export function getAdminAttachmentDetails(attachmentId, accessToken, signal) {
   return read(`/attachments/${encodeURIComponent(String(parsed))}`, accessToken, signal);
 }
 
+export function removeAdminAttachment(attachmentId, reason, accessToken, signal) {
+  return mutate(`/attachments/${encodeURIComponent(String(attachmentId))}`, accessToken, { method: "DELETE", body: { reason }, signal });
+}
+
+export function retryAdminAttachment(attachmentId, reason, accessToken, signal) {
+  return mutate(`/attachments/${encodeURIComponent(String(attachmentId))}/retry`, accessToken, { body: { reason }, signal });
+}
+
 /** GET /administration/reports/{report_id}: review metadata, activity and limited evidence context. */
 export function getAdminReportDetails(reportId, accessToken, signal) {
   if (typeof reportId !== "string" || !reportId.trim() || reportId.length > 500) {
     throw new Error("A valid report ID is required.");
   }
   return read(`/reports/${encodeURIComponent(reportId)}`, accessToken, signal);
+}
+
+export function startAdminReportReview(reportId, reason, accessToken, signal) {
+  return mutate(`/reports/${encodeURIComponent(reportId)}/start-review`, accessToken, { body: { reason }, signal });
+}
+
+export function addAdminReportNote(reportId, note, accessToken, signal) {
+  return mutate(`/reports/${encodeURIComponent(reportId)}/notes`, accessToken, { body: { note }, signal });
+}
+
+export function applyAdminReportAction(reportId, action, reason, accessToken, signal) {
+  return mutate(`/reports/${encodeURIComponent(reportId)}/actions`, accessToken, { body: { action, reason }, signal });
+}
+
+export function resolveAdminReport(reportId, payload, accessToken, signal) {
+  return mutate(`/reports/${encodeURIComponent(reportId)}/resolve`, accessToken, { body: payload, signal });
+}
+
+export function dismissAdminReport(reportId, payload, accessToken, signal) {
+  return mutate(`/reports/${encodeURIComponent(reportId)}/dismiss`, accessToken, { body: payload, signal });
 }
 
 /** GET /administration/audit-events/{event_id}: immutable governance event details. */

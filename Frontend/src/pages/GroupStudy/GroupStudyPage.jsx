@@ -118,7 +118,10 @@ function MessageText({ children }) {
   const parts = String(children || "").split(/(@[A-Za-z0-9_.-]+)/g);
   return parts.map((part, index) =>
     part.startsWith("@") ? (
-      <strong className="message-mention" key={`${part}-${index}`}>{part}</strong>
+      <strong
+        className={`message-mention ${["@facilitator", "@quizmaster", "@summarizer"].includes(part.toLowerCase()) ? "message-mention-ai" : "message-mention-member"}`}
+        key={`${part}-${index}`}
+      >{part}</strong>
     ) : (
       <Fragment key={`text-${index}`}>{part}</Fragment>
     ),

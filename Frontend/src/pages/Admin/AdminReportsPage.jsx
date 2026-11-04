@@ -3,8 +3,9 @@ import {
   ChevronLeft, ChevronRight, ClipboardList, Eye, RefreshCw, Search, X,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminCollection, getAdminReportDetails } from "../../services/adminService.js";
+import { addAdminReportNote, applyAdminReportAction, dismissAdminReport, getAdminCollection, getAdminReportDetails, resolveAdminReport, startAdminReportReview } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
+import AdminActionDialog from "./AdminActionDialog.jsx";
 import { formatDate } from "./adminSections.js";
 
 const INITIAL_FILTERS = { status: "", target_type: "" };
@@ -40,11 +41,18 @@ function Snapshot({ title, value }) {
   );
 }
 
-function ReportDetailsModal({ report, accessToken, onClose }) {
+function ReportDetailsModal({ report, accessToken, onClose, onChanged }) {
   const [details, setDetails] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [outcome, setOutcome] = useState("no_violation");
+  const [resolutionReason, setResolutionReason] = useState("");
+  const [publicSummary, setPublicSummary] = useState("");
   const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
 
@@ -81,6 +89,39 @@ function ReportDetailsModal({ report, accessToken, onClose }) {
   const info = details?.report || report;
   const evidence = Array.isArray(details?.evidence) ? details.evidence : [];
   const activity = Array.isArray(details?.activity) ? details.activity : [];
+  const currentStatus = info.status;
+  const governanceActions = info.target_type === "message"
+    ? [["remove_message", "Remove message"], ["deactivate_message_author", "Deactivate author"]]
+    : info.target_type === "group" ? [["remove_group", "Remove group"]] : [["remove_file", "Remove file"]];
+  const outcomes = ["no_violation", "duplicate", "insufficient_evidence", ...(info.target_type === "message" ? ["content_removed", "user_deactivated"] : info.target_type === "group" ? ["group_removed"] : ["file_removed"])];
+
+  async function confirmReasonAction(reason) {
+    setActionBusy(true); setActionError(null);
+    try {
+      const next = pendingAction.kind === "start"
+        ? await startAdminReportReview(info.report_id, reason, accessToken)
+        : await applyAdminReportAction(info.report_id, pendingAction.action, reason, accessToken).then(() => getAdminReportDetails(info.report_id, accessToken));
+      setDetails(next); setPendingAction(null); onChanged();
+    } catch (caught) { setActionError(caught); }
+    finally { setActionBusy(false); }
+  }
+
+  async function submitNote(event) {
+    event.preventDefault(); if (note.trim().length < 2) return;
+    setActionBusy(true); setActionError(null);
+    try { setDetails(await addAdminReportNote(info.report_id, note.trim(), accessToken)); setNote(""); onChanged(); }
+    catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
+  }
+
+  async function finishReport(kind) {
+    if (resolutionReason.trim().length < 10 || publicSummary.trim().length < 10) return;
+    setActionBusy(true); setActionError(null);
+    try {
+      const payload = { reason: resolutionReason.trim(), public_summary: publicSummary.trim() };
+      const next = kind === "resolve" ? await resolveAdminReport(info.report_id, { ...payload, outcome }, accessToken) : await dismissAdminReport(info.report_id, payload, accessToken);
+      setDetails(next); onChanged();
+    } catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
+  }
 
   return (
     <div className="admin-report-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -131,15 +172,30 @@ function ReportDetailsModal({ report, accessToken, onClose }) {
                   <li key={event.activity_id}>
                     <div><strong>{readable(event.event_type)}</strong><time dateTime={event.occurred_at}>{formatDate(event.occurred_at)}</time></div>
                     <p>{event.summary}</p>
-                    {event.administrator_name && <small>By {event.administrator_name}</small>}
+                    {event.actor_name && <small>By {event.actor_name}</small>}
                   </li>
                 ))}
               </ol>
             ) : <p className="admin-report-muted">No recorded activity.</p>}
+            {currentStatus === "submitted" && <div className="admin-report-actions"><h3>Review actions</h3><button type="button" className="admin-button admin-button-primary" onClick={() => { setActionError(null); setPendingAction({ kind: "start" }); }}>Start review</button></div>}
+            {currentStatus === "under_review" && <div className="admin-report-actions"><h3>Review actions</h3><form onSubmit={submitNote}><label>Internal note<textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Visible to administrators only" /></label><button type="submit" className="admin-button admin-button-outline" disabled={actionBusy || note.trim().length < 2}>Add note</button></form><div className="admin-report-governance-buttons">{governanceActions.map(([value, label]) => <button key={value} type="button" className="admin-button admin-button-danger" onClick={() => { setActionError(null); setPendingAction({ kind: "governance", action: value, label }); }}>{label}</button>)}</div><div className="admin-report-resolution"><label>Outcome<select value={outcome} onChange={(event) => setOutcome(event.target.value)}>{outcomes.map((value) => <option key={value} value={value}>{readable(value)}</option>)}</select></label><label>Internal reason<textarea value={resolutionReason} onChange={(event) => setResolutionReason(event.target.value)} maxLength={2000}/></label><label>Public summary<textarea value={publicSummary} onChange={(event) => setPublicSummary(event.target.value)} maxLength={1000}/></label><div className="admin-row-actions"><button type="button" className="admin-button admin-button-primary" disabled={actionBusy || resolutionReason.trim().length < 10 || publicSummary.trim().length < 10} onClick={() => finishReport("resolve")}>Resolve report</button><button type="button" className="admin-button admin-button-outline" disabled={actionBusy || resolutionReason.trim().length < 10 || publicSummary.trim().length < 10} onClick={() => finishReport("dismiss")}>Dismiss report</button></div></div></div>}
+            {actionError && !pendingAction && <div className="admin-action-error" role="alert">{actionError.message || "The action could not be completed."}</div>}
           </>
         )}
-        <p className="admin-report-help">Read-only preview. Starting a review, adding internal notes, resolving or dismissing reports, and downloading evidence remain disabled until the backend is available and reviewed.</p>
+        <p className="admin-report-help">Only the preserved reported target, limited submitted context, and report evidence are shown. Completed reports are read-only.</p>
       </section>
+      {pendingAction && (
+        <AdminActionDialog
+          title={pendingAction.kind === "start" ? "Start reviewing this report?" : `${pendingAction.label}?`}
+          description={pendingAction.kind === "start" ? "The report will move to Under review and the action will be recorded." : "This governance action affects the reported content and is recorded in the audit history."}
+          confirmLabel={pendingAction.kind === "start" ? "Start review" : pendingAction.label}
+          danger={pendingAction.kind === "governance"}
+          busy={actionBusy}
+          error={actionError}
+          onCancel={() => { if (!actionBusy) setPendingAction(null); }}
+          onConfirm={confirmReasonAction}
+        />
+      )}
     </div>
   );
 }
@@ -263,7 +319,7 @@ export default function AdminReportsPage() {
           </div>
         </div>
       </section>
-      {selectedReport && <ReportDetailsModal key={selectedReport.report_id} report={selectedReport} accessToken={accessToken} onClose={closeReport} />}
+      {selectedReport && <ReportDetailsModal key={selectedReport.report_id} report={selectedReport} accessToken={accessToken} onClose={closeReport} onChanged={() => setRevision((value) => value + 1)} />}
     </div>
   );
 }

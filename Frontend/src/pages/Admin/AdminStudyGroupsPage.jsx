@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, UsersRound, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, UsersRound, X, RotateCcw, Trash2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminCollection, getAdminGroupDetails } from "../../services/adminService.js";
+import { getAdminCollection, getAdminGroupDetails, setAdminGroupActive } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
+import AdminActionDialog from "./AdminActionDialog.jsx";
 import { formatDate } from "./adminSections.js";
 
 const EMPTY_FILTERS = { visibility: "", status: "" };
@@ -99,7 +100,7 @@ function GroupDetailsModal({ group, accessToken, onClose }) {
             ) : <p className="admin-group-muted">No channels available.</p>}
           </>
         )}
-        <p className="admin-group-help">Group removal and restoration require the administration backend and audited governance actions. No changes can be made from this view.</p>
+        <p className="admin-group-help">Group removal is reversible. Every removal and restoration is recorded in the audit log.</p>
       </section>
     </div>
   );
@@ -117,7 +118,18 @@ export default function AdminStudyGroupsPage() {
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const closeGroup = useCallback(() => setSelectedGroup(null), []);
+  async function confirmGroupAction(reason) {
+    setActionBusy(true); setActionError(null);
+    try {
+      await setAdminGroupActive(pendingAction.group.group_id, pendingAction.restore, reason, accessToken);
+      setPendingAction(null); setSelectedGroup(null); setRevision((value) => value + 1);
+    } catch (caught) { setActionError(caught); }
+    finally { setActionBusy(false); }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -225,7 +237,7 @@ export default function AdminStudyGroupsPage() {
                     <td>{group.channel_count ?? "—"}</td>
                     <td><StatusPill status={group.status}/></td>
                     <td>{formatDate(group.created_at)}</td>
-                    <td><button type="button" className="admin-button admin-button-outline" onClick={() => setSelectedGroup(group)} aria-label={`View ${group.name} details`}><Eye size={15} /> View</button></td>
+                    <td><div className="admin-row-actions"><button type="button" className="admin-button admin-button-outline" onClick={() => setSelectedGroup(group)} aria-label={`View ${group.name} details`}><Eye size={15} /> View</button><button type="button" className={`admin-button ${group.status === "removed" ? "admin-button-primary" : "admin-button-danger"}`} onClick={() => { setActionError(null); setPendingAction({ group, restore: group.status === "removed" }); }}>{group.status === "removed" ? <><RotateCcw size={15}/> Restore</> : <><Trash2 size={15}/> Remove</>}</button></div></td>
                   </tr>
                 ))}
             </tbody>
@@ -240,6 +252,7 @@ export default function AdminStudyGroupsPage() {
         </div>
       </section>
       {selectedGroup && <GroupDetailsModal group={selectedGroup} accessToken={accessToken} onClose={closeGroup} />}
+      {pendingAction && <AdminActionDialog title={`${pendingAction.restore ? "Restore" : "Remove"} ${pendingAction.group.name}?`} description={pendingAction.restore ? "The study group will become available again." : "The study group will be hidden from students. This is a reversible soft removal."} confirmLabel={pendingAction.restore ? "Restore group" : "Remove group"} danger={!pendingAction.restore} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmGroupAction} />}
     </div>
   );
 }

@@ -1436,12 +1436,34 @@
 }
 
 .message-mention {
-  color: #d9c8ff;
+  display: inline-flex;
+  align-items: center;
+  margin: 0 2px;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  color: #fff;
   font-weight: 800;
+  line-height: 1.35;
 }
 
 .group-message:not(.own-message) .message-mention {
-  color: var(--spc-purple);
+  border-color: rgba(139, 92, 246, .25);
+  background: rgba(139, 92, 246, .13);
+  color: #a78bfa;
+}
+
+.group-message:not(.own-message) .message-mention-member {
+  border-color: rgba(59, 130, 246, .28);
+  background: rgba(59, 130, 246, .13);
+  color: #60a5fa;
+}
+
+.group-message:not(.own-message) .message-mention-ai {
+  border-color: rgba(45, 212, 191, .28);
+  background: rgba(45, 212, 191, .13);
+  color: #2dd4bf;
 }
 
 .shared-file-message {

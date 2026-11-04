@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ChevronLeft, ChevronRight, Eye, FileText, RefreshCw, Search, X,
+  ChevronLeft, ChevronRight, Eye, FileText, RefreshCw, Search, X, RotateCcw, Trash2,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminAttachmentDetails, getAdminCollection } from "../../services/adminService.js";
+import { getAdminAttachmentDetails, getAdminCollection, removeAdminAttachment, retryAdminAttachment } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
+import AdminActionDialog from "./AdminActionDialog.jsx";
 import { formatDate, formatSize } from "./adminSections.js";
 
 const INITIAL_FILTERS = { status: "", source: "", include_removed: false };
@@ -118,7 +119,7 @@ function AttachmentDetailsModal({ attachment, accessToken, onClose }) {
             )}
           </>
         )}
-        <p className="admin-attachment-help">Read-only view. Removing an attachment or retrying failed processing requires an audited backend action and is not enabled here.</p>
+        <p className="admin-attachment-help">Removal and failed-processing retries are audited. Retry is available only for failed, non-removed files.</p>
       </section>
     </div>
   );
@@ -136,7 +137,19 @@ export default function AdminAttachmentsPage() {
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [selectedAttachment, setSelectedAttachment] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState(null);
   const closeAttachment = useCallback(() => setSelectedAttachment(null), []);
+  async function confirmAttachmentAction(reason) {
+    setActionBusy(true); setActionError(null);
+    try {
+      if (pendingAction.kind === "retry") await retryAdminAttachment(pendingAction.attachment.attachment_id, reason, accessToken);
+      else await removeAdminAttachment(pendingAction.attachment.attachment_id, reason, accessToken);
+      setPendingAction(null); setSelectedAttachment(null); setRevision((value) => value + 1);
+    } catch (caught) { setActionError(caught); }
+    finally { setActionBusy(false); }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -238,7 +251,7 @@ export default function AdminAttachmentsPage() {
                     <td><StatusPill status={attachment.status}/></td>
                     <td>{attachment.removed ? <StatusPill status="removed"/> : "No"}</td>
                     <td>{formatDate(attachment.uploaded_at)}</td>
-                    <td><button type="button" className="admin-button admin-button-outline" onClick={() => setSelectedAttachment(attachment)} aria-label={`View details for ${attachment.file_name || attachment.title || "attachment"}`}><Eye size={15} /> View</button></td>
+                    <td><div className="admin-row-actions"><button type="button" className="admin-button admin-button-outline" onClick={() => setSelectedAttachment(attachment)} aria-label={`View details for ${attachment.file_name || attachment.title || "attachment"}`}><Eye size={15} /> View</button>{attachment.status === "failed" && !attachment.removed && <button type="button" className="admin-button admin-button-primary" onClick={() => { setActionError(null); setPendingAction({ attachment, kind: "retry" }); }}><RotateCcw size={15}/> Retry</button>}{!attachment.removed && <button type="button" className="admin-button admin-button-danger" onClick={() => { setActionError(null); setPendingAction({ attachment, kind: "remove" }); }}><Trash2 size={15}/> Remove</button>}</div></td>
                   </tr>
                 ))}
             </tbody>
@@ -253,6 +266,7 @@ export default function AdminAttachmentsPage() {
         </div>
       </section>
       {selectedAttachment && <AttachmentDetailsModal attachment={selectedAttachment} accessToken={accessToken} onClose={closeAttachment} />}
+      {pendingAction && <AdminActionDialog title={pendingAction.kind === "retry" ? `Retry ${pendingAction.attachment.file_name}?` : `Remove ${pendingAction.attachment.file_name}?`} description={pendingAction.kind === "retry" ? "The failed processing state will be reset and exactly one new processing job will be requested." : "The attachment will be removed from student access. This may also remove its private stored file."} confirmLabel={pendingAction.kind === "retry" ? "Retry processing" : "Remove attachment"} danger={pendingAction.kind === "remove"} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmAttachmentAction} />}
     </div>
   );
 }
