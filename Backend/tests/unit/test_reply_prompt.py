@@ -160,3 +160,24 @@ def test_facilitator_reply_without_a_question_gets_a_neutral_prompt() -> None:
     )
     assert reduced == rag_answering._FACILITATOR_FALLBACK_QUESTION
     assert "Turkey" not in reduced
+
+
+def test_source_marker_before_the_final_full_stop_is_removed_and_used() -> None:
+    chunks = [object(), object(), object()]
+    cleaned, selected = rag_answering._selected_source_chunks(
+        "The data covers 260 months [[SOURCE_IDS:2]].",
+        chunks,
+    )
+    assert cleaned == "The data covers 260 months."
+    assert selected == [chunks[1]]
+    assert "SOURCE_IDS" not in cleaned
+
+
+def test_source_marker_at_the_end_still_works() -> None:
+    chunks = [object(), object()]
+    cleaned, selected = rag_answering._selected_source_chunks(
+        "A short answer. [[SOURCE_IDS:1,2]]",
+        chunks,
+    )
+    assert cleaned == "A short answer."
+    assert selected == [chunks[0], chunks[1]]

@@ -54,8 +54,10 @@ _SOFT_REFUSAL_MAX_CHARS = 600
 # This marker is removed before the reply is persisted or returned to the UI.
 # If a provider omits it, we conservatively cite only the highest-ranked
 # passage instead of presenting every retrieved chunk as if it were used.
+# The marker is matched anywhere in the reply, because the model sometimes
+# places it before a closing full stop instead of at the very end.
 _SOURCE_IDS_MARKER = re.compile(
-    r"\s*\[\[\s*SOURCE_IDS\s*:\s*([0-9,\s]*)\]\]\s*$",
+    r"\s*\[\[\s*SOURCE_IDS\s*:\s*([0-9,\s]*)\]\]",
     re.IGNORECASE,
 )
 
@@ -149,11 +151,13 @@ def _selected_source_chunks(
     Invalid IDs are ignored rather than becoming fabricated citations.
     """
 
-    match = _SOURCE_IDS_MARKER.search(answer_text)
-    if match is None:
+    matches = list(_SOURCE_IDS_MARKER.finditer(answer_text))
+    if not matches:
         return answer_text.strip(), chunks[:1]
 
-    cleaned_answer = answer_text[: match.start()].rstrip()
+    # The last marker decides the citations and every marker is removed.
+    match = matches[-1]
+    cleaned_answer = _SOURCE_IDS_MARKER.sub("", answer_text).strip()
     selected: list[GroundingChunk] = []
     seen_indexes: set[int] = set()
     for raw_id in match.group(1).split(","):
