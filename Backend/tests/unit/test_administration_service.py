@@ -67,6 +67,7 @@ class StubAdministrationRepository:
         self.report = self._report(ReportStatus.SUBMITTED, ReportTargetType.MESSAGE)
         self.last_report_call = None
         self.last_create_user = None
+        self.last_update_user = None
 
     @staticmethod
     def _user(user_id: str, role: AdministrationUserRole) -> AdminUserDetails:
@@ -93,6 +94,22 @@ class StubAdministrationRepository:
         created = self._user("created-user", values["role"])
         self.users["created-user"] = created
         return created
+
+    async def update_user(self, **values):
+        self.last_update_user = values
+        current = self.users.get(values["user_id"])
+        if current is None:
+            return None
+        updated = replace(
+            current,
+            user=replace(
+                current.user,
+                full_name=values["full_name"],
+                email=values["email"],
+            ),
+        )
+        self.users[values["user_id"]] = updated
+        return updated
 
     async def count_active_administrators(self):
         return self.active_admins
@@ -221,6 +238,24 @@ async def test_admin_user_creation_hashes_password_and_records_reason() -> None:
     assert repository.last_create_user["email"] == "new.student@example.com"
     assert repository.last_create_user["password_hash"] != "TemporaryPassword123!"
     assert repository.last_create_user["actor"].reason == "Account requested by student services"
+
+
+@pytest.mark.asyncio
+async def test_admin_user_update_normalizes_public_identity_and_audits_reason() -> None:
+    repository = StubAdministrationRepository()
+    service = AdministrationService(repository)
+
+    updated = await service.update_user(
+        current_admin_id="admin-1",
+        target_user_id="student-1",
+        full_name="  Updated Student  ",
+        email="UPDATED.STUDENT@example.com",
+        reason="Correcting verified account information",
+    )
+
+    assert updated.user.full_name == "Updated Student"
+    assert updated.user.email == "updated.student@example.com"
+    assert repository.last_update_user["actor"].reason == "Correcting verified account information"
 
 
 @pytest.mark.asyncio

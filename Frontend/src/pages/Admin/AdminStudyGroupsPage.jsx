@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, UsersRound, X, RotateCcw, Trash2, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, UsersRound, X, RotateCcw, Trash2, Plus, Pencil } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { createAdminGroup, getAdminCollection, getAdminGroupDetails, setAdminGroupActive } from "../../services/adminService.js";
+import { createAdminGroup, getAdminCollection, getAdminGroupDetails, setAdminGroupActive, updateAdminGroup } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
 import AdminActionDialog from "./AdminActionDialog.jsx";
 import AdminCreateGroupDialog from "./AdminCreateGroupDialog.jsx";
+import AdminEditGroupDialog from "./AdminEditGroupDialog.jsx";
 import { formatDate } from "./adminSections.js";
 
 const EMPTY_FILTERS = { visibility: "", status: "" };
@@ -123,6 +124,7 @@ export default function AdminStudyGroupsPage() {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
   const closeGroup = useCallback(() => setSelectedGroup(null), []);
   async function confirmGroupAction(reason) {
     setActionBusy(true); setActionError(null);
@@ -136,6 +138,20 @@ export default function AdminStudyGroupsPage() {
     setActionBusy(true); setActionError(null);
     try { await createAdminGroup(payload, accessToken); setShowCreateGroup(false); setRevision((value) => value + 1); }
     catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
+  }
+  async function beginEditGroup(group) {
+    setActionError(null);
+    try {
+      setEditingGroup(await getAdminGroupDetails(group.group_id, accessToken));
+    } catch (caught) { setError(caught); }
+  }
+  async function submitEditGroup(payload) {
+    setActionBusy(true); setActionError(null);
+    try {
+      await updateAdminGroup(editingGroup.group.group_id, payload, accessToken);
+      setEditingGroup(null); setSelectedGroup(null); setRevision((value) => value + 1);
+    } catch (caught) { setActionError(caught); }
+    finally { setActionBusy(false); }
   }
 
   useEffect(() => {
@@ -244,7 +260,7 @@ export default function AdminStudyGroupsPage() {
                     <td>{group.channel_count ?? "—"}</td>
                     <td><StatusPill status={group.status}/></td>
                     <td>{formatDate(group.created_at)}</td>
-                    <td><div className="admin-row-actions"><button type="button" className="admin-button admin-button-outline" onClick={() => setSelectedGroup(group)} aria-label={`View ${group.name} details`}><Eye size={15} /> View</button><button type="button" className={`admin-button ${group.status === "removed" ? "admin-button-primary" : "admin-button-danger"}`} onClick={() => { setActionError(null); setPendingAction({ group, restore: group.status === "removed" }); }}>{group.status === "removed" ? <><RotateCcw size={15}/> Restore</> : <><Trash2 size={15}/> Remove</>}</button></div></td>
+                    <td><div className="admin-row-actions"><button type="button" className="admin-button admin-button-outline" onClick={() => setSelectedGroup(group)} aria-label={`View ${group.name} details`}><Eye size={15} /> View</button><button type="button" className="admin-button admin-button-outline" onClick={() => beginEditGroup(group)} aria-label={`Edit ${group.name}`}><Pencil size={15}/> Edit</button><button type="button" className={`admin-button ${group.status === "removed" ? "admin-button-primary" : "admin-button-danger"}`} onClick={() => { setActionError(null); setPendingAction({ group, restore: group.status === "removed" }); }}>{group.status === "removed" ? <><RotateCcw size={15}/> Restore</> : <><Trash2 size={15}/> Remove</>}</button></div></td>
                   </tr>
                 ))}
             </tbody>
@@ -262,6 +278,9 @@ export default function AdminStudyGroupsPage() {
       {pendingAction && <AdminActionDialog title={`${pendingAction.restore ? "Restore" : "Remove"} ${pendingAction.group.name}?`} description={pendingAction.restore ? "The study group will become available again." : "The study group will be hidden from students. This is a reversible soft removal."} confirmLabel={pendingAction.restore ? "Restore group" : "Remove group"} danger={!pendingAction.restore} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmGroupAction} />}
       {showCreateGroup && (
         <AdminCreateGroupDialog busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setShowCreateGroup(false); }} onSubmit={submitCreateGroup}/>
+      )}
+      {editingGroup && (
+        <AdminEditGroupDialog details={editingGroup} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setEditingGroup(null); }} onSubmit={submitEditGroup}/>
       )}
     </div>
   );

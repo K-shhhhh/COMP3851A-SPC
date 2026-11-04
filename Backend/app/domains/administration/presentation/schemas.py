@@ -46,12 +46,26 @@ class AdminCreateUserRequest(BaseModel):
     reason: str = Field(min_length=10, max_length=1000)
 
 
+class AdminUpdateUserRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    email: EmailStr
+    reason: str = Field(min_length=10, max_length=1000)
+
+
 class AdminCreateGroupRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=1000)
     visibility: AdministrationGroupVisibility
     max_members: int = Field(default=30, ge=1, le=500)
     owner_user_id: str | None = Field(default=None, max_length=100)
+    reason: str = Field(min_length=10, max_length=1000)
+
+
+class AdminUpdateGroupRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=1000)
+    visibility: AdministrationGroupVisibility
+    max_members: int = Field(ge=1, le=500)
     reason: str = Field(min_length=10, max_length=1000)
 
 
@@ -135,6 +149,7 @@ class AdminGroupChannelResponse(DomainResponse):
 class AdminGroupDetailsResponse(DomainResponse):
     group: AdminGroupSummaryResponse
     description: str | None
+    max_members: int
     current_owner_id: str
     created_by_id: str
     created_by_name: str

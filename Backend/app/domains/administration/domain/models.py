@@ -228,6 +228,7 @@ class AdminGroupChannel:
 class AdminGroupDetails:
     group: AdminGroupSummary
     description: str | None
+    max_members: int
     current_owner_id: str
     created_by_id: str
     created_by_name: str
@@ -266,6 +267,14 @@ class AdminAttachmentDetails:
     processing_completed_at: datetime | None
     processing_duration_seconds: int | None
     safe_processing_error: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AdminAttachmentFile:
+    attachment_id: int
+    filename: str
+    content_type: str
+    content: bytes
 
 
 @dataclass(frozen=True, slots=True)

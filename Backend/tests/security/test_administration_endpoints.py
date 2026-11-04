@@ -143,3 +143,10 @@ def test_operational_status_removed_and_audit_events_exposed() -> None:
     assert "/api/v1/administration/system-logs" not in paths
     assert "/api/v1/administration/audit-events" in paths
     assert "/api/v1/administration/audit-events/{audit_event_id}" in paths
+
+
+def test_administration_edit_and_private_attachment_routes_are_exposed() -> None:
+    paths = app.openapi()["paths"]
+    assert "patch" in paths["/api/v1/administration/users/{user_id}"]
+    assert "patch" in paths["/api/v1/administration/study-groups/{group_id}"]
+    assert "get" in paths["/api/v1/administration/attachments/{attachment_id}/file"]

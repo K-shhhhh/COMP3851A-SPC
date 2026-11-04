@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, Eye, FileText, RefreshCw, Search, X, RotateCcw, Trash2,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminAttachmentDetails, getAdminCollection, removeAdminAttachment, retryAdminAttachment } from "../../services/adminService.js";
+import { getAdminAttachmentDetails, getAdminAttachmentPdf, getAdminCollection, removeAdminAttachment, retryAdminAttachment } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
 import AdminActionDialog from "./AdminActionDialog.jsx";
 import { formatDate, formatSize } from "./adminSections.js";
@@ -85,7 +85,7 @@ function AttachmentDetailsModal({ attachment, accessToken, onClose }) {
           <div>
             <div className="admin-kicker"><FileText size={14} /> ATTACHMENT DETAILS</div>
             <h2 id="admin-attachment-dialog-title">{summary.title || summary.file_name || "Attachment"}</h2>
-            <p id="admin-attachment-dialog-description">Administrative metadata only. The underlying file content is not available here.</p>
+            <p id="admin-attachment-dialog-description">Processing metadata for this attachment. Opening private content is separately authorized and audited.</p>
           </div>
           <button type="button" className="admin-button admin-button-outline" onClick={onClose} ref={closeButtonRef} aria-label="Close attachment details"><X size={18} /></button>
         </div>
@@ -150,6 +150,27 @@ export default function AdminAttachmentsPage() {
     } catch (caught) { setActionError(caught); }
     finally { setActionBusy(false); }
   }
+  async function openAttachmentPdf(attachment) {
+    if (attachment.removed || attachment.status !== "ready") return;
+    setError(null);
+    try {
+      const blob = await getAdminAttachmentPdf(attachment.attachment_id, accessToken);
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.file_name || "attachment.pdf";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (caught) { setError(caught); }
+  }
+
+  function handleAttachmentRow(event, attachment) {
+    if (event.target.closest("button, a, input, select")) return;
+    openAttachmentPdf(attachment);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -198,7 +219,7 @@ export default function AdminAttachmentsPage() {
         <div>
           <div className="admin-kicker">ADMINISTRATION</div>
           <h1>Notes &amp; attachments</h1>
-          <p>Inspect upload metadata, processing progress, and safe failure information — without reading private files.</p>
+          <p>Inspect upload metadata and processing status. Select a ready attachment row to open its PDF with audited access.</p>
         </div>
         <button type="button" className="admin-button admin-button-outline" onClick={() => setRevision((n) => n + 1)} disabled={loading}><RefreshCw size={16} /> Refresh</button>
       </div>
@@ -243,7 +264,18 @@ export default function AdminAttachmentsPage() {
                 : error ? <tr><td colSpan={8} className="admin-table-empty">Attachment data is unavailable.</td></tr>
                 : rows.length === 0 ? <tr><td colSpan={8} className="admin-table-empty">No attachments match these criteria.</td></tr>
                 : rows.map((attachment) => (
-                  <tr key={attachment.attachment_id}>
+                  <tr
+                    key={attachment.attachment_id}
+                    className={attachment.status === "ready" && !attachment.removed ? "admin-attachment-row-openable" : ""}
+                    tabIndex={attachment.status === "ready" && !attachment.removed ? 0 : undefined}
+                    title={attachment.status === "ready" && !attachment.removed ? "Open PDF" : undefined}
+                    onClick={(event) => handleAttachmentRow(event, attachment)}
+                    onKeyDown={(event) => {
+                      if ((event.key === "Enter" || event.key === " ") && attachment.status === "ready" && !attachment.removed) {
+                        event.preventDefault(); openAttachmentPdf(attachment);
+                      }
+                    }}
+                  >
                     <td><div className="admin-attachment-file"><FileText size={17} aria-hidden="true" /><div><strong>{attachment.title || attachment.file_name || "Untitled file"}</strong>{attachment.title && attachment.file_name && <small>{attachment.file_name}</small>}</div></div></td>
                     <td>{attachment.uploader_name || "—"}</td>
                     <td>{SOURCE_NAMES[attachment.source] || readableStatus(attachment.source)}</td>

@@ -29,6 +29,8 @@ from app.domains.administration.presentation.schemas import (
     AdminAttachmentPageResponse,
     AdminCreateGroupRequest,
     AdminCreateUserRequest,
+    AdminUpdateGroupRequest,
+    AdminUpdateUserRequest,
     AdminAuditEventPageResponse,
     AdminAuditEventResponse,
     AdminGroupDetailsResponse,
@@ -158,6 +160,25 @@ async def deactivate_user(
         return GovernanceActionResponse.model_validate(result)
 
 
+@router.patch("/users/{user_id}", response_model=AdminUserDetailsResponse)
+async def update_user(
+    user_id: str,
+    request: AdminUpdateUserRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminUserDetailsResponse:
+    with administration_errors():
+        return AdminUserDetailsResponse.model_validate(
+            await service.update_user(
+                current_admin_id=current_admin.id,
+                target_user_id=user_id,
+                full_name=request.full_name,
+                email=str(request.email),
+                reason=request.reason,
+            )
+        )
+
+
 @router.post("/users/{user_id}/reactivate", response_model=GovernanceActionResponse)
 async def reactivate_user(
     user_id: str,
@@ -239,6 +260,27 @@ async def remove_group(
         return GovernanceActionResponse.model_validate(result)
 
 
+@router.patch("/study-groups/{group_id}", response_model=AdminGroupDetailsResponse)
+async def update_group(
+    group_id: str,
+    request: AdminUpdateGroupRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminGroupDetailsResponse:
+    with administration_errors():
+        return AdminGroupDetailsResponse.model_validate(
+            await service.update_group(
+                current_admin_id=current_admin.id,
+                group_id=group_id,
+                name=request.name,
+                description=request.description,
+                visibility=request.visibility,
+                max_members=request.max_members,
+                reason=request.reason,
+            )
+        )
+
+
 @router.post("/study-groups/{group_id}/restore", response_model=GovernanceActionResponse)
 async def restore_group(
     group_id: str,
@@ -285,6 +327,29 @@ async def get_attachment(
     with administration_errors():
         return AdminAttachmentDetailsResponse.model_validate(
             await service.get_attachment(attachment_id)
+        )
+
+
+@router.get("/attachments/{attachment_id}/file")
+async def get_attachment_file(
+    attachment_id: int,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> StreamingResponse:
+    with administration_errors():
+        attachment = await service.get_attachment_file(
+            current_admin_id=current_admin.id,
+            attachment_id=attachment_id,
+        )
+        safe_name = attachment.filename.replace('"', "").replace("\r", "").replace("\n", "")
+        return StreamingResponse(
+            BytesIO(attachment.content),
+            media_type=attachment.content_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{safe_name}"',
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
 

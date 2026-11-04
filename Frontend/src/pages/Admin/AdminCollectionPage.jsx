@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Eye, X, UserCheck, UserX, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, Eye, X, UserCheck, UserX, Plus, Pencil } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { createAdminUser, getAdminCollection, setAdminUserActive } from "../../services/adminService.js";
+import { createAdminUser, getAdminCollection, setAdminUserActive, updateAdminUser } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
 import AdminActionDialog from "./AdminActionDialog.jsx";
 import AdminCreateUserDialog from "./AdminCreateUserDialog.jsx";
+import AdminEditUserDialog from "./AdminEditUserDialog.jsx";
 import { adminCollections, formatDate, formatSize } from "./adminSections.js";
 
 function TableValue({ value, kind }) {
@@ -33,6 +34,7 @@ export default function AdminCollectionPage({ section }) {
   const [actionError, setActionError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [auditFilters, setAuditFilters] = useState({
@@ -97,6 +99,14 @@ export default function AdminCollectionPage({ section }) {
     try { await createAdminUser(payload, accessToken); setShowCreateUser(false); setRevision((value) => value + 1); }
     catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
   }
+  async function submitEditUser(payload) {
+    setActionBusy(true); setActionError(null);
+    try {
+      await updateAdminUser(editingUser.user_id, payload, accessToken);
+      setEditingUser(null); setSelectedUser(null); setRevision((value) => value + 1);
+    } catch (caught) { setActionError(caught); }
+    finally { setActionBusy(false); }
+  }
 
   return (
     <div className="admin-page-stack">
@@ -155,7 +165,7 @@ export default function AdminCollectionPage({ section }) {
                 : visibleRows.length === 0 ? <tr><td colSpan={config.columns.length + (section === "users" ? 1 : 0)} className="admin-table-empty">No matching records found.</td></tr>
                 : visibleRows.map((row, idx) => <tr key={row.user_id || row.group_id || row.attachment_id || row.report_id || row.audit_event_id || row.event_id || idx}>
                   {config.columns.map(([, key, kind]) => <td key={key}><TableValue value={row[key]} kind={kind} /></td>)}
-                  {section === "users" && <td><div className="admin-row-actions"><button className="admin-button admin-button-outline" type="button" onClick={() => setSelectedUser(row)} aria-label={`View details for ${row.full_name || row.email || "user"}`}><Eye size={15} /> View</button><button className={`admin-button ${row.status === "active" ? "admin-button-danger" : "admin-button-primary"}`} type="button" onClick={() => { setActionError(null); setPendingAction({ user: row, activate: row.status !== "active" }); }}>{row.status === "active" ? <><UserX size={15}/> Deactivate</> : <><UserCheck size={15}/> Reactivate</>}</button></div></td>}
+                  {section === "users" && <td><div className="admin-row-actions"><button className="admin-button admin-button-outline" type="button" onClick={() => setSelectedUser(row)} aria-label={`View details for ${row.full_name || row.email || "user"}`}><Eye size={15} /> View</button><button className="admin-button admin-button-outline" type="button" onClick={() => { setActionError(null); setEditingUser(row); }} aria-label={`Edit ${row.full_name || row.email || "user"}`}><Pencil size={15} /> Edit</button><button className={`admin-button ${row.status === "active" ? "admin-button-danger" : "admin-button-primary"}`} type="button" onClick={() => { setActionError(null); setPendingAction({ user: row, activate: row.status !== "active" }); }}>{row.status === "active" ? <><UserX size={15}/> Deactivate</> : <><UserCheck size={15}/> Reactivate</>}</button></div></td>}
                 </tr>)}
             </tbody>
           </table>
@@ -182,6 +192,9 @@ export default function AdminCollectionPage({ section }) {
       {pendingAction && <AdminActionDialog title={`${pendingAction.activate ? "Reactivate" : "Deactivate"} ${pendingAction.user.full_name || "this user"}?`} description={pendingAction.activate ? "This restores access to the account." : "This immediately prevents the user from accessing SPC. Their data is retained."} confirmLabel={pendingAction.activate ? "Reactivate user" : "Deactivate user"} danger={!pendingAction.activate} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmUserAction} />}
       {showCreateUser && (
         <AdminCreateUserDialog busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setShowCreateUser(false); }} onSubmit={submitCreateUser}/>
+      )}
+      {editingUser && (
+        <AdminEditUserDialog user={editingUser} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setEditingUser(null); }} onSubmit={submitEditUser}/>
       )}
     </div>
   );

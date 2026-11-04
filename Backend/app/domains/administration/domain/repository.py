@@ -11,6 +11,7 @@ from datetime import datetime
 
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
+    AdminAttachmentFile,
     AdminAttachmentPage,
     AdminAuditEvent,
     AdminAuditEventPage,
@@ -72,6 +73,19 @@ class AdministrationRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def update_user(
+        self,
+        *,
+        user_id: str,
+        full_name: str,
+        email: str,
+        actor: AdministrationActor,
+    ) -> AdminUserDetails | None:
+        """Update safe account fields and append an audit event atomically."""
+
+        raise NotImplementedError
+
+    @abstractmethod
     async def count_active_administrators(self) -> int:
         raise NotImplementedError
 
@@ -129,6 +143,21 @@ class AdministrationRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def update_group(
+        self,
+        *,
+        group_id: str,
+        name: str,
+        description: str | None,
+        visibility: AdministrationGroupVisibility,
+        max_members: int,
+        actor: AdministrationActor,
+    ) -> AdminGroupDetails | None:
+        """Update Study Group metadata and append an audit event atomically."""
+
+        raise NotImplementedError
+
+    @abstractmethod
     async def remove_group(
         self,
         *,
@@ -166,6 +195,17 @@ class AdministrationRepository(ABC):
         self,
         attachment_id: int,
     ) -> AdminAttachmentDetails | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_attachment_file(
+        self,
+        *,
+        attachment_id: int,
+        actor: AdministrationActor,
+    ) -> AdminAttachmentFile | None:
+        """Read an authorized private PDF and audit the access."""
+
         raise NotImplementedError
 
     @abstractmethod

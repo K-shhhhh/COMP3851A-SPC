@@ -23,6 +23,7 @@ from app.domains.administration.domain.exceptions import (
 )
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
+    AdminAttachmentFile,
     AdminAttachmentPage,
     AdminAttachmentSummary,
     AdminAuditEvent,
@@ -572,6 +573,70 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             raise AdministrationResourceNotFoundError("The created user could not be loaded.")
         return created
 
+    async def update_user(
+        self,
+        *,
+        user_id: str,
+        full_name: str,
+        email: str,
+        actor: AdministrationActor,
+    ) -> AdminUserDetails | None:
+        """Lock an account, update its public identity, and audit atomically."""
+
+        target_uuid = self._parse_uuid(user_id)
+        if target_uuid is None:
+            return None
+        admin_uuid = self._require_valid_admin_uuid(actor.user_id)
+        reason = self._require_valid_reason(actor.reason)
+        now = datetime.now(timezone.utc)
+        try:
+            await self._require_active_admin_in_tx(admin_uuid)
+            target = await self._session.scalar(
+                select(ORMUser)
+                .where(
+                    ORMUser.user_id == target_uuid,
+                    ORMUser.deleted_at.is_(None),
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if target is None:
+                await self._session.rollback()
+                return None
+            duplicate = await self._session.scalar(
+                select(ORMUser.user_id).where(
+                    func.lower(ORMUser.email) == email.lower(),
+                    ORMUser.user_id != target_uuid,
+                )
+            )
+            if duplicate is not None:
+                raise AdministrationConflictError("An account with this email already exists.")
+            target.fullname = full_name
+            target.email = email
+            target.last_updated_at = now
+            self._session.add(
+                ORMAuditEvent(
+                    audit_event_id=uuid.uuid4(),
+                    admin_id=admin_uuid,
+                    action="update_user",
+                    target_type="user",
+                    target_id=str(target_uuid),
+                    reason=reason,
+                    event_timestamp=now,
+                )
+            )
+            await self._session.commit()
+        except AdministrationConflictError:
+            await self._session.rollback()
+            raise
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise AdministrationConflictError("An account with this email already exists.") from exc
+        except Exception:
+            await self._session.rollback()
+            raise
+        return await self.get_user(str(target_uuid))
+
     async def deactivate_user(
         self,
         *,
@@ -862,6 +927,7 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
         return AdminGroupDetails(
             group=summary,
             description=grp.description,
+            max_members=grp.max_members,
             current_owner_id=str(grp.current_owner),
             created_by_id=str(grp.created_by),
             created_by_name=creator_name,
@@ -931,6 +997,72 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
         if created is None:
             raise AdministrationResourceNotFoundError("The created study group could not be loaded.")
         return created
+
+    async def update_group(
+        self,
+        *,
+        group_id: str,
+        name: str,
+        description: str | None,
+        visibility: AdministrationGroupVisibility,
+        max_members: int,
+        actor: AdministrationActor,
+    ) -> AdminGroupDetails | None:
+        """Lock a Study Group, update its metadata, and audit atomically."""
+
+        group_uuid = self._parse_uuid(group_id)
+        if group_uuid is None:
+            return None
+        admin_uuid = self._require_valid_admin_uuid(actor.user_id)
+        reason = self._require_valid_reason(actor.reason)
+        now = datetime.now(timezone.utc)
+        try:
+            await self._require_active_admin_in_tx(admin_uuid)
+            group = await self._session.scalar(
+                select(ORMGroup)
+                .where(
+                    ORMGroup.group_id == group_uuid,
+                    ORMGroup.group_type.in_(_STUDY_GROUP_TYPES),
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if group is None:
+                await self._session.rollback()
+                return None
+            member_count = int(
+                await self._session.scalar(
+                    select(func.count())
+                    .select_from(ORMMembership)
+                    .where(ORMMembership.group_id == group_uuid)
+                )
+                or 0
+            )
+            if max_members < member_count:
+                raise AdministrationConflictError(
+                    f"Maximum members cannot be below the current membership count of {member_count}."
+                )
+            group.group_name = name
+            group.description = description
+            group.group_type = GroupType(visibility.value)
+            group.max_members = max_members
+            group.last_updated_at = now
+            self._session.add(
+                ORMAuditEvent(
+                    audit_event_id=uuid.uuid4(),
+                    admin_id=admin_uuid,
+                    action="update_group",
+                    target_type="group",
+                    target_id=str(group_uuid),
+                    reason=reason,
+                    event_timestamp=now,
+                )
+            )
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            raise
+        return await self.get_group(str(group_uuid))
 
     async def remove_group(
         self,
@@ -1231,6 +1363,60 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             safe_processing_error=self._sanitize_operational_message(
                 att.processing_error
             ),
+        )
+
+    async def get_attachment_file(
+        self,
+        *,
+        attachment_id: int,
+        actor: AdministrationActor,
+    ) -> AdminAttachmentFile | None:
+        """Read a non-removed private PDF and record administrator access."""
+
+        if attachment_id <= 0:
+            return None
+        admin_uuid = self._require_valid_admin_uuid(actor.user_id)
+        reason = self._require_valid_reason(actor.reason)
+        try:
+            await self._require_active_admin_in_tx(admin_uuid)
+            attachment = await self._session.scalar(
+                select(ORMAttachment).where(
+                    ORMAttachment.attachment_id == attachment_id,
+                    ORMAttachment.deleted_at.is_(None),
+                )
+            )
+            if attachment is None:
+                await self._session.rollback()
+                return None
+            if self._attachment_storage is None:
+                raise AdministrationConflictError("Private attachment storage is not configured.")
+            try:
+                content = await self._attachment_storage.read_pdf(attachment.object_path)
+            except AttachmentStorageError as exc:
+                raise AdministrationConflictError(
+                    "The attachment file is temporarily unavailable."
+                ) from exc
+            now = datetime.now(timezone.utc)
+            self._session.add(
+                ORMAuditEvent(
+                    audit_event_id=uuid.uuid4(),
+                    admin_id=admin_uuid,
+                    action="view_attachment",
+                    target_type="attachment",
+                    target_id=str(attachment.attachment_id),
+                    reason=reason,
+                    event_timestamp=now,
+                )
+            )
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            raise
+        return AdminAttachmentFile(
+            attachment_id=attachment.attachment_id,
+            filename=attachment.file_name,
+            content_type=attachment.file_type or "application/pdf",
+            content=content,
         )
 
     async def remove_attachment(

@@ -16,6 +16,7 @@ from app.domains.administration.domain.exceptions import (
 )
 from app.domains.administration.domain.models import (
     AdminAttachmentDetails,
+    AdminAttachmentFile,
     AdminAttachmentPage,
     AdminAuditEvent,
     AdminAuditEventPage,
@@ -92,6 +93,28 @@ class AdministrationService:
             role=role,
             actor=self._actor(current_admin_id, reason),
         )
+
+    async def update_user(
+        self,
+        *,
+        current_admin_id: str,
+        target_user_id: str,
+        full_name: str,
+        email: str,
+        reason: str,
+    ) -> AdminUserDetails:
+        clean_name = full_name.strip()
+        if len(clean_name) < 2:
+            raise AdministrationValidationError("Full name must contain at least two characters.")
+        updated = await self.repository.update_user(
+            user_id=target_user_id,
+            full_name=clean_name,
+            email=email.strip().casefold(),
+            actor=self._actor(current_admin_id, reason),
+        )
+        if updated is None:
+            raise AdministrationResourceNotFoundError("The user was not found.")
+        return updated
 
     async def deactivate_user(
         self,
@@ -188,6 +211,34 @@ class AdministrationService:
             actor=self._actor(current_admin_id, reason),
         )
 
+    async def update_group(
+        self,
+        *,
+        current_admin_id: str,
+        group_id: str,
+        name: str,
+        description: str | None,
+        visibility: AdministrationGroupVisibility,
+        max_members: int,
+        reason: str,
+    ) -> AdminGroupDetails:
+        clean_name = name.strip()
+        if not clean_name:
+            raise AdministrationValidationError("Group name is required.")
+        if max_members < 1 or max_members > 500:
+            raise AdministrationValidationError("Maximum members must be between 1 and 500.")
+        updated = await self.repository.update_group(
+            group_id=group_id,
+            name=clean_name,
+            description=self._clean_optional(description),
+            visibility=visibility,
+            max_members=max_members,
+            actor=self._actor(current_admin_id, reason),
+        )
+        if updated is None:
+            raise AdministrationResourceNotFoundError("The study group was not found.")
+        return updated
+
     async def remove_group(
         self,
         *,
@@ -241,6 +292,23 @@ class AdministrationService:
 
     async def get_attachment(self, attachment_id: int) -> AdminAttachmentDetails:
         attachment = await self.repository.get_attachment(attachment_id)
+        if attachment is None:
+            raise AdministrationResourceNotFoundError("The attachment was not found.")
+        return attachment
+
+    async def get_attachment_file(
+        self,
+        *,
+        current_admin_id: str,
+        attachment_id: int,
+    ) -> AdminAttachmentFile:
+        attachment = await self.repository.get_attachment_file(
+            attachment_id=attachment_id,
+            actor=self._actor(
+                current_admin_id,
+                "Authorized administrator viewed private attachment content.",
+            ),
+        )
         if attachment is None:
             raise AdministrationResourceNotFoundError("The attachment was not found.")
         return attachment

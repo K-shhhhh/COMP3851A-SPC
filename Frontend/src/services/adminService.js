@@ -36,6 +36,12 @@ export function createAdminUser(payload, accessToken, signal) {
   return mutate("/users", accessToken, { body: payload, signal });
 }
 
+export function updateAdminUser(userId, payload, accessToken, signal) {
+  return mutate(`/users/${encodeURIComponent(userId)}`, accessToken, {
+    method: "PATCH", body: payload, signal,
+  });
+}
+
 const COLLECTION_PATHS = Object.freeze({
   users: "/users",
   "study-groups": "/study-groups",
@@ -83,6 +89,12 @@ export function createAdminGroup(payload, accessToken, signal) {
   return mutate("/study-groups", accessToken, { body: payload, signal });
 }
 
+export function updateAdminGroup(groupId, payload, accessToken, signal) {
+  return mutate(`/study-groups/${encodeURIComponent(groupId)}`, accessToken, {
+    method: "PATCH", body: payload, signal,
+  });
+}
+
 /** GET /administration/attachments/{attachment_id}: safe metadata and processing details only. */
 export function getAdminAttachmentDetails(attachmentId, accessToken, signal) {
   const parsed = Number(attachmentId);
@@ -90,6 +102,13 @@ export function getAdminAttachmentDetails(attachmentId, accessToken, signal) {
     throw new Error("A valid attachment ID is required.");
   }
   return read(`/attachments/${encodeURIComponent(String(parsed))}`, accessToken, signal);
+}
+
+export function getAdminAttachmentPdf(attachmentId, accessToken, signal) {
+  return apiBlobRequest(
+    `${PREFIX}/attachments/${encodeURIComponent(String(attachmentId))}/file`,
+    { method: "GET", accessToken, signal },
+  );
 }
 
 export function removeAdminAttachment(attachmentId, reason, accessToken, signal) {
