@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Eye, X, UserCheck, UserX } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Search, Eye, X, UserCheck, UserX, Plus } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminCollection, setAdminUserActive } from "../../services/adminService.js";
+import { createAdminUser, getAdminCollection, setAdminUserActive } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
 import AdminActionDialog from "./AdminActionDialog.jsx";
+import AdminCreateUserDialog from "./AdminCreateUserDialog.jsx";
 import { adminCollections, formatDate, formatSize } from "./adminSections.js";
 
 function TableValue({ value, kind }) {
@@ -31,6 +32,7 @@ export default function AdminCollectionPage({ section }) {
   const [pendingAction, setPendingAction] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [showCreateUser, setShowCreateUser] = useState(false);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [auditFilters, setAuditFilters] = useState({
@@ -90,12 +92,17 @@ export default function AdminCollectionPage({ section }) {
     } catch (caught) { setActionError(caught); }
     finally { setActionBusy(false); }
   }
+  async function submitCreateUser(payload) {
+    setActionBusy(true); setActionError(null);
+    try { await createAdminUser(payload, accessToken); setShowCreateUser(false); setRevision((value) => value + 1); }
+    catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
+  }
 
   return (
     <div className="admin-page-stack">
       <div className="admin-heading-row">
         <div><div className="admin-kicker">ADMINISTRATION</div><h1>{config.title}</h1><p>{config.description}</p></div>
-        <button type="button" onClick={() => setRevision((v) => v + 1)} className="admin-button admin-button-outline" disabled={loading}><RefreshCw size={16} /> Refresh</button>
+        <div className="admin-row-actions">{section === "users" && <button type="button" className="admin-button admin-button-primary" onClick={() => { setActionError(null); setShowCreateUser(true); }}><Plus size={16}/> Add user</button>}<button type="button" onClick={() => setRevision((v) => v + 1)} className="admin-button admin-button-outline" disabled={loading}><RefreshCw size={16} /> Refresh</button></div>
       </div>
       <AdminAlert error={error} retry={() => setRevision((v) => v + 1)} />
       <section className="admin-panel admin-table-panel">
@@ -173,6 +180,9 @@ export default function AdminCollectionPage({ section }) {
         </div>
       )}
       {pendingAction && <AdminActionDialog title={`${pendingAction.activate ? "Reactivate" : "Deactivate"} ${pendingAction.user.full_name || "this user"}?`} description={pendingAction.activate ? "This restores access to the account." : "This immediately prevents the user from accessing SPC. Their data is retained."} confirmLabel={pendingAction.activate ? "Reactivate user" : "Deactivate user"} danger={!pendingAction.activate} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmUserAction} />}
+      {showCreateUser && (
+        <AdminCreateUserDialog busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setShowCreateUser(false); }} onSubmit={submitCreateUser}/>
+      )}
     </div>
   );
 }

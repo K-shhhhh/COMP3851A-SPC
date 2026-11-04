@@ -27,6 +27,8 @@ from app.domains.administration.domain.models import (
 from app.domains.administration.presentation.schemas import (
     AdminAttachmentDetailsResponse,
     AdminAttachmentPageResponse,
+    AdminCreateGroupRequest,
+    AdminCreateUserRequest,
     AdminAuditEventPageResponse,
     AdminAuditEventResponse,
     AdminGroupDetailsResponse,
@@ -112,6 +114,25 @@ async def list_users(
         return AdminUserPageResponse.model_validate(page)
 
 
+@router.post("/users", response_model=AdminUserDetailsResponse, status_code=201)
+async def create_user(
+    request: AdminCreateUserRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminUserDetailsResponse:
+    with administration_errors():
+        return AdminUserDetailsResponse.model_validate(
+            await service.create_user(
+                current_admin_id=current_admin.id,
+                full_name=request.full_name,
+                email=str(request.email),
+                password=request.password.get_secret_value(),
+                role=request.role,
+                reason=request.reason,
+            )
+        )
+
+
 @router.get("/users/{user_id}", response_model=AdminUserDetailsResponse)
 async def get_user(
     user_id: str,
@@ -171,6 +192,26 @@ async def list_groups(
             limit=limit,
         )
         return AdminGroupPageResponse.model_validate(page)
+
+
+@router.post("/study-groups", response_model=AdminGroupDetailsResponse, status_code=201)
+async def create_group(
+    request: AdminCreateGroupRequest,
+    current_admin: User = Depends(ADMIN_REQUIRED),
+    service: AdministrationService = Depends(get_administration_service),
+) -> AdminGroupDetailsResponse:
+    with administration_errors():
+        return AdminGroupDetailsResponse.model_validate(
+            await service.create_group(
+                current_admin_id=current_admin.id,
+                name=request.name,
+                description=request.description,
+                visibility=request.visibility,
+                max_members=request.max_members,
+                owner_user_id=request.owner_user_id,
+                reason=request.reason,
+            )
+        )
 
 
 @router.get("/study-groups/{group_id}", response_model=AdminGroupDetailsResponse)

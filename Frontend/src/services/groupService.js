@@ -1,5 +1,5 @@
 import { integrationConfig } from "../config/integration.js";
-import { apiRequest } from "./apiClient.js";
+import { apiBlobRequest, apiRequest } from "./apiClient.js";
 import { createWebSocketTicket } from "./authService.js";
 
 /*
@@ -510,6 +510,18 @@ export function getStudyGroupAttachmentStatus(
       method: "GET",
       accessToken,
     },
+  );
+}
+
+export function getStudyGroupAttachmentPdf(
+  accessToken,
+  groupId,
+  channelId,
+  attachmentId,
+) {
+  return apiBlobRequest(
+    `/study-groups/${groupId}/channels/${channelId}/attachments/${attachmentId}/file`,
+    { method: "GET", accessToken },
   );
 }
 

@@ -57,6 +57,7 @@ import {
   discoverPublicGroups,
   getGroupMessages,
   getMyGroups,
+  getStudyGroupAttachmentPdf,
   getStudyGroupAttachmentStatus,
   getStudyGroupChannels,
   getStudyGroupMembers,
@@ -2259,6 +2260,30 @@ function GroupStudyPage() {
     }
   }
 
+  async function openSharedPdf(sharedFile) {
+    if (!selectedGroup?.id || !selectedChannel?.id || !accessToken) return;
+    setPageError("");
+    try {
+      const blob = await getStudyGroupAttachmentPdf(
+        accessToken,
+        selectedGroup.id,
+        selectedChannel.id,
+        sharedFile.id,
+      );
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = sharedFile.fileName || "study-material.pdf";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setPageError(apiMessage(error));
+    }
+  }
+
   /* =======================================================
      @ MENU
      ======================================================= */
@@ -3620,13 +3645,13 @@ function GroupStudyPage() {
                                         </div>
 
                                         {sharedFile ? (
-                                          <div className="shared-file-message">
+                                          <button type="button" className="shared-file-message" onClick={() => openSharedPdf(sharedFile)} title="Open PDF">
                                             <span className="shared-file-icon"><Paperclip size={18} /></span>
                                             <span>
                                               <strong>{sharedFile.fileName}</strong>
-                                              <small>Shared PDF study material</small>
+                                              <small>Shared PDF study material · Open</small>
                                             </span>
-                                          </div>
+                                          </button>
                                         ) : (
                                           <p className="message-content">
                                             <MessageText>{item.content}</MessageText>

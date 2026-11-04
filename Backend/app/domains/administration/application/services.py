@@ -7,6 +7,8 @@ repository contract.
 
 from datetime import datetime
 
+from app.core.security import hash_password
+
 from app.domains.administration.domain.exceptions import (
     AdministrationConflictError,
     AdministrationResourceNotFoundError,
@@ -69,6 +71,27 @@ class AdministrationService:
         if user is None:
             raise AdministrationResourceNotFoundError("The user was not found.")
         return user
+
+    async def create_user(
+        self,
+        *,
+        current_admin_id: str,
+        full_name: str,
+        email: str,
+        password: str,
+        role: AdministrationUserRole,
+        reason: str,
+    ) -> AdminUserDetails:
+        clean_name = full_name.strip()
+        if len(clean_name) < 2:
+            raise AdministrationValidationError("Full name must contain at least two characters.")
+        return await self.repository.create_user(
+            full_name=clean_name,
+            email=email.strip().casefold(),
+            password_hash=hash_password(password),
+            role=role,
+            actor=self._actor(current_admin_id, reason),
+        )
 
     async def deactivate_user(
         self,
@@ -135,6 +158,35 @@ class AdministrationService:
         if group is None:
             raise AdministrationResourceNotFoundError("The study group was not found.")
         return group
+
+    async def create_group(
+        self,
+        *,
+        current_admin_id: str,
+        name: str,
+        description: str | None,
+        visibility: AdministrationGroupVisibility,
+        max_members: int,
+        owner_user_id: str | None,
+        reason: str,
+    ) -> AdminGroupDetails:
+        clean_name = name.strip()
+        if not clean_name:
+            raise AdministrationValidationError("Group name is required.")
+        if max_members < 1 or max_members > 500:
+            raise AdministrationValidationError("Maximum members must be between 1 and 500.")
+        owner_id = owner_user_id or current_admin_id
+        owner = await self.get_user(owner_id)
+        if owner.user.status != AdministrationUserStatus.ACTIVE:
+            raise AdministrationConflictError("The selected owner is not active.")
+        return await self.repository.create_group(
+            name=clean_name,
+            description=self._clean_optional(description),
+            visibility=visibility,
+            max_members=max_members,
+            owner_user_id=owner_id,
+            actor=self._actor(current_admin_id, reason),
+        )
 
     async def remove_group(
         self,

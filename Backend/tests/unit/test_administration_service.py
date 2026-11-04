@@ -66,6 +66,7 @@ class StubAdministrationRepository:
         self.last_actor = None
         self.report = self._report(ReportStatus.SUBMITTED, ReportTargetType.MESSAGE)
         self.last_report_call = None
+        self.last_create_user = None
 
     @staticmethod
     def _user(user_id: str, role: AdministrationUserRole) -> AdminUserDetails:
@@ -86,6 +87,12 @@ class StubAdministrationRepository:
 
     async def get_user(self, user_id):
         return self.users.get(user_id)
+
+    async def create_user(self, **values):
+        self.last_create_user = values
+        created = self._user("created-user", values["role"])
+        self.users["created-user"] = created
+        return created
 
     async def count_active_administrators(self):
         return self.active_admins
@@ -193,6 +200,44 @@ async def test_governance_reason_is_trimmed_and_required() -> None:
         reason="  Confirmed policy violation  ",
     )
     assert repository.last_actor.reason == "Confirmed policy violation"
+
+
+@pytest.mark.asyncio
+async def test_admin_user_creation_hashes_password_and_records_reason() -> None:
+    repository = StubAdministrationRepository()
+    service = AdministrationService(repository)
+
+    created = await service.create_user(
+        current_admin_id="admin-1",
+        full_name="  New Student  ",
+        email="NEW.STUDENT@example.com",
+        password="TemporaryPassword123!",
+        role=AdministrationUserRole.STUDENT,
+        reason="Account requested by student services",
+    )
+
+    assert created.user.user_id == "created-user"
+    assert repository.last_create_user["full_name"] == "New Student"
+    assert repository.last_create_user["email"] == "new.student@example.com"
+    assert repository.last_create_user["password_hash"] != "TemporaryPassword123!"
+    assert repository.last_create_user["actor"].reason == "Account requested by student services"
+
+
+@pytest.mark.asyncio
+async def test_admin_group_creation_rejects_invalid_capacity_before_persistence() -> None:
+    repository = StubAdministrationRepository()
+    service = AdministrationService(repository)
+
+    with pytest.raises(AdministrationValidationError, match="between 1 and 500"):
+        await service.create_group(
+            current_admin_id="admin-1",
+            name="Oversized group",
+            description=None,
+            visibility="public",
+            max_members=501,
+            owner_user_id=None,
+            reason="Creating a managed public study group",
+        )
 
 
 @pytest.mark.asyncio

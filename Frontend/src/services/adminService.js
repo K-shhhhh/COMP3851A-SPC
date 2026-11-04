@@ -1,5 +1,5 @@
 /** Administration API: no fake data and no unauthorized student-side calls. */
-import { apiRequest } from "./apiClient.js";
+import { apiBlobRequest, apiRequest } from "./apiClient.js";
 
 const PREFIX = "/administration";
 
@@ -30,6 +30,10 @@ export function getAdminUserDetails(userId, accessToken, signal) {
 
 export function setAdminUserActive(userId, active, reason, accessToken, signal) {
   return mutate(`/users/${encodeURIComponent(userId)}/${active ? "reactivate" : "deactivate"}`, accessToken, { body: { reason }, signal });
+}
+
+export function createAdminUser(payload, accessToken, signal) {
+  return mutate("/users", accessToken, { body: payload, signal });
 }
 
 const COLLECTION_PATHS = Object.freeze({
@@ -75,6 +79,10 @@ export function setAdminGroupActive(groupId, active, reason, accessToken, signal
   return mutate(`/study-groups/${encodeURIComponent(groupId)}/${active ? "restore" : "remove"}`, accessToken, { body: { reason }, signal });
 }
 
+export function createAdminGroup(payload, accessToken, signal) {
+  return mutate("/study-groups", accessToken, { body: payload, signal });
+}
+
 /** GET /administration/attachments/{attachment_id}: safe metadata and processing details only. */
 export function getAdminAttachmentDetails(attachmentId, accessToken, signal) {
   const parsed = Number(attachmentId);
@@ -118,6 +126,13 @@ export function resolveAdminReport(reportId, payload, accessToken, signal) {
 
 export function dismissAdminReport(reportId, payload, accessToken, signal) {
   return mutate(`/reports/${encodeURIComponent(reportId)}/dismiss`, accessToken, { body: payload, signal });
+}
+
+export function getAdminReportEvidence(reportId, evidenceId, accessToken, signal) {
+  return apiBlobRequest(
+    `${PREFIX}/reports/${encodeURIComponent(reportId)}/evidence/${encodeURIComponent(evidenceId)}`,
+    { method: "GET", accessToken, signal, headers: { Accept: "image/png,image/jpeg" } },
+  );
 }
 
 /** GET /administration/audit-events/{event_id}: immutable governance event details. */

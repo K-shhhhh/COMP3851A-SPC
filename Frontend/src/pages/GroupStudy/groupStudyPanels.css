@@ -1476,6 +1476,14 @@
   border-radius: 12px;
   background: var(--spc-surface);
   color: var(--spc-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shared-file-message:hover {
+  border-color: var(--spc-purple);
+  background: rgba(124, 58, 237, .08);
 }
 
 .shared-file-icon {

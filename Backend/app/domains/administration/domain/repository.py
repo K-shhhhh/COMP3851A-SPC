@@ -58,6 +58,20 @@ class AdministrationRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def create_user(
+        self,
+        *,
+        full_name: str,
+        email: str,
+        password_hash: str,
+        role: AdministrationUserRole,
+        actor: AdministrationActor,
+    ) -> AdminUserDetails:
+        """Create an account, personal workspace, and audit event atomically."""
+
+        raise NotImplementedError
+
+    @abstractmethod
     async def count_active_administrators(self) -> int:
         raise NotImplementedError
 
@@ -97,6 +111,21 @@ class AdministrationRepository(ABC):
 
     @abstractmethod
     async def get_group(self, group_id: str) -> AdminGroupDetails | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def create_group(
+        self,
+        *,
+        name: str,
+        description: str | None,
+        visibility: AdministrationGroupVisibility,
+        max_members: int,
+        owner_user_id: str,
+        actor: AdministrationActor,
+    ) -> AdminGroupDetails:
+        """Create a Study Group, owner membership, and audit event atomically."""
+
         raise NotImplementedError
 
     @abstractmethod

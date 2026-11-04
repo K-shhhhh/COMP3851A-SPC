@@ -87,6 +87,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const clearLocalSession = useCallback((reason = "", notify = true) => {
+    const previousUserId = userRef.current?.id || null;
     tokenRef.current = null;
     userRef.current = null;
     refreshReceivedAt.current = 0;
@@ -104,7 +105,7 @@ export function AuthProvider({ children }) {
     setAccessToken(null);
     setUser(null);
     setIsLoading(false);
-    if (notify) broadcast({ type: reason === "expired" ? "session-expired" : "logout", reason });
+    if (notify) broadcast({ type: reason === "expired" ? "session-expired" : "logout", reason, userId: previousUserId });
     // ProtectedRoute unmounts the workspace and closes its WebSocket connection.
   }, [broadcast]);
 
@@ -202,6 +203,12 @@ export function AuthProvider({ children }) {
         const result = await refreshSession();
         if (!tokenRef.current || logoutInProgress.current) return null;
         if (tokenRef.current !== startingToken) return tokenRef.current;
+        if (userRef.current?.id && result?.user?.id !== userRef.current.id) {
+          // A different account logged in through another tab and replaced the
+          // browser-profile refresh cookie. Never silently switch this tab.
+          clearLocalSession("expired", false);
+          return null;
+        }
         applySession(result);
         return result.access_token;
       } catch (error) {
@@ -308,15 +315,17 @@ export function AuthProvider({ children }) {
         scheduleIdle();
       } else if (["token-refreshed", "login"].includes(message.type)) {
         if (!message.token || !message.user) return;
-        // Do not allow another browser-tab account to overwrite this identity
-        // silently. A new login in another tab switches the shared cookie.
-        if (message.type === "token-refreshed" && userRef.current?.id && userRef.current.id !== message.user.id) return;
+        // A browser profile has one refresh cookie, but each tab keeps its own
+        // visible access token. Never replace an authenticated tab with a
+        // different identity because another tab logged in.
+        if (userRef.current?.id && userRef.current.id !== message.user.id) return;
         applySession({ access_token: message.token, user: message.user }, null);
         if (message.type === "login") {
           activityAtRef.current = Date.now();
           scheduleIdle();
         }
       } else if (["logout", "session-expired"].includes(message.type)) {
+        if (message.userId && userRef.current?.id && message.userId !== userRef.current.id) return;
         clearLocalSession(message.reason || (message.type === "session-expired" ? "expired" : ""), false);
       }
     };

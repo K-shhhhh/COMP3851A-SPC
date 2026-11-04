@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -504,6 +505,73 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             or 0
         )
 
+    async def create_user(
+        self,
+        *,
+        full_name: str,
+        email: str,
+        password_hash: str,
+        role: AdministrationUserRole,
+        actor: AdministrationActor,
+    ) -> AdminUserDetails:
+        """Create an account and personal workspace with one audit event."""
+
+        admin_uuid = self._require_valid_admin_uuid(actor.user_id)
+        reason = self._require_valid_reason(actor.reason)
+        now = datetime.now(timezone.utc)
+        try:
+            await self._require_active_admin_in_tx(admin_uuid)
+            if await self._session.scalar(select(ORMUser.user_id).where(func.lower(ORMUser.email) == email.lower())):
+                raise AdministrationConflictError("An account with this email already exists.")
+            user = ORMUser(
+                fullname=full_name,
+                email=email,
+                password_hash=password_hash,
+                user_role=ORMUserRole(role.value),
+                status=ActivityStatus.ACTIVE,
+                created_at=now,
+                last_updated_at=now,
+            )
+            self._session.add(user)
+            await self._session.flush()
+            personal_group = ORMGroup(
+                group_name=str(user.user_id),
+                group_type=GroupType.PERSONAL,
+                description="Personal AI Assistant",
+                created_by=user.user_id,
+                current_owner=user.user_id,
+                max_members=1,
+                created_at=now,
+                last_updated_at=now,
+            )
+            self._session.add(personal_group)
+            await self._session.flush()
+            self._session.add(ORMMembership(
+                user_id=user.user_id,
+                group_id=personal_group.group_id,
+                member_role=MemberRole.OWNER,
+                joined_at=now,
+            ))
+            self._session.add(ORMAuditEvent(
+                audit_event_id=uuid.uuid4(), admin_id=admin_uuid,
+                action="create_user", target_type="user", target_id=str(user.user_id),
+                reason=reason, event_timestamp=now,
+            ))
+            await self._session.commit()
+        except AdministrationConflictError:
+            await self._session.rollback()
+            raise
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise AdministrationConflictError("An account with this email already exists.") from exc
+        except Exception:
+            await self._session.rollback()
+            raise
+        created = await self.get_user(str(user.user_id))
+        if created is None:
+            raise AdministrationResourceNotFoundError("The created user could not be loaded.")
+        return created
+
     async def deactivate_user(
         self,
         *,
@@ -802,6 +870,67 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             ordinary_member_count=ordinary_member_count,
             channels=channels,
         )
+
+    async def create_group(
+        self,
+        *,
+        name: str,
+        description: str | None,
+        visibility: AdministrationGroupVisibility,
+        max_members: int,
+        owner_user_id: str,
+        actor: AdministrationActor,
+    ) -> AdminGroupDetails:
+        """Create a Study Group and owner membership with an audit event."""
+
+        admin_uuid = self._require_valid_admin_uuid(actor.user_id)
+        owner_uuid = self._parse_uuid(owner_user_id)
+        if owner_uuid is None:
+            raise AdministrationValidationError("The selected owner ID is invalid.")
+        reason = self._require_valid_reason(actor.reason)
+        now = datetime.now(timezone.utc)
+        try:
+            await self._require_active_admin_in_tx(admin_uuid)
+            owner = await self._session.scalar(
+                select(ORMUser).where(
+                    ORMUser.user_id == owner_uuid,
+                    ORMUser.status == ActivityStatus.ACTIVE,
+                    ORMUser.deleted_at.is_(None),
+                ).with_for_update(read=True)
+            )
+            if owner is None:
+                raise AdministrationConflictError("The selected owner is not active.")
+            group = ORMGroup(
+                group_name=name,
+                group_type=GroupType(visibility.value),
+                description=description,
+                created_by=admin_uuid,
+                current_owner=owner_uuid,
+                max_members=max_members,
+                created_at=now,
+                last_updated_at=now,
+            )
+            self._session.add(group)
+            await self._session.flush()
+            self._session.add(ORMMembership(
+                user_id=owner_uuid,
+                group_id=group.group_id,
+                member_role=MemberRole.OWNER,
+                joined_at=now,
+            ))
+            self._session.add(ORMAuditEvent(
+                audit_event_id=uuid.uuid4(), admin_id=admin_uuid,
+                action="create_group", target_type="group", target_id=str(group.group_id),
+                reason=reason, event_timestamp=now,
+            ))
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            raise
+        created = await self.get_group(str(group.group_id))
+        if created is None:
+            raise AdministrationResourceNotFoundError("The created study group could not be loaded.")
+        return created
 
     async def remove_group(
         self,

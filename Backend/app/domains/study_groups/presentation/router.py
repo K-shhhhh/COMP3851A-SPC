@@ -1,5 +1,7 @@
 """Authenticated HTTP endpoints for public and private Study Groups."""
 
+from io import BytesIO
+
 from uuid import UUID
 
 from fastapi import (
@@ -14,6 +16,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import (
     get_auth_service,
@@ -548,6 +551,47 @@ async def get_group_channel_attachment_status(
         raise
 
     return NoteStatusResponse.from_attachment(attachment)
+
+
+@router.get(
+    "/{group_id}/channels/{channel_id}/attachments/{attachment_id}/file",
+)
+async def get_group_channel_attachment_file(
+    group_id: UUID,
+    channel_id: UUID,
+    attachment_id: int,
+    current_user: User = Depends(get_current_user),
+    group_service: StudyGroupService = Depends(get_study_group_service),
+    note_service: NoteService = Depends(get_note_service),
+) -> StreamingResponse:
+    """Stream a channel PDF only to an active member of its Study Group."""
+
+    try:
+        await group_service.get_channel(
+            group_id=str(group_id),
+            channel_id=str(channel_id),
+            user_id=current_user.id,
+        )
+        attachment = await note_service.get_channel_attachment(
+            attachment_id=attachment_id,
+            user_id=current_user.id,
+            channel_id=str(channel_id),
+        )
+        content = await note_service.read_attachment_pdf(attachment)
+    except Exception as exc:
+        _raise_group_attachment_api_error(exc)
+        raise
+
+    safe_name = attachment.file_name.replace('"', "").replace("\r", "").replace("\n", "")
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.put(

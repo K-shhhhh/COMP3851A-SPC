@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, UsersRound, X, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, RefreshCw, Search, UsersRound, X, RotateCcw, Trash2, Plus } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { getAdminCollection, getAdminGroupDetails, setAdminGroupActive } from "../../services/adminService.js";
+import { createAdminGroup, getAdminCollection, getAdminGroupDetails, setAdminGroupActive } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
 import AdminActionDialog from "./AdminActionDialog.jsx";
+import AdminCreateGroupDialog from "./AdminCreateGroupDialog.jsx";
 import { formatDate } from "./adminSections.js";
 
 const EMPTY_FILTERS = { visibility: "", status: "" };
@@ -121,6 +122,7 @@ export default function AdminStudyGroupsPage() {
   const [pendingAction, setPendingAction] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const closeGroup = useCallback(() => setSelectedGroup(null), []);
   async function confirmGroupAction(reason) {
     setActionBusy(true); setActionError(null);
@@ -129,6 +131,11 @@ export default function AdminStudyGroupsPage() {
       setPendingAction(null); setSelectedGroup(null); setRevision((value) => value + 1);
     } catch (caught) { setActionError(caught); }
     finally { setActionBusy(false); }
+  }
+  async function submitCreateGroup(payload) {
+    setActionBusy(true); setActionError(null);
+    try { await createAdminGroup(payload, accessToken); setShowCreateGroup(false); setRevision((value) => value + 1); }
+    catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
   }
 
   useEffect(() => {
@@ -186,7 +193,7 @@ export default function AdminStudyGroupsPage() {
           <h1>Study groups</h1>
           <p>View study-group ownership, visibility, membership counts, and channels — without accessing conversations.</p>
         </div>
-        <button type="button" className="admin-button admin-button-outline" onClick={() => setRevision((n) => n + 1)} disabled={loading}><RefreshCw size={16} /> Refresh</button>
+        <div className="admin-row-actions"><button type="button" className="admin-button admin-button-primary" onClick={() => { setActionError(null); setShowCreateGroup(true); }}><Plus size={16}/> Create group</button><button type="button" className="admin-button admin-button-outline" onClick={() => setRevision((n) => n + 1)} disabled={loading}><RefreshCw size={16} /> Refresh</button></div>
       </div>
       <AdminAlert error={error} retry={() => setRevision((n) => n + 1)} />
       <section className="admin-panel admin-table-panel">
@@ -253,6 +260,9 @@ export default function AdminStudyGroupsPage() {
       </section>
       {selectedGroup && <GroupDetailsModal group={selectedGroup} accessToken={accessToken} onClose={closeGroup} />}
       {pendingAction && <AdminActionDialog title={`${pendingAction.restore ? "Restore" : "Remove"} ${pendingAction.group.name}?`} description={pendingAction.restore ? "The study group will become available again." : "The study group will be hidden from students. This is a reversible soft removal."} confirmLabel={pendingAction.restore ? "Restore group" : "Remove group"} danger={!pendingAction.restore} busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setPendingAction(null); }} onConfirm={confirmGroupAction} />}
+      {showCreateGroup && (
+        <AdminCreateGroupDialog busy={actionBusy} error={actionError} onCancel={() => { if (!actionBusy) setShowCreateGroup(false); }} onSubmit={submitCreateGroup}/>
+      )}
     </div>
   );
 }

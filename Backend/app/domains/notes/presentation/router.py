@@ -1,5 +1,7 @@
 """Authenticated HTTP endpoints for the student's Notes Library."""
 
+from io import BytesIO
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -10,6 +12,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import get_current_user, get_note_service
 from app.api.error_handlers import ApiError
@@ -151,6 +154,36 @@ async def get_note_status(
         raise
 
     return NoteStatusResponse.from_attachment(attachment)
+
+
+@router.get("/{note_id}/file")
+async def get_note_file(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    service: NoteService = Depends(get_note_service),
+) -> StreamingResponse:
+    """Stream an owned or membership-authorized PDF from private storage."""
+
+    try:
+        attachment = await service.get_note(
+            attachment_id=note_id,
+            user_id=current_user.id,
+        )
+        content = await service.read_attachment_pdf(attachment)
+    except Exception as exc:
+        _raise_note_api_error(exc)
+        raise
+
+    safe_name = attachment.file_name.replace('"', "").replace("\r", "").replace("\n", "")
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.delete(

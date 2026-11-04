@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, ClipboardList, Eye, RefreshCw, Search, X,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext.jsx";
-import { addAdminReportNote, applyAdminReportAction, dismissAdminReport, getAdminCollection, getAdminReportDetails, resolveAdminReport, startAdminReportReview } from "../../services/adminService.js";
+import { addAdminReportNote, applyAdminReportAction, dismissAdminReport, getAdminCollection, getAdminReportDetails, getAdminReportEvidence, resolveAdminReport, startAdminReportReview } from "../../services/adminService.js";
 import AdminAlert from "./AdminAlert.jsx";
 import AdminActionDialog from "./AdminActionDialog.jsx";
 import { formatDate } from "./adminSections.js";
@@ -123,6 +123,23 @@ function ReportDetailsModal({ report, accessToken, onClose, onChanged }) {
     } catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
   }
 
+  async function viewEvidence(item) {
+    setActionError(null);
+    try {
+      const blob = await getAdminReportEvidence(info.report_id, item.evidence_id, accessToken);
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = item.filename || "report-evidence";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setRevision((value) => value + 1);
+    } catch (caught) { setActionError(caught); }
+  }
+
   return (
     <div className="admin-report-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="admin-report-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="admin-report-dialog-title" aria-describedby="admin-report-dialog-description">
@@ -162,7 +179,7 @@ function ReportDetailsModal({ report, accessToken, onClose, onChanged }) {
             <h3 className="admin-report-section-title">Attached evidence ({evidence.length})</h3>
             {evidence.length ? (
               <ul className="admin-report-evidence-list">
-                {evidence.map((item) => <li key={item.evidence_id}><strong>{item.filename}</strong><span>{item.content_type} · Evidence ID: {item.evidence_id}</span></li>)}
+                {evidence.map((item) => <li key={item.evidence_id}><div><strong>{item.filename}</strong><span>{item.content_type} · Evidence ID: {item.evidence_id}</span></div><button type="button" className="admin-button admin-button-outline" onClick={() => viewEvidence(item)}>View evidence</button></li>)}
               </ul>
             ) : <p className="admin-report-muted">No evidence metadata available.</p>}
             <h3 className="admin-report-section-title">Review history ({activity.length})</h3>

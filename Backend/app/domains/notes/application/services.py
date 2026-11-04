@@ -168,6 +168,11 @@ class NoteService:
 
         return attachment
 
+    async def read_attachment_pdf(self, attachment: NoteAttachment) -> bytes:
+        """Read an already-authorized attachment from private storage."""
+
+        return await self._storage.read_pdf(attachment.object_path)
+
     async def list_notes(
         self,
         *,
