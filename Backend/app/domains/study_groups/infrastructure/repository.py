@@ -53,6 +53,9 @@ from app.models.orm_models import (
     Membership as ORMMembership,
     Message as ORMMessage,
     MessageMention,
+    InAppNotificationType,
+    Notification as ORMNotification,
+    NotificationPreference as ORMNotificationPreference,
     User as ORMUser,
 )
 
@@ -433,6 +436,72 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         # Flush before mapping: sessions intentionally have autoflush=False.
         await self._session.flush()
 
+    async def _create_message_notifications(
+        self,
+        *,
+        message_id: int,
+        group_id: UUID,
+        channel_id: UUID,
+        author_id: UUID,
+        mentioned_user_ids: tuple[str, ...],
+        created_at: datetime,
+    ) -> None:
+        """Fan out durable notifications inside the message transaction."""
+
+        mentioned_ids = {
+            self._uuid(user_id, "mentioned_user_id")
+            for user_id in mentioned_user_ids
+        }
+        rows = await self._session.execute(
+            select(
+                ORMMembership.user_id,
+                func.coalesce(
+                    ORMNotificationPreference.new_group_messages,
+                    True,
+                ).label("new_group_messages"),
+                func.coalesce(
+                    ORMNotificationPreference.group_mentions,
+                    True,
+                ).label("group_mentions"),
+            )
+            .join(ORMUser, ORMUser.user_id == ORMMembership.user_id)
+            .outerjoin(
+                ORMNotificationPreference,
+                ORMNotificationPreference.user_id == ORMMembership.user_id,
+            )
+            .where(
+                ORMMembership.group_id == group_id,
+                ORMMembership.user_id != author_id,
+                ORMUser.status == ActivityStatus.ACTIVE,
+                ORMUser.deleted_at.is_(None),
+            )
+            .order_by(ORMMembership.membership_id)
+        )
+
+        notifications: list[ORMNotification] = []
+        for row in rows:
+            is_mentioned = row.user_id in mentioned_ids
+            notification_type = None
+            if is_mentioned and bool(row.group_mentions):
+                notification_type = InAppNotificationType.GROUP_MENTION
+            elif bool(row.new_group_messages):
+                notification_type = InAppNotificationType.NEW_GROUP_MESSAGE
+            if notification_type is None:
+                continue
+            notifications.append(
+                ORMNotification(
+                    recipient_user_id=row.user_id,
+                    notification_type=notification_type,
+                    actor_user_id=author_id,
+                    group_id=group_id,
+                    channel_id=channel_id,
+                    message_id=message_id,
+                    created_at=created_at,
+                )
+            )
+        self._session.add_all(notifications)
+        await self._session.flush()
+
     async def list_messages(
         self, *, group_id: str, channel_id: str, offset: int, limit: int,
     ) -> tuple[list[StudyGroupMessage], int]:
@@ -470,6 +539,14 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             self._session.add(message)
             await self._session.flush()
             await self._replace_mentions(message.message_id, mentioned_user_ids)
+            await self._create_message_notifications(
+                message_id=message.message_id,
+                group_id=group_uuid,
+                channel_id=channel_uuid,
+                author_id=message.user_id,
+                mentioned_user_ids=mentioned_user_ids,
+                created_at=sent_at,
+            )
             result = await self._message_to_domain(message, group_uuid)
             await self._session.commit()
             return result

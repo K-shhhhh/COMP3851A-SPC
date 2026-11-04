@@ -1,6 +1,7 @@
 """Authentication and public-contract tests for student-side endpoints."""
 
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import (
     get_auth_service,
     get_notification_preference_service,
+    get_notification_service,
     get_password_change_service,
     get_report_service,
     get_user_profile_service,
@@ -20,7 +22,12 @@ from app.domains.auth.infrastructure.memory_revocation_store import (
 )
 from app.domains.auth.infrastructure.memory_session_store import InMemoryRefreshSessionStore
 from app.domains.auth.infrastructure.memory_ticket_store import InMemoryWebSocketTicketStore
-from app.domains.notifications.domain.models import NotificationPreferences
+from app.domains.notifications.domain.models import (
+    Notification,
+    NotificationPage,
+    NotificationPreferences,
+    NotificationType,
+)
 from app.domains.reports.domain.models import (
     Report,
     ReportCategory,
@@ -54,6 +61,23 @@ class StubProfileService:
 
 
 class StubNotificationService:
+    def __init__(self) -> None:
+        self.now = datetime.now(timezone.utc)
+        self.notification = Notification(
+            notification_id=1,
+            notification_type=NotificationType.GROUP_MENTION,
+            actor_user_id="actor-1",
+            actor_full_name="Group Member",
+            group_id="group-1",
+            group_name="Study Group",
+            channel_id="channel-1",
+            channel_name="general",
+            message_id=9,
+            message_preview="@Student please review this",
+            created_at=self.now,
+            read_at=None,
+        )
+
     async def get_preferences(self, user_id: str) -> NotificationPreferences:
         del user_id
         return NotificationPreferences(True, True)
@@ -63,6 +87,19 @@ class StubNotificationService:
             values["new_group_messages"] if values["new_group_messages"] is not None else True,
             values["group_mentions"] if values["group_mentions"] is not None else True,
         )
+
+    async def list_notifications(self, **_) -> NotificationPage:
+        return NotificationPage(items=(self.notification,), next_cursor=None)
+
+    async def count_unread(self, **_) -> int:
+        return 1 if self.notification.read_at is None else 0
+
+    async def mark_read(self, **_) -> Notification:
+        self.notification = replace(self.notification, read_at=self.now)
+        return self.notification
+
+    async def mark_all_read(self, **_) -> int:
+        return 1
 
 
 class StubPasswordService:
@@ -120,6 +157,7 @@ def client() -> Iterator[TestClient]:
     app.dependency_overrides[get_notification_preference_service] = (
         lambda: notification_service
     )
+    app.dependency_overrides[get_notification_service] = lambda: notification_service
     app.dependency_overrides[get_password_change_service] = lambda: password_service
     app.dependency_overrides[get_report_service] = lambda: report_service
     test_client = TestClient(app)
@@ -150,6 +188,8 @@ def test_user_side_endpoints_require_authentication(client: TestClient) -> None:
     for method, path in (
         ("get", "/api/v1/users/me/profile"),
         ("get", "/api/v1/notifications/preferences"),
+        ("get", "/api/v1/notifications"),
+        ("get", "/api/v1/notifications/unread-count"),
         ("get", "/api/v1/reports"),
     ):
         response = getattr(client, method)(path)
@@ -173,6 +213,21 @@ def test_profile_settings_password_and_reports_contract(client: TestClient) -> N
         json={"new_group_messages": False},
     )
     assert preferences.json() == {"new_group_messages": False, "group_mentions": True}
+
+    notifications = client.get("/api/v1/notifications", headers=headers)
+    assert notifications.status_code == 200
+    assert notifications.json()["items"][0]["type"] == "group_mention"
+    assert notifications.json()["items"][0]["actor"]["full_name"] == "Group Member"
+
+    unread = client.get("/api/v1/notifications/unread-count", headers=headers)
+    assert unread.json() == {"unread_count": 1}
+
+    marked = client.patch("/api/v1/notifications/1/read", headers=headers)
+    assert marked.status_code == 200
+    assert marked.json()["read_at"] is not None
+
+    marked_all = client.post("/api/v1/notifications/read-all", headers=headers)
+    assert marked_all.json() == {"marked_read_count": 1}
 
     password = client.post(
         "/api/v1/auth/change-password",

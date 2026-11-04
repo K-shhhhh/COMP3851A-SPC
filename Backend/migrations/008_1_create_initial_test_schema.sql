@@ -3,9 +3,9 @@ Version: 8.1
 
 Existing tables:	users, user_profiles, notification_preferences,
                     groups, memberships, channels, messages, message_mentions, 
-                    attachments, chunks,
+(23 in total)       notifications, attachments, chunks,
                 	knowledge_graphs, knowledge_nodes, knowledge_edges,
-(22 in total)   	ai_responses, ai_response_sources, ai_response_feedbacks,
+                    ai_responses, ai_response_sources, ai_response_feedbacks,
                     user_reports, evidence, report_notes, report_activity_events,
                 	audit_events, user_activity_logs
 
@@ -33,6 +33,7 @@ create type report_category as enum ('harassment_bullying', 'hate_discrimination
 create type report_outcomes as enum ('no_violation', 'duplicate', 'insufficient_evidence', 'content_removed', 'user_deactivated', 'group_removed', 'file_removed');
 create type report_activity_actions as enum ('report_submitted','review_started','note_added','evidence_viewed','governance_action','resolved','dismissed');
 create type actions as enum ('login', 'logout', 'create', 'update', 'delete', 'upload', 'download', 'send', 'edit', 'join', 'leave', 'ai_request', 'ai_feedback');
+create type notification_types as enum ('new_group_message', 'group_mention');
 
 create table if not exists users (
     user_id uuid primary key,
@@ -142,6 +143,32 @@ create table if not exists message_mentions (
     message_id bigint not null references messages(message_id) on delete cascade,
     user_id uuid not null references users(user_id) on delete cascade,
     primary key (message_id, user_id)
+);
+
+create table if not exists notifications (
+    notification_id bigint generated always as identity primary key,
+    recipient_user_id uuid not null,
+    notification_type notification_types not null,
+    actor_user_id uuid not null,
+    group_id uuid not null,
+    channel_id uuid not null,
+    message_id bigint not null,
+    created_at timestamptz default now() not null,
+    read_at timestamptz,
+
+    constraint fk_notifications_recipient_user foreign key (recipient_user_id)
+        references users(user_id),
+    constraint fk_notifications_actor_user foreign key (actor_user_id)
+        references users(user_id),
+    constraint fk_notifications_group foreign key (group_id)
+        references groups(group_id),
+    constraint fk_notifications_channel foreign key (channel_id)
+        references channels(channel_id),
+    constraint fk_notifications_message foreign key (message_id)
+        references messages(message_id),
+    constraint uq_notifications_recipient_message_type unique (
+        recipient_user_id, message_id, notification_type
+    )
 );
 
 create table if not exists attachments (
@@ -487,6 +514,13 @@ create index if not exists ix_messages_active_channel_sent on messages (channel_
 
 -- The mention PK supports message lookup, this index supports user lookup/cascade.
 create index if not exists ix_message_mentions_user_id on message_mentions (user_id);
+
+-- Persistent in-app notifications and unread-bell queries.
+create index if not exists ix_notifications_recipient_created
+    on notifications (recipient_user_id, created_at desc, notification_id desc);
+create index if not exists ix_notifications_recipient_unread
+    on notifications (recipient_user_id, created_at desc, notification_id desc)
+    where read_at is null;
 
 -- Exact group/channel grounding with ready, non-deleted content.
 create index if not exists ix_attachments_ready_group_channel on attachments (group_id, channel_id, attachment_id) where deleted_at is null and processing_status = 'ready';

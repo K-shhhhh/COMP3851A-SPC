@@ -107,10 +107,17 @@ from app.domains.knowledge_graph.infrastructure.repository import (
     PostgreSQLKnowledgeGraphRepository,
 )
 
-from app.domains.notifications.application.services import NotificationPreferenceService
-from app.domains.notifications.domain.repository import NotificationPreferenceRepository
+from app.domains.notifications.application.services import (
+    NotificationPreferenceService,
+    NotificationService,
+)
+from app.domains.notifications.domain.repository import (
+    NotificationPreferenceRepository,
+    NotificationRepository,
+)
 from app.domains.notifications.infrastructure.repository import (
     PostgreSQLNotificationPreferenceRepository,
+    PostgreSQLNotificationRepository,
 )
 
 from app.domains.reports.application.services import ReportService
@@ -544,6 +551,18 @@ def get_notification_preference_service(
     ),
 ) -> NotificationPreferenceService:
     return NotificationPreferenceService(repository)
+
+
+def get_notification_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> NotificationRepository:
+    return PostgreSQLNotificationRepository(session)
+
+
+def get_notification_service(
+    repository: NotificationRepository = Depends(get_notification_repository),
+) -> NotificationService:
+    return NotificationService(repository)
 
 
 # ---------- Reports ----------

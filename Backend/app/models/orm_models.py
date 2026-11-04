@@ -112,6 +112,11 @@ class ReportActivityAction(str, enum.Enum):
     DISMISSED = "dismissed"
 
 
+class InAppNotificationType(str, enum.Enum):
+    NEW_GROUP_MESSAGE = "new_group_message"
+    GROUP_MENTION = "group_mention"
+
+
 class Action(str, enum.Enum):
     LOGIN = "login"
     LOGOUT = "logout"
@@ -274,6 +279,72 @@ class NotificationPreference(Base):
         uselist=False,
         single_parent=True,
     )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint(
+            "recipient_user_id",
+            "message_id",
+            "notification_type",
+            name="uq_notifications_recipient_message_type",
+        ),
+        Index(
+            "ix_notifications_recipient_created",
+            "recipient_user_id",
+            "created_at",
+            "notification_id",
+        ),
+        Index(
+            "ix_notifications_recipient_unread",
+            "recipient_user_id",
+            "created_at",
+            "notification_id",
+            postgresql_where=text("read_at IS NULL"),
+        ),
+    )
+
+    notification_id: Mapped[int] = mapped_column(
+        BigInteger,
+        Identity(always=True),
+        primary_key=True,
+    )
+    recipient_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_notifications_recipient_user"),
+        nullable=False,
+    )
+    notification_type: Mapped[InAppNotificationType] = mapped_column(
+        pg_enum(InAppNotificationType, "notification_types"),
+        nullable=False,
+    )
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("users.user_id", name="fk_notifications_actor_user"),
+        nullable=False,
+    )
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("groups.group_id", name="fk_notifications_group"),
+        nullable=False,
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("channels.channel_id", name="fk_notifications_channel"),
+        nullable=False,
+    )
+    message_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("messages.message_id", name="fk_notifications_message"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Group(Base):

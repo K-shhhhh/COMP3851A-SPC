@@ -15,7 +15,16 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.domains.study_groups.infrastructure.repository import PostgreSQLStudyGroupRepository
-from app.models.orm_models import ActivityStatus, User, UserRole
+from app.domains.notifications.infrastructure.repository import (
+    PostgreSQLNotificationRepository,
+)
+from app.domains.notifications.domain.models import NotificationType
+from app.models.orm_models import (
+    ActivityStatus,
+    NotificationPreference,
+    User,
+    UserRole,
+)
 from app.domains.study_groups.domain.models import StudyGroupVisibility, StudyGroupMemberRole
 
 
@@ -35,7 +44,7 @@ async def sessions():
         async with admin.begin() as connection:
             await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         sql = (Path(__file__).resolve().parents[2] / "migrations" /
-               "006_1_create_initial_test_schema.sql").read_text()
+               "008_1_create_initial_test_schema.sql").read_text()
         # pgvector is a database prerequisite; tests create only their own schema.
         sql = sql.replace("create extension if not exists vector;", "")
         async with engine.begin() as connection:
@@ -117,6 +126,82 @@ async def add_channel(repo, group, owner, *, name="Discussion"):
         group_id=group.group.group_id, name=name, description=None,
         created_by=str(owner.user_id), created_at=datetime.now(timezone.utc),
     )
+
+
+@pytest.mark.asyncio
+async def test_message_notifications_follow_preferences_and_mentions(sessions):
+    async with sessions() as session:
+        owner = await add_user(session, email="owner-notify@example.com")
+        default_member = await add_user(session, email="default-notify@example.com")
+        muted_member = await add_user(session, email="muted-notify@example.com")
+        mention_only = await add_user(session, email="mention-notify@example.com")
+        generic_only = await add_user(session, email="generic-notify@example.com")
+        group = await add_group(session, owner, name="Notification Group")
+        repo = PostgreSQLStudyGroupRepository(session)
+        group_id = group.group.group_id
+        for user in (default_member, muted_member, mention_only, generic_only):
+            await repo.create_membership(
+                group_id=group_id,
+                user_id=str(user.user_id),
+                role=StudyGroupMemberRole.MEMBER,
+                joined_at=datetime.now(timezone.utc),
+            )
+        session.add_all(
+            [
+                NotificationPreference(
+                    user_id=muted_member.user_id,
+                    new_group_messages=False,
+                    group_mentions=False,
+                ),
+                NotificationPreference(
+                    user_id=mention_only.user_id,
+                    new_group_messages=False,
+                    group_mentions=True,
+                ),
+                NotificationPreference(
+                    user_id=generic_only.user_id,
+                    new_group_messages=True,
+                    group_mentions=False,
+                ),
+            ]
+        )
+        await session.commit()
+        channel = await add_channel(repo, group, owner)
+
+        await repo.create_message(
+            group_id=group_id,
+            channel_id=channel.channel_id,
+            author_id=str(owner.user_id),
+            content="Please review the new material.",
+            mentioned_user_ids=(
+                str(mention_only.user_id),
+                str(generic_only.user_id),
+            ),
+            ai_mode=None,
+            sent_at=datetime.now(timezone.utc),
+        )
+
+        notifications = PostgreSQLNotificationRepository(session)
+
+        async def types_for(user):
+            items, has_more = await notifications.list_notifications(
+                user_id=str(user.user_id),
+                before_id=None,
+                limit=20,
+                unread_only=False,
+            )
+            assert has_more is False
+            return [item.notification_type for item in items]
+
+        assert await types_for(owner) == []
+        assert await types_for(default_member) == [
+            NotificationType.NEW_GROUP_MESSAGE
+        ]
+        assert await types_for(muted_member) == []
+        assert await types_for(mention_only) == [NotificationType.GROUP_MENTION]
+        assert await types_for(generic_only) == [
+            NotificationType.NEW_GROUP_MESSAGE
+        ]
 
 
 @pytest.mark.asyncio
