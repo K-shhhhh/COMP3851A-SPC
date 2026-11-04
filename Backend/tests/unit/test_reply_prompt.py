@@ -136,3 +136,27 @@ async def test_a_facilitator_hint_shows_no_sources(monkeypatch) -> None:
         question="Q", chunks=(_chunk(),), mode="facilitator"
     )
     assert answer.sources == ()
+
+
+def test_bullet_and_table_layouts_override_the_sentence_limit() -> None:
+    assert "never answer a bullet request with a paragraph" in _system(
+        response_format="bullet_points"
+    )
+    assert "replaces the 2 to 4 sentence guideline" in _system(
+        response_format="table"
+    )
+
+
+def test_facilitator_reply_is_cut_down_to_its_guiding_question() -> None:
+    reduced = rag_answering._facilitator_question(
+        "The paper reports a pass through of 0.4. What do you think drives it?"
+    )
+    assert reduced == "What do you think drives it?"
+
+
+def test_facilitator_reply_without_a_question_gets_a_neutral_prompt() -> None:
+    reduced = rag_answering._facilitator_question(
+        "Exchange rate pass through is high in Turkey."
+    )
+    assert reduced == rag_answering._FACILITATOR_FALLBACK_QUESTION
+    assert "Turkey" not in reduced

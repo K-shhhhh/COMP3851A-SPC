@@ -87,12 +87,15 @@ _RESPONSE_FORMAT_INSTRUCTIONS: dict[str, str] = {
     ),
     "bullet_points": (
         "Respond using clear, concise bullet points: one idea per bullet, "
-        "each bullet a short sentence, and at most 7 bullets."
+        "each bullet a short sentence, and at most 7 bullets. This layout "
+        "is required and replaces the 2 to 4 sentence guideline, so never "
+        "answer a bullet request with a paragraph."
     ),
     "table": (
         "Respond using a markdown table where the content can naturally be "
         "organized into rows and columns. Use at most 4 columns and keep "
-        "each cell short. If the content does not suit a "
+        "each cell short. This layout replaces the 2 to 4 sentence "
+        "guideline. If the content does not suit a "
         "table, use bullet points instead."
     ),
 }
@@ -106,7 +109,8 @@ _NO_PICKER_FORMAT_INSTRUCTION = (
     "No layout was chosen in the app. Unless the student asks for a "
     "particular layout, answer in one to three short paragraphs. If the "
     "student asks for bullet points, a table, keywords, a shorter version "
-    "or a simpler explanation, do exactly that. A request to change the "
+    "or a simpler explanation, do exactly that, even when it is longer or "
+    "shorter than a normal answer. A request to change the "
     "layout of your earlier answer is a normal request: reshape that "
     "answer and do not refuse it."
 )

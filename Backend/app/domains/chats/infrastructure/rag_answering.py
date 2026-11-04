@@ -75,6 +75,41 @@ def _is_refusal(answer_text: str) -> bool:
     return False
 
 
+_FACILITATOR_FALLBACK_QUESTION = (
+    "What do you already know about this, and which part of your notes "
+    "could help you work it out?"
+)
+
+
+def _facilitator_question(answer_text: str) -> str:
+    """Reduce a facilitator reply to its final guiding question.
+
+    The model sometimes states findings before asking. Only the last question
+    is kept, so no fact from the notes reaches the student. A reply with no
+    question gets a neutral guiding question instead.
+    """
+
+    text = answer_text.strip()
+    last_mark = text.rfind("?")
+    if last_mark == -1:
+        return _FACILITATOR_FALLBACK_QUESTION
+
+    # Start of the final sentence: just after the last sentence break before it.
+    head = text[:last_mark]
+    start = 0
+    for separator in (". ", "! ", "? ", "\n"):
+        position = head.rfind(separator)
+        if position != -1:
+            candidate = position + len(separator)
+            if candidate > start:
+                start = candidate
+
+    question = text[start:last_mark + 1].strip()
+    if len(question) < 10:
+        return _FACILITATOR_FALLBACK_QUESTION
+    return question
+
+
 def _distinct_sources(chunks):
     """One source per page of each note, in ranked order.
 
@@ -236,5 +271,8 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
         # student the answer's location.
         if mode == "facilitator":
             sources = ()
+            # Keep only the guiding question so no finding is revealed.
+            if not _is_refusal(answer_text):
+                answer_text = _facilitator_question(answer_text)
 
         return GeneratedAnswer(content=answer_text, sources=sources)
