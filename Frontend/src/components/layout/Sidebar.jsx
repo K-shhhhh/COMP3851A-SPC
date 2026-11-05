@@ -6,6 +6,7 @@ import {
   FilePlus2,
   Flag,
   FolderOpen,
+  HelpCircle,
   LayoutDashboard,
   Menu,
   Settings,
@@ -214,6 +215,13 @@ function Sidebar({
       </nav>
 
       <div className="sidebar-bottom">
+        <NavLink
+          to="/help"
+          className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`}
+        >
+          <HelpCircle size={19} />
+          <span>Help & Guide</span>
+        </NavLink>
         <NavLink
           to="/profile"
           className="sidebar-link"

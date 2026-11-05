@@ -56,6 +56,7 @@ import {
   deleteStudyGroupChannel,
   discoverPublicGroups,
   getGroupMessages,
+  getStudyGroup,
   getMyGroups,
   getStudyGroupAttachmentPdf,
   getStudyGroupAttachmentStatus,
@@ -75,6 +76,7 @@ import {
 import "./groupStudy.css";
 import "./groupStudyPanels.css";
 import "./groupStudyBrowse.css";
+import "./notificationDeepLink.css";
 
 /* =========================================================
    CONSTANTS
@@ -716,6 +718,9 @@ function GroupStudyPage() {
 
   const requestedGroupView =
     searchParams.get("view");
+  const requestedGroupId = searchParams.get("group_id");
+  const requestedChannelId = searchParams.get("channel_id");
+  const requestedMessageId = searchParams.get("message_id");
 
   useEffect(() => {
     if (requestedGroupView === "mine") {
@@ -978,7 +983,7 @@ function GroupStudyPage() {
 
       if (loadedChannels.length > 0) {
         setSelectedChannel(
-          loadedChannels[0],
+          loadedChannels.find((channel) => String(channel.id) === requestedChannelId) || loadedChannels[0],
         );
       } else {
         setSelectedChannel(null);
@@ -1014,6 +1019,23 @@ function GroupStudyPage() {
       loadChannels(group),
     ]);
   }
+
+  // Deep-link to an existing group using the approved frontend group API.
+  useEffect(() => {
+    if (!accessToken || !requestedGroupId) return undefined;
+    let cancelled = false;
+    void getStudyGroup(accessToken, requestedGroupId)
+      .then((group) => {
+        if (cancelled) return;
+        if (!group?.is_member) {
+          setPageError("You no longer have access to this group.");
+          return;
+        }
+        void openGroup(group);
+      })
+      .catch((error) => { if (!cancelled) setPageError(apiMessage(error)); });
+    return () => { cancelled = true; };
+  }, [accessToken, requestedGroupId, requestedChannelId, requestedMessageId]);
 
   /* =======================================================
      LOAD MESSAGES
@@ -1248,10 +1270,14 @@ function GroupStudyPage() {
 
   useEffect(() => {
     requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
+      const linkedMessage = requestedMessageId
+        ? document.getElementById(`group-message-${requestedMessageId}`)
+        : null;
+      if (linkedMessage) {
+        linkedMessage.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
     });
   }, [messages, aiWaiting]);
 
@@ -3619,11 +3645,10 @@ function GroupStudyPage() {
                                     key={item.id}
                                   >
                                     <div
+                                      id={`group-message-${item.id}`}
                                       className={`group-message ${
-                                        isOwnMessage
-                                          ? "own-message"
-                                          : ""
-                                      }`}
+                                        isOwnMessage ? "own-message" : ""
+                                      } ${requestedMessageId === String(item.id) ? "notification-target" : ""}`}
                                     >
                                       <div className="message-avatar">
                                         {initials(

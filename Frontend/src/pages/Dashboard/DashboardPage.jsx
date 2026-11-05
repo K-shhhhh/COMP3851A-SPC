@@ -1,7 +1,6 @@
 import {
   Bot,
   BrainCircuit,
-  CheckCircle2,
   Clock3,
   FileText,
   Target,
@@ -73,7 +72,6 @@ function DashboardPage() {
   const { accessToken } = useAuth();
 
   const [totalNotes, setTotalNotes] = useState(0);
-  const [readyNotes, setReadyNotes] = useState(0);
   const [studyGroups, setStudyGroups] = useState(0);
   const [recentNotes, setRecentNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,16 +104,14 @@ function DashboardPage() {
       setDashboardError("");
 
       try {
-        const [notesResult, readyResult, groupsResult] = await Promise.all([
+        const [notesResult, groupsResult] = await Promise.all([
           getNotes(accessToken, { page: 1, pageSize: 5 }),
-          getNotes(accessToken, { status: "ready", page: 1, pageSize: 1 }),
           getMyGroups(accessToken, { filter: "all", page: 1, pageSize: 1 }),
         ]);
 
         if (cancelled) return;
 
         setTotalNotes(notesResult?.total ?? notesResult?.items?.length ?? 0);
-        setReadyNotes(readyResult?.total ?? readyResult?.items?.length ?? 0);
         setStudyGroups(groupsResult?.total ?? groupsResult?.items?.length ?? 0);
         setRecentNotes(notesResult?.items ?? []);
       } catch (error) {
@@ -165,17 +161,6 @@ function DashboardPage() {
               <span>Total Notes</span>
               <strong>{loading ? "—" : totalNotes}</strong>
               <small>Files you have uploaded</small>
-            </div>
-          </div>
-
-          <div className="dashboard-stat-card">
-            <div className="dashboard-stat-icon">
-              <CheckCircle2 size={22} />
-            </div>
-            <div>
-              <span>Ready Notes</span>
-              <strong>{loading ? "—" : readyNotes}</strong>
-              <small>Ready for AI questions</small>
             </div>
           </div>
 
