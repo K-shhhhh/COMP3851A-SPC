@@ -159,7 +159,14 @@ _GROUNDING_RULES = (
     "contain it. Say that it is 'not available in the supplied study "
     "material', and if the notes cover a closely related topic, name that "
     "topic in one short clause. Use those exact words also when the "
-    "question assumes something the notes do not say."
+    "question assumes something the notes do not say. "
+    "If the notes cover only part of the question, for example a "
+    "comparison where only one of the two things is in the notes, answer "
+    "the covered part first with its sources. Then end with one sentence "
+    "that names exactly which part the notes do not cover and says that "
+    "uploading a source on it would allow a full answer. In that case do "
+    "not use the words 'not available in the supplied study material', "
+    "and never fill the missing part from general knowledge."
 )
 
 

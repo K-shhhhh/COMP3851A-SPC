@@ -112,6 +112,60 @@ def _facilitator_question(answer_text: str) -> str:
     return question
 
 
+# Added under every full refusal so the student knows how to get an answer.
+# SPC only answers from uploaded material, so the next step is to add a source.
+_UPLOAD_TIP = (
+    "Tip: upload a PDF that covers this topic, or select a note that does, "
+    "and ask again."
+)
+
+
+def _with_upload_tip(answer_text: str) -> str:
+    """Add the upload tip to a refusal once."""
+
+    if _UPLOAD_TIP.lower() in answer_text.lower():
+        return answer_text
+    return f"{answer_text.rstrip()}\n\n{_UPLOAD_TIP}"
+
+
+_NUMBERED_QUESTION_LINE = re.compile(r"^\s*\d+[.)]\s")
+_ANSWER_OPTION_LINE = re.compile(r"^\s*[A-Da-d][.)]\s")
+
+
+def _asks_for_answers(question: str) -> bool:
+    """Return whether the student explicitly asked for the quiz answers."""
+
+    return "answer" in question.lower()
+
+
+def _hide_quiz_answers(answer_text: str) -> str:
+    """Keep only the numbered questions of a quiz reply.
+
+    The model sometimes prints the answer on the lines under each question.
+    Text before the first question and lettered options are kept, and every
+    other line under a numbered question is dropped.
+    """
+
+    kept_lines = []
+    inside_questions = False
+    for line in answer_text.split("\n"):
+        if _NUMBERED_QUESTION_LINE.match(line):
+            inside_questions = True
+            kept_lines.append(line)
+            continue
+        if not inside_questions:
+            kept_lines.append(line)
+            continue
+        if line.strip() == "":
+            kept_lines.append("")
+            continue
+        if _ANSWER_OPTION_LINE.match(line):
+            kept_lines.append(line)
+
+    cleaned = "\n".join(kept_lines).strip()
+    return re.sub(r"\n{3,}", "\n\n", cleaned)
+
+
 def _distinct_sources(chunks):
     """One source per page of each note, in ranked order.
 
@@ -266,10 +320,14 @@ class KrishRagAnswerGenerator(ChatAnswerGenerator):
             top_chunks,
         )
         sources = _distinct_sources(source_chunks)
+        # Quiz questions must not come with their answers printed underneath.
+        if mode == "quiz" and not _asks_for_answers(question):
+            answer_text = _hide_quiz_answers(answer_text)
         # An answer that says the material does not cover the question did not
         # use the passages, so citing them would be misleading.
         if _is_refusal(answer_text):
             sources = ()
+            answer_text = _with_upload_tip(answer_text)
         # A facilitator reply is a guiding question, not a fact from the
         # notes, so there is nothing to cite and listing pages would hand the
         # student the answer's location.

@@ -181,3 +181,75 @@ def test_source_marker_at_the_end_still_works() -> None:
     )
     assert cleaned == "A short answer."
     assert selected == [chunks[0], chunks[1]]
+
+
+def test_quiz_reply_keeps_questions_and_drops_the_printed_answers() -> None:
+    reply = (
+        "1. Which test rejects parameter stability in 2018M08?\n"
+        "The Chow test rejects it.\n"
+        "\n"
+        "2. What does the CUSUM statistic show?\n"
+        "It shows instability.\n"
+    )
+    cleaned = rag_answering._hide_quiz_answers(reply)
+    assert "1. Which test rejects parameter stability in 2018M08?" in cleaned
+    assert "2. What does the CUSUM statistic show?" in cleaned
+    assert "Chow test rejects" not in cleaned
+    assert "instability" not in cleaned
+
+
+def test_quiz_reply_keeps_an_intro_and_lettered_options() -> None:
+    reply = (
+        "Here are your questions.\n"
+        "1. Which test is used?\n"
+        "A) Chow\n"
+        "B) Bai Perron\n"
+        "Answer: A\n"
+    )
+    cleaned = rag_answering._hide_quiz_answers(reply)
+    assert cleaned.startswith("Here are your questions.")
+    assert "A) Chow" in cleaned
+    assert "B) Bai Perron" in cleaned
+    assert "Answer: A" not in cleaned
+
+
+def test_quiz_answers_are_kept_when_the_student_asks_for_them() -> None:
+    assert rag_answering._asks_for_answers("Quiz me and give the answers too")
+    assert not rag_answering._asks_for_answers("Quiz me on structural breaks")
+
+
+def test_a_partly_covered_question_gets_the_covered_part_and_names_the_gap() -> None:
+    system = _system()
+    assert "If the notes cover only part of the question" in system
+    assert "never fill the missing part from general knowledge" in system
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_ends_with_the_upload_tip_once(monkeypatch) -> None:
+    monkeypatch.setattr(
+        rag_answering,
+        "generate_answer",
+        lambda question, context, *, response_format=None, mode=None: (
+            "The answer is not available in the supplied study material."
+        ),
+    )
+    generator = rag_answering.KrishRagAnswerGenerator(top_k=5, rank_chunks=False)
+    answer = await generator.answer_question(question="Q", chunks=(_chunk(),))
+    assert answer.content.endswith(rag_answering._UPLOAD_TIP)
+    assert answer.content.count("Tip:") == 1
+    assert answer.sources == ()
+
+
+@pytest.mark.asyncio
+async def test_a_grounded_answer_gets_no_upload_tip(monkeypatch) -> None:
+    monkeypatch.setattr(
+        rag_answering,
+        "generate_answer",
+        lambda question, context, *, response_format=None, mode=None: (
+            "The base model uses 8 attention heads. [[SOURCE_IDS:1]]"
+        ),
+    )
+    generator = rag_answering.KrishRagAnswerGenerator(top_k=5, rank_chunks=False)
+    answer = await generator.answer_question(question="Q", chunks=(_chunk(),))
+    assert "Tip:" not in answer.content
+    assert len(answer.sources) == 1
