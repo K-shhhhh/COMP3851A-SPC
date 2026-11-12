@@ -144,4 +144,11 @@ class Settings(BaseSettings):
             return self.REFRESH_SESSION_COOKIE_SECURE
         return not self.DEBUG
 
+    @property
+    def personal_note_storage_directory(self) -> Path:
+        return self.NOTE_STORAGE_DIRECTORY / "personal"
+    @property
+    def group_note_storage_directory(self) -> Path:
+        return self.NOTE_STORAGE_DIRECTORY / "groups"
+    
 settings = Settings()
