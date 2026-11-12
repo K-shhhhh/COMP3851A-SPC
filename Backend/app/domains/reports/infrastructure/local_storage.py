@@ -30,6 +30,8 @@ class LocalEvidenceStorage(EvidenceStorage):
         temporary = destination.with_name(f".{destination.name}.tmp")
         try:
             await asyncio.to_thread(destination.parent.mkdir, parents=True, exist_ok=True)
+            await asyncio.to_thread(destination.parent.chmod, 0o700)
+            await asyncio.to_thread(destination.parent.parent.chmod, 0o700)
             await asyncio.to_thread(temporary.write_bytes, data)
             await asyncio.to_thread(temporary.chmod, 0o600)
             await asyncio.to_thread(os.replace, temporary, destination)

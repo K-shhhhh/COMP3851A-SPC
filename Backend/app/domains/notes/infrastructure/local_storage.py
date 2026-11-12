@@ -10,34 +10,39 @@ from app.domains.notes.domain.storage import AttachmentStorage
 
 
 class LocalAttachmentStorage(AttachmentStorage):
-    """Store PDFs under one configured private directory."""
+    """Store PDFs under personal/ and groups/ subdirectories."""
 
     def __init__(self, root_directory: str | Path) -> None:
-        """Initialize the private storage directory."""
-
         self._root_directory = Path(root_directory).expanduser().resolve()
 
         try:
             self._root_directory.mkdir(parents=True, exist_ok=True)
+            self._root_directory.chmod(0o750)
+            for sub in ("personal", "groups"):
+                subdir = self._root_directory / sub
+                subdir.mkdir(parents=True, exist_ok=True)
+                subdir.chmod(0o750)
         except OSError as exc:
             raise AttachmentStorageError(
                 "The attachment storage directory could not be initialized."
             ) from exc
 
-    async def store_pdf(self, data: bytes) -> str:
-        """Atomically store content under a backend-generated PDF name."""
-
+    async def store_pdf(self, data: bytes, subcategory: str = "personal") -> str:
         if not data:
             raise AttachmentStorageError(
                 "Empty attachment content cannot be stored."
             )
 
+        target_dir = self._root_directory / (
+            "groups" if subcategory == "groups" else "personal"
+        )
         storage_identifier = uuid4().hex
-        destination = self._root_directory / f"{storage_identifier}.pdf"
-        temporary = self._root_directory / f".{storage_identifier}.tmp"
+        destination = target_dir / f"{storage_identifier}.pdf"
+        temporary = target_dir / f".{storage_identifier}.tmp"
 
         try:
             await asyncio.to_thread(temporary.write_bytes, data)
+            await asyncio.to_thread(temporary.chmod, 0o640)
             await asyncio.to_thread(os.replace, temporary, destination)
         except OSError as exc:
             await self._remove_temporary_file(temporary)
@@ -48,8 +53,6 @@ class LocalAttachmentStorage(AttachmentStorage):
         return str(destination)
 
     async def read_pdf(self, object_path: str) -> bytes:
-        """Read a PDF after validating that it belongs to this storage."""
-
         safe_path = self._resolve_safe_pdf_path(object_path)
 
         try:
@@ -60,8 +63,6 @@ class LocalAttachmentStorage(AttachmentStorage):
             ) from exc
 
     async def delete_pdf(self, object_path: str) -> bool:
-        """Delete a PDF after validating its private storage path."""
-
         safe_path = self._resolve_safe_pdf_path(object_path)
 
         if not safe_path.exists():
@@ -77,11 +78,9 @@ class LocalAttachmentStorage(AttachmentStorage):
         return True
 
     def _resolve_safe_pdf_path(self, object_path: str) -> Path:
-        """Prevent reads and deletions outside the configured directory."""
-
         candidate = Path(object_path).expanduser().resolve()
 
-        if candidate.parent != self._root_directory:
+        if self._root_directory not in candidate.parents:
             raise AttachmentStorageError(
                 "The attachment object path is outside private storage."
             )
@@ -94,8 +93,6 @@ class LocalAttachmentStorage(AttachmentStorage):
         return candidate
 
     async def _remove_temporary_file(self, path: Path) -> None:
-        """Best-effort removal for a partially written upload."""
-
         try:
             await asyncio.to_thread(path.unlink, missing_ok=True)
         except OSError:

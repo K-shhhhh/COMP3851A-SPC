@@ -249,7 +249,8 @@ class NoteService:
         self._validate_pdf(content_type=content_type, data=data)
         safe_filename = self._sanitize_filename(original_filename)
         safe_title = self._normalize_title(title, safe_filename)
-        object_path = await self._storage.store_pdf(data)
+        subcategory = "personal" if show_in_library else "groups"
+        object_path = await self._storage.store_pdf(data, subcategory=subcategory)
 
         try:
             attachment = await self._repository.create_attachment(

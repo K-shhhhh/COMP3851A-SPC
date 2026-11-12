@@ -17,7 +17,7 @@ async def test_pdf_can_be_stored_read_and_deleted(tmp_path: Path) -> None:
 
     object_path = await storage.store_pdf(data)
 
-    assert Path(object_path).parent == tmp_path.resolve()
+    assert Path(object_path).parent == (tmp_path / "personal").resolve()
     assert await storage.read_pdf(object_path) == data
     assert await storage.delete_pdf(object_path) is True
     assert not Path(object_path).exists()

@@ -158,9 +158,9 @@ class RecordingAttachmentStorage(AttachmentStorage):
     def __init__(self) -> None:
         self.deleted_paths: list[str] = []
 
-    async def store_pdf(self, data: bytes) -> str:
-        del data
-        return "/private/notes/stored.pdf"
+    async def store_pdf(self, data: bytes, subcategory: str = "personal") -> str:
+        del data, subcategory
+        return "/private/notes/personal/stored.pdf"
 
     async def read_pdf(self, object_path: str) -> bytes:
         del object_path
