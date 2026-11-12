@@ -33,9 +33,12 @@ class LocalAttachmentStorage(AttachmentStorage):
                 "Empty attachment content cannot be stored."
             )
 
-        target_dir = self._root_directory / (
-            "groups" if subcategory == "groups" else "personal"
-        )
+        if subcategory not in {"personal", "groups"}:
+            raise AttachmentStorageError(
+                "The attachment storage subcategory is invalid."
+            )
+
+        target_dir = self._root_directory / subcategory
         storage_identifier = uuid4().hex
         destination = target_dir / f"{storage_identifier}.pdf"
         temporary = target_dir / f".{storage_identifier}.tmp"
@@ -80,7 +83,12 @@ class LocalAttachmentStorage(AttachmentStorage):
     def _resolve_safe_pdf_path(self, object_path: str) -> Path:
         candidate = Path(object_path).expanduser().resolve()
 
-        if self._root_directory not in candidate.parents:
+        allowed_parents = {
+            self._root_directory,
+            self._root_directory / "personal",
+            self._root_directory / "groups",
+        }
+        if candidate.parent not in allowed_parents:
             raise AttachmentStorageError(
                 "The attachment object path is outside private storage."
             )

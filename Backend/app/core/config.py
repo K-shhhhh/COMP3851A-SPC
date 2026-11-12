@@ -147,8 +147,10 @@ class Settings(BaseSettings):
     @property
     def personal_note_storage_directory(self) -> Path:
         return self.NOTE_STORAGE_DIRECTORY / "personal"
+
     @property
     def group_note_storage_directory(self) -> Path:
         return self.NOTE_STORAGE_DIRECTORY / "groups"
-    
+
+
 settings = Settings()
