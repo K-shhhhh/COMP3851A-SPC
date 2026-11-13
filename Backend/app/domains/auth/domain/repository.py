@@ -5,6 +5,7 @@ The database developer implements this interface using PostgreSQL.
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from app.domains.auth.domain.models import User, UserCredentials
 
@@ -40,6 +41,7 @@ class AuthRepository(ABC):
         full_name: str,
         email: str,
         hashed_password: str,
+        email_verified_at: datetime | None = None,
     ) -> User:
         """
         Persist a user with a password hash.

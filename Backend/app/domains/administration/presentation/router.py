@@ -49,6 +49,7 @@ from app.domains.administration.presentation.schemas import (
     GovernanceActionResponse,
 )
 from app.domains.auth.domain.models import User
+from app.domains.auth.domain.exceptions import VerificationDeliveryUnavailableError
 from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 
 
@@ -74,6 +75,12 @@ def administration_errors() -> Iterator[None]:
         raise ApiError(status_code=409, code="ADMIN_ACTION_CONFLICT", message=str(exc)) from exc
     except AdministrationValidationError as exc:
         raise ApiError(status_code=422, code="ADMIN_ACTION_INVALID", message=str(exc)) from exc
+    except VerificationDeliveryUnavailableError as exc:
+        raise ApiError(
+            status_code=503,
+            code="VERIFICATION_DELIVERY_UNAVAILABLE",
+            message=str(exc),
+        ) from exc
 
 
 @router.get("/me", response_model=AdminMeResponse)

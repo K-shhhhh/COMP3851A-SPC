@@ -28,10 +28,23 @@ from app.domains.auth.infrastructure.repository import (
     PostgreSQLAuthRepository,
     PostgreSQLPasswordChangeRepository,
 )
+from app.domains.auth.infrastructure.email_sender import (
+    ConsoleVerificationEmailSender,
+    DisabledVerificationEmailSender,
+    SMTPVerificationEmailSender,
+)
+from app.domains.auth.infrastructure.email_verification_repository import (
+    PostgreSQLEmailVerificationRepository,
+)
 
 from app.domains.auth.domain.models import User
 
+from app.domains.auth.application.email_verification import EmailVerificationService
 from app.domains.auth.application.services import AuthService, PasswordChangeService
+from app.domains.auth.domain.email_verification import (
+    EmailVerificationRepository,
+    VerificationEmailSender,
+)
 from app.domains.auth.domain.repository import AuthRepository
 from app.domains.auth.domain.password_repository import PasswordChangeRepository
 from app.domains.auth.infrastructure.redis_revocation_store import (
@@ -168,8 +181,48 @@ def get_auth_repository(
     return PostgreSQLAuthRepository(session)
 
 
+def get_email_verification_repository(
+    session: AsyncSession = Depends(get_db_session),
+) -> EmailVerificationRepository:
+    return PostgreSQLEmailVerificationRepository(session)
+
+
+def get_verification_email_sender() -> VerificationEmailSender:
+    if settings.EMAIL_DELIVERY_MODE == "console":
+        return ConsoleVerificationEmailSender()
+    if settings.EMAIL_DELIVERY_MODE == "smtp":
+        return SMTPVerificationEmailSender(
+            host=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USERNAME,
+            password=settings.SMTP_PASSWORD,
+            from_address=settings.SMTP_FROM_ADDRESS,
+            use_starttls=settings.SMTP_USE_STARTTLS,
+        )
+    return DisabledVerificationEmailSender()
+
+
+def get_email_verification_service(
+    repository: EmailVerificationRepository = Depends(
+        get_email_verification_repository
+    ),
+    sender: VerificationEmailSender = Depends(get_verification_email_sender),
+) -> EmailVerificationService:
+    return EmailVerificationService(
+        repository=repository,
+        sender=sender,
+        secret=settings.SECRET_KEY,
+        ttl_minutes=settings.EMAIL_VERIFICATION_TTL_MINUTES,
+        max_attempts=settings.EMAIL_VERIFICATION_MAX_ATTEMPTS,
+        resend_cooldown_seconds=settings.EMAIL_VERIFICATION_RESEND_SECONDS,
+    )
+
+
 def get_auth_service(
     repository: AuthRepository = Depends(get_auth_repository),
+    email_verification_service: EmailVerificationService = Depends(
+        get_email_verification_service
+    ),
 ) -> AuthService:
     """Construct authentication use cases with PostgreSQL persistence.
 
@@ -182,6 +235,16 @@ def get_auth_service(
         ticket_store=_websocket_ticket_store,
         revocation_store=_access_token_revocation_store,
         session_store=_refresh_session_store,
+        email_verification_service=email_verification_service,
+        institutional_email_restriction_enabled=(
+            settings.INSTITUTIONAL_EMAIL_RESTRICTION_ENABLED
+        ),
+        institutional_email_allowlist={
+            email.strip().casefold()
+            for email in settings.INSTITUTIONAL_EMAIL_ALLOWLIST.split(",")
+            if email.strip()
+        },
+        email_verification_required=settings.EMAIL_VERIFICATION_REQUIRED,
     )
 
 
@@ -621,10 +684,25 @@ def get_administration_service(
     repository: AdministrationRepository = Depends(
         get_administration_repository
     ),
+    email_verification_service: EmailVerificationService = Depends(
+        get_email_verification_service
+    ),
 ) -> AdministrationService:
     """Construct the administration application service."""
 
-    return AdministrationService(repository)
+    return AdministrationService(
+        repository,
+        email_verification_service=email_verification_service,
+        institutional_email_restriction_enabled=(
+            settings.INSTITUTIONAL_EMAIL_RESTRICTION_ENABLED
+        ),
+        institutional_email_allowlist={
+            email.strip().casefold()
+            for email in settings.INSTITUTIONAL_EMAIL_ALLOWLIST.split(",")
+            if email.strip()
+        },
+        email_verification_required=settings.EMAIL_VERIFICATION_REQUIRED,
+    )
 
 
 # ---------- Presence ----------

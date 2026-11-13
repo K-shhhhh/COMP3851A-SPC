@@ -13,6 +13,30 @@ class EmailAlreadyRegisteredError(AuthenticationError):
     """Raised when registration uses an existing email address."""
 
 
+class InstitutionalEmailRequiredError(AuthenticationError):
+    """Raised when an account role uses a non-approved email domain."""
+
+
+class EmailNotVerifiedError(AuthenticationError):
+    """Raised when an unverified account attempts to authenticate."""
+
+
+class InvalidVerificationCodeError(AuthenticationError):
+    """Raised when a verification code is absent, consumed, or incorrect."""
+
+
+class VerificationCodeExpiredError(AuthenticationError):
+    """Raised when a verification challenge is no longer usable."""
+
+
+class VerificationResendTooSoonError(AuthenticationError):
+    """Raised when repeated delivery is requested before the cooldown ends."""
+
+
+class VerificationDeliveryUnavailableError(AuthenticationError):
+    """Raised when the configured email sender cannot deliver a code."""
+
+
 class InvalidCredentialsError(AuthenticationError):
     """Raised when an email and password combination is incorrect."""
 

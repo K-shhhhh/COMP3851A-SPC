@@ -44,9 +44,28 @@ create table if not exists users (
     status activity_status default 'active' not null,
     show_online_status boolean default true not null,
     created_at timestamptz not null,
+    email_verified_at timestamptz,
     last_updated_at timestamptz,
 	deleted_at timestamptz
 );
+
+create table if not exists email_verification_challenges (
+    challenge_id uuid primary key,
+    user_id uuid not null unique,
+    code_hash text not null,
+    expires_at timestamptz not null,
+    attempt_count integer default 0 not null,
+    consumed_at timestamptz,
+    created_at timestamptz not null,
+
+    constraint fk_email_verification_user foreign key (user_id)
+    references users(user_id) on delete cascade,
+    constraint ck_email_verification_attempts check (attempt_count >= 0)
+);
+
+create index if not exists ix_email_verification_challenges_expiry
+    on email_verification_challenges (expires_at)
+    where consumed_at is null;
 
 create table if not exists user_profiles ( 
     user_id uuid primary key,

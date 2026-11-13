@@ -121,6 +121,7 @@ class PostgreSQLAuthRepository(
                 and orm_user.deleted_at is None
             ),
             created_at=orm_user.created_at,
+            email_verified_at=orm_user.email_verified_at,
         )
 
     async def get_credentials_by_email(
@@ -182,6 +183,7 @@ class PostgreSQLAuthRepository(
         full_name: str,
         email: str,
         hashed_password: str,
+        email_verified_at: datetime | None = None,
     ) -> User:
         """Create a user, personal group, and membership atomically.
 
@@ -199,6 +201,7 @@ class PostgreSQLAuthRepository(
             user_role=UserRole.STUDENT,
             status=ActivityStatus.ACTIVE,
             created_at=now,
+            email_verified_at=email_verified_at,
         )
 
         self.session.add(orm_user)

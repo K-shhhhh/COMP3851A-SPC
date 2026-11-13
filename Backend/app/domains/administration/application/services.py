@@ -8,6 +8,9 @@ repository contract.
 from datetime import datetime
 
 from app.core.security import hash_password
+from app.domains.auth.application.email_verification import EmailVerificationService
+from app.domains.auth.domain.email_policy import require_approved_email
+from app.domains.auth.domain.exceptions import InstitutionalEmailRequiredError
 
 from app.domains.administration.domain.exceptions import (
     AdministrationConflictError,
@@ -44,8 +47,22 @@ from app.domains.reports.domain.models import ReportStatus, ReportTargetType
 
 
 class AdministrationService:
-    def __init__(self, repository: AdministrationRepository) -> None:
+    def __init__(
+        self,
+        repository: AdministrationRepository,
+        *,
+        email_verification_service: EmailVerificationService | None = None,
+        institutional_email_restriction_enabled: bool = False,
+        institutional_email_allowlist: set[str] | None = None,
+        email_verification_required: bool = False,
+    ) -> None:
         self.repository = repository
+        self.email_verification_service = email_verification_service
+        self.institutional_email_restriction_enabled = (
+            institutional_email_restriction_enabled
+        )
+        self.institutional_email_allowlist = institutional_email_allowlist or set()
+        self.email_verification_required = email_verification_required
 
     async def get_dashboard(self) -> DashboardSnapshot:
         return await self.repository.get_dashboard()
@@ -86,13 +103,22 @@ class AdministrationService:
         clean_name = full_name.strip()
         if len(clean_name) < 2:
             raise AdministrationValidationError("Full name must contain at least two characters.")
-        return await self.repository.create_user(
+        clean_email = self._approved_account_email(email, role=role)
+        created = await self.repository.create_user(
             full_name=clean_name,
-            email=email.strip().casefold(),
+            email=clean_email,
             password_hash=hash_password(password),
             role=role,
             actor=self._actor(current_admin_id, reason),
         )
+        if self.email_verification_required:
+            if self.email_verification_service is None:
+                raise RuntimeError("Email verification service is not configured")
+            await self.email_verification_service.issue(
+                user_id=created.user.user_id,
+                email=created.user.email,
+            )
+        return created
 
     async def update_user(
         self,
@@ -106,15 +132,43 @@ class AdministrationService:
         clean_name = full_name.strip()
         if len(clean_name) < 2:
             raise AdministrationValidationError("Full name must contain at least two characters.")
+        target = await self.get_user(target_user_id)
+        clean_email = self._approved_account_email(email, role=target.user.role)
+        email_changed = clean_email != target.user.email.casefold()
         updated = await self.repository.update_user(
             user_id=target_user_id,
             full_name=clean_name,
-            email=email.strip().casefold(),
+            email=clean_email,
             actor=self._actor(current_admin_id, reason),
         )
         if updated is None:
             raise AdministrationResourceNotFoundError("The user was not found.")
+        if email_changed and self.email_verification_required:
+            if self.email_verification_service is None:
+                raise RuntimeError("Email verification service is not configured")
+            await self.email_verification_service.issue(
+                user_id=updated.user.user_id,
+                email=updated.user.email,
+            )
         return updated
+
+    def _approved_account_email(
+        self,
+        email: str,
+        *,
+        role: AdministrationUserRole,
+    ) -> str:
+        normalized = email.strip().casefold()
+        if not self.institutional_email_restriction_enabled:
+            return normalized
+        try:
+            return require_approved_email(
+                normalized,
+                role=role.value,
+                allowlist=self.institutional_email_allowlist,
+            )
+        except InstitutionalEmailRequiredError as exc:
+            raise AdministrationValidationError(str(exc)) from exc
 
     async def deactivate_user(
         self,

@@ -241,6 +241,50 @@ async def test_admin_user_creation_hashes_password_and_records_reason() -> None:
 
 
 @pytest.mark.asyncio
+async def test_admin_user_creation_enforces_role_specific_email_domains() -> None:
+    repository = StubAdministrationRepository()
+    service = AdministrationService(
+        repository,
+        institutional_email_restriction_enabled=True,
+    )
+
+    with pytest.raises(AdministrationValidationError, match="@uon.edu.au"):
+        await service.create_user(
+            current_admin_id="admin-1",
+            full_name="Invalid Student",
+            email="student@newcastle.edu.au",
+            password="TemporaryPassword123!",
+            role=AdministrationUserRole.STUDENT,
+            reason="Creating a student account for testing",
+        )
+
+    await service.create_user(
+        current_admin_id="admin-1",
+        full_name="University Staff",
+        email="STAFF@NEWCASTLE.EDU.AU",
+        password="TemporaryPassword123!",
+        role=AdministrationUserRole.ADMIN,
+        reason="Creating an administrator for student support",
+    )
+    assert repository.last_create_user["email"] == "staff@newcastle.edu.au"
+
+    service = AdministrationService(
+        repository,
+        institutional_email_restriction_enabled=True,
+        institutional_email_allowlist={"admin.demo@gmail.com"},
+    )
+    await service.create_user(
+        current_admin_id="admin-1",
+        full_name="Demonstration Administrator",
+        email="ADMIN.DEMO@GMAIL.COM",
+        password="TemporaryPassword123!",
+        role=AdministrationUserRole.ADMIN,
+        reason="Creating the approved demonstration account",
+    )
+    assert repository.last_create_user["email"] == "admin.demo@gmail.com"
+
+
+@pytest.mark.asyncio
 async def test_admin_user_update_normalizes_public_identity_and_audits_reason() -> None:
     repository = StubAdministrationRepository()
     service = AdministrationService(repository)

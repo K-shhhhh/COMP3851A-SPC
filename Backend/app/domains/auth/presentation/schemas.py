@@ -67,6 +67,28 @@ class RegisteredUserResponse(UserResponse):
     """Registration response, including the account creation time."""
 
     created_at: datetime
+    verification_required: bool = True
+    verification_expires_in: int | None = None
+
+
+class ConfirmEmailVerificationRequest(BaseModel):
+    """One-time code submitted after institutional email registration."""
+
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class ResendEmailVerificationRequest(BaseModel):
+    """Address requesting a replacement one-time code."""
+
+    email: EmailStr
+
+
+class EmailVerificationResponse(BaseModel):
+    """Successful verification result without authentication tokens."""
+
+    email: EmailStr
+    verified: bool
 
 
 class TokenResponse(BaseModel):

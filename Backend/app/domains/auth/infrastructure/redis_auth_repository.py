@@ -50,6 +50,11 @@ class RedisAuthRepository(AuthRepository):
             "role": credentials.user.role,
             "is_active": credentials.user.is_active,
             "created_at": credentials.user.created_at.isoformat(),
+            "email_verified_at": (
+                credentials.user.email_verified_at.isoformat()
+                if credentials.user.email_verified_at is not None
+                else None
+            ),
             "hashed_password": credentials.hashed_password,
         }
         return json.dumps(data)
@@ -63,6 +68,11 @@ class RedisAuthRepository(AuthRepository):
             role=data["role"],
             is_active=data["is_active"],
             created_at=datetime.fromisoformat(data["created_at"]),
+            email_verified_at=(
+                datetime.fromisoformat(data["email_verified_at"])
+                if data.get("email_verified_at")
+                else None
+            ),
         )
         return UserCredentials(user=user, hashed_password=data["hashed_password"])
 
@@ -106,6 +116,7 @@ class RedisAuthRepository(AuthRepository):
         full_name: str,
         email: str,
         hashed_password: str,
+        email_verified_at: datetime | None = None,
     ) -> User:
         """Persist a new user with a fresh UUID identifier.
 
@@ -121,6 +132,7 @@ class RedisAuthRepository(AuthRepository):
             role="student",
             is_active=True,
             created_at=datetime.now(timezone.utc),
+            email_verified_at=email_verified_at,
         )
 
         credentials = UserCredentials(

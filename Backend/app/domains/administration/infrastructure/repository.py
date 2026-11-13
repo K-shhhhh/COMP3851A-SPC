@@ -531,6 +531,7 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
                 user_role=ORMUserRole(role.value),
                 status=ActivityStatus.ACTIVE,
                 created_at=now,
+                email_verified_at=None,
                 last_updated_at=now,
             )
             self._session.add(user)
@@ -611,8 +612,11 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             )
             if duplicate is not None:
                 raise AdministrationConflictError("An account with this email already exists.")
+            email_changed = target.email.casefold() != email.casefold()
             target.fullname = full_name
             target.email = email
+            if email_changed:
+                target.email_verified_at = None
             target.last_updated_at = now
             self._session.add(
                 ORMAuditEvent(
@@ -2641,6 +2645,7 @@ class PostgreSQLAdministrationRepository(AdministrationRepository):
             status=AdministrationUserStatus(user.status.value),
             created_at=user.created_at,
             last_active_at=None,
+            email_verified=user.email_verified_at is not None,
         )
 
     @staticmethod

@@ -46,6 +46,7 @@ class InMemoryAuthRepository(AuthRepository):
         full_name: str,
         email: str,
         hashed_password: str,
+        email_verified_at: datetime | None = None,
     ) -> User:
         """Create a temporary student account containing only a password hash."""
 
@@ -56,6 +57,7 @@ class InMemoryAuthRepository(AuthRepository):
             role="student",
             is_active=True,
             created_at=datetime.now(timezone.utc),
+            email_verified_at=email_verified_at,
         )
 
         credentials = UserCredentials(

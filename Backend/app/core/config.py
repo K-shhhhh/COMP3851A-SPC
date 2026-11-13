@@ -60,6 +60,23 @@ class Settings(BaseSettings):
     # WebSocket tickets are intentionally short-lived and single-use.
     WEBSOCKET_TICKET_EXPIRE_SECONDS: int = 60
 
+    INSTITUTIONAL_EMAIL_RESTRICTION_ENABLED: bool = True
+    # Exact comma-separated exceptions for controlled demo/pilot accounts.
+    # This does not bypass email ownership verification.
+    INSTITUTIONAL_EMAIL_ALLOWLIST: str = ""
+    EMAIL_VERIFICATION_REQUIRED: bool = True
+    EMAIL_VERIFICATION_TTL_MINUTES: int = 10
+    EMAIL_VERIFICATION_MAX_ATTEMPTS: int = 5
+    EMAIL_VERIFICATION_RESEND_SECONDS: int = 60
+    # Use console only for local development and smtp for hosted environments.
+    EMAIL_DELIVERY_MODE: str = "disabled"
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_ADDRESS: str = ""
+    SMTP_USE_STARTTLS: bool = True
+
     # Private location for original uploaded learning materials.
     NOTE_STORAGE_DIRECTORY: Path = REPOSITORY_ROOT / "storage" / "notes"
 
@@ -133,6 +150,25 @@ class Settings(BaseSettings):
             raise ValueError(
                 "REFRESH_SESSION_COOKIE_SAMESITE must be 'lax' or 'strict'"
             )
+
+        if self.EMAIL_DELIVERY_MODE not in {"disabled", "console", "smtp"}:
+            raise ValueError(
+                "EMAIL_DELIVERY_MODE must be 'disabled', 'console', or 'smtp'"
+            )
+        if self.EMAIL_DELIVERY_MODE == "console" and not self.DEBUG:
+            raise ValueError("Console email delivery is allowed only when DEBUG=true")
+        if self.EMAIL_DELIVERY_MODE == "smtp" and (
+            not self.SMTP_HOST or not self.SMTP_FROM_ADDRESS
+        ):
+            raise ValueError(
+                "SMTP_HOST and SMTP_FROM_ADDRESS are required for SMTP delivery"
+            )
+        if self.EMAIL_VERIFICATION_TTL_MINUTES <= 0:
+            raise ValueError("EMAIL_VERIFICATION_TTL_MINUTES must be positive")
+        if self.EMAIL_VERIFICATION_MAX_ATTEMPTS <= 0:
+            raise ValueError("EMAIL_VERIFICATION_MAX_ATTEMPTS must be positive")
+        if self.EMAIL_VERIFICATION_RESEND_SECONDS < 0:
+            raise ValueError("EMAIL_VERIFICATION_RESEND_SECONDS cannot be negative")
 
         return self
 

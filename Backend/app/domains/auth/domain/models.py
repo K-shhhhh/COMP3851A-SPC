@@ -18,6 +18,13 @@ class User:
     role: str
     is_active: bool
     created_at: datetime
+    email_verified_at: datetime | None = None
+
+    @property
+    def is_email_verified(self) -> bool:
+        """Return whether ownership of the account email was confirmed."""
+
+        return self.email_verified_at is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,3 +56,17 @@ class WebSocketTicket:
 
     ticket: str
     expires_in: int
+
+
+@dataclass(frozen=True, slots=True)
+class EmailVerificationChallenge:
+    """Latest one-time verification challenge for one account."""
+
+    id: str
+    user_id: str
+    email: str
+    code_hash: str
+    expires_at: datetime
+    attempt_count: int
+    created_at: datetime
+    consumed_at: datetime | None = None

@@ -15,17 +15,26 @@ from app.domains.auth.application.services import AuthService, PasswordChangeSer
 from app.domains.auth.domain.exceptions import (
     CurrentPasswordIncorrectError,
     EmailAlreadyRegisteredError,
+    EmailNotVerifiedError,
     InactiveAccountError,
+    InstitutionalEmailRequiredError,
     InvalidCredentialsError,
     InvalidSessionError,
+    InvalidVerificationCodeError,
     PasswordReuseError,
+    VerificationCodeExpiredError,
+    VerificationDeliveryUnavailableError,
+    VerificationResendTooSoonError,
 )
 from app.domains.auth.domain.models import User
 from app.domains.auth.presentation.schemas import (
     ChangePasswordRequest,
+    ConfirmEmailVerificationRequest,
+    EmailVerificationResponse,
     LoginRequest,
     RegisteredUserResponse,
     RegisterRequest,
+    ResendEmailVerificationRequest,
     TokenResponse,
     UserResponse,
     WebSocketTicketResponse,
@@ -61,8 +70,84 @@ async def register(
             code="EMAIL_ALREADY_EXISTS",
             message=str(exc),
         ) from exc
+    except InstitutionalEmailRequiredError as exc:
+        raise ApiError(
+            status_code=422,
+            code="INSTITUTIONAL_EMAIL_REQUIRED",
+            message=str(exc),
+        ) from exc
+    except VerificationDeliveryUnavailableError as exc:
+        raise ApiError(
+            status_code=503,
+            code="VERIFICATION_DELIVERY_UNAVAILABLE",
+            message=str(exc),
+        ) from exc
 
-    return RegisteredUserResponse.model_validate(user)
+    response_data = RegisteredUserResponse.model_validate(user).model_dump()
+    response_data["verification_required"] = service.email_verification_required
+    response_data["verification_expires_in"] = (
+        settings.EMAIL_VERIFICATION_TTL_MINUTES * 60
+        if service.email_verification_required
+        else None
+    )
+    return RegisteredUserResponse.model_validate(response_data)
+
+
+@router.post(
+    "/email-verification/confirm",
+    response_model=EmailVerificationResponse,
+)
+async def confirm_email_verification(
+    request: ConfirmEmailVerificationRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> EmailVerificationResponse:
+    """Confirm ownership of an institutional email using a one-time code."""
+
+    try:
+        user = await service.confirm_email_verification(
+            email=str(request.email),
+            code=request.code,
+        )
+    except InvalidVerificationCodeError as exc:
+        raise ApiError(
+            status_code=400,
+            code="INVALID_VERIFICATION_CODE",
+            message=str(exc),
+        ) from exc
+    except VerificationCodeExpiredError as exc:
+        raise ApiError(
+            status_code=410,
+            code="VERIFICATION_CODE_EXPIRED",
+            message=str(exc),
+        ) from exc
+    return EmailVerificationResponse(email=user.email, verified=True)
+
+
+@router.post(
+    "/email-verification/resend",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def resend_email_verification(
+    request: ResendEmailVerificationRequest,
+    service: AuthService = Depends(get_auth_service),
+) -> Response:
+    """Send a replacement code while keeping account existence private."""
+
+    try:
+        await service.resend_email_verification(email=str(request.email))
+    except VerificationResendTooSoonError as exc:
+        raise ApiError(
+            status_code=429,
+            code="VERIFICATION_RESEND_TOO_SOON",
+            message=str(exc),
+        ) from exc
+    except VerificationDeliveryUnavailableError as exc:
+        raise ApiError(
+            status_code=503,
+            code="VERIFICATION_DELIVERY_UNAVAILABLE",
+            message=str(exc),
+        ) from exc
+    return Response(status_code=status.HTTP_202_ACCEPTED)
 
 
 @router.post(
@@ -91,6 +176,12 @@ async def login(
         raise ApiError(
             status_code=403,
             code="ACCOUNT_INACTIVE",
+            message=str(exc),
+        ) from exc
+    except EmailNotVerifiedError as exc:
+        raise ApiError(
+            status_code=403,
+            code="EMAIL_NOT_VERIFIED",
             message=str(exc),
         ) from exc
 

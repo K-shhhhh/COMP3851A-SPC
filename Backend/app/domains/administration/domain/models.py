@@ -190,6 +190,7 @@ class AdminUserSummary:
     status: AdministrationUserStatus
     created_at: datetime
     last_active_at: datetime | None
+    email_verified: bool = True
 
 
 @dataclass(frozen=True, slots=True)

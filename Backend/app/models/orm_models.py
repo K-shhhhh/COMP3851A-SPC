@@ -168,6 +168,7 @@ class User(Base):
         server_default=text("'active'"),
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -179,6 +180,7 @@ class User(Base):
         back_populates="current_owner_user",
         foreign_keys="Group.current_owner",
     )
+
     memberships: Mapped[list[Membership]] = relationship(back_populates="user")
     channels_created: Mapped[list[Channel]] = relationship(
         back_populates="creator",
@@ -228,6 +230,24 @@ class User(Base):
         nullable=False,
         server_default=text("true"),
     )
+
+
+class EmailVerificationChallenge(Base):
+    __tablename__ = "email_verification_challenges"
+
+    challenge_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class UserProfile(Base):
