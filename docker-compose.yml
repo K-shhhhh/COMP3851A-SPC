@@ -54,6 +54,7 @@ services:
   backend:
     build:
       context: ./Backend
+    user: "1000:1000"
     env_file:
       - path: ./.env
         required: false
@@ -109,6 +110,7 @@ services:
   worker:
     build:
       context: ./Backend
+    user: "1000:1000"
     command: celery -A app.workers.celery_app:celery_app worker --loglevel=INFO
     env_file:
       - path: ./.env

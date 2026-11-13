@@ -1,5 +1,4 @@
 import {
-  Bell,
   LogOut,
   Menu,
   Moon,
@@ -18,6 +17,7 @@ import {
 import {
   useTheme,
 } from "../../contexts/ThemeContext.jsx";
+import NotificationCenter from "./NotificationCenter.jsx";
 
 function TopBar({
   sidebarCollapsed = false,
@@ -100,14 +100,7 @@ function TopBar({
           )}
         </button>
 
-        <button
-          className="topbar-icon-button"
-          type="button"
-          title="Notifications"
-          aria-label="Notifications"
-        >
-          <Bell size={20} />
-        </button>
+        <NotificationCenter />
 
         <div className="topbar-user">
 

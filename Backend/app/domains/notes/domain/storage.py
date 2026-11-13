@@ -7,7 +7,7 @@ class AttachmentStorage(ABC):
     """Define private storage operations for uploaded PDFs."""
 
     @abstractmethod
-    async def store_pdf(self, data: bytes) -> str:
+    async def store_pdf(self, data: bytes, subcategory: str = "personal") -> str:
         """Persist PDF bytes and return a trusted private object path."""
 
         raise NotImplementedError
