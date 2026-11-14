@@ -9,6 +9,10 @@ import AdminEditUserDialog from "./AdminEditUserDialog.jsx";
 import { adminCollections, formatDate, formatSize } from "./adminSections.js";
 
 function TableValue({ value, kind }) {
+  if (kind === "verification") {
+    if (typeof value !== "boolean") return "—";
+    return <span className={`admin-pill admin-pill-${value ? "verified" : "unverified"}`}>{value ? "Verified" : "Unverified"}</span>;
+  }
   if (kind === "date") return formatDate(value);
   if (kind === "size") return formatSize(value);
   if (value === null || value === undefined || value === "") return "—";
@@ -34,6 +38,7 @@ export default function AdminCollectionPage({ section }) {
   const [actionError, setActionError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [accountNotice, setAccountNotice] = useState("");
   const [editingUser, setEditingUser] = useState(null);
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -46,7 +51,7 @@ export default function AdminCollectionPage({ section }) {
 
   // Route switching remounts this element with a different section; reset pagination and filters.
   useEffect(() => {
-    setInput(""); setSearch(""); setCursors([null]); setPage(0); setResult(null); setError(null); setSelectedUser(null); setRoleFilter("all"); setStatusFilter("all");
+    setInput(""); setSearch(""); setCursors([null]); setPage(0); setResult(null); setError(null); setAccountNotice(""); setSelectedUser(null); setRoleFilter("all"); setStatusFilter("all");
     setAuditFilters({ admin_id: "", action: "", target_type: "", target_id: "" });
   }, [section]);
 
@@ -95,15 +100,27 @@ export default function AdminCollectionPage({ section }) {
     finally { setActionBusy(false); }
   }
   async function submitCreateUser(payload) {
-    setActionBusy(true); setActionError(null);
-    try { await createAdminUser(payload, accessToken); setShowCreateUser(false); setRevision((value) => value + 1); }
+    setActionBusy(true); setActionError(null); setAccountNotice("");
+    try {
+      const response = await createAdminUser(payload, accessToken);
+      setShowCreateUser(false);
+      setAccountNotice(response?.user?.email_verified === false
+        ? "Account created. The recipient must confirm the verification code sent to their email before signing in."
+        : "Account created successfully.");
+      setRevision((value) => value + 1);
+    }
     catch (caught) { setActionError(caught); } finally { setActionBusy(false); }
   }
   async function submitEditUser(payload) {
-    setActionBusy(true); setActionError(null);
+    setActionBusy(true); setActionError(null); setAccountNotice("");
     try {
-      await updateAdminUser(editingUser.user_id, payload, accessToken);
-      setEditingUser(null); setSelectedUser(null); setRevision((value) => value + 1);
+      const emailChanged = payload.email.toLowerCase() !== editingUser.email.toLowerCase();
+      const response = await updateAdminUser(editingUser.user_id, payload, accessToken);
+      setEditingUser(null); setSelectedUser(null);
+      setAccountNotice(emailChanged && response?.user?.email_verified === false
+        ? "Email updated. A new verification code was sent to the new address; access requires verification."
+        : "Account updated successfully.");
+      setRevision((value) => value + 1);
     } catch (caught) { setActionError(caught); }
     finally { setActionBusy(false); }
   }
@@ -115,6 +132,7 @@ export default function AdminCollectionPage({ section }) {
         <div className="admin-row-actions">{section === "users" && <button type="button" className="admin-button admin-button-primary" onClick={() => { setActionError(null); setShowCreateUser(true); }}><Plus size={16}/> Add user</button>}<button type="button" onClick={() => setRevision((v) => v + 1)} className="admin-button admin-button-outline" disabled={loading}><RefreshCw size={16} /> Refresh</button></div>
       </div>
       <AdminAlert error={error} retry={() => setRevision((v) => v + 1)} />
+      {accountNotice && <div className="admin-account-notice" role="status">{accountNotice}</div>}
       <section className="admin-panel admin-table-panel">
         <div className="admin-list-toolbar">
           <div><h2>All {config.title.toLowerCase()}</h2><p>Live records from the SPC backend</p></div>
@@ -185,6 +203,7 @@ export default function AdminCollectionPage({ section }) {
               {config.columns.map(([label, key, kind]) => <div key={key}><dt>{label}</dt><dd><TableValue value={selectedUser[key]} kind={kind}/></dd></div>)}
               <div><dt>User ID</dt><dd>{selectedUser.user_id || "—"}</dd></div>
             </dl>
+            {selectedUser.email_verified === false && <p className="admin-user-modal-note">Email verification is pending. The account cannot sign in until the recipient confirms the code.</p>}
             <p className="admin-user-modal-note">Account actions are audited and require a reason. Self-deactivation and deactivation of the final administrator are blocked by the backend.</p>
           </section>
         </div>

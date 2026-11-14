@@ -1378,3 +1378,25 @@ input {
     height: 38px;
   }
 }
+/* Shared guidance and feedback for registration, login, and email verification. */
+.auth-field-help {
+  margin: 8px 0 0;
+  color: var(--spc-muted, #7e8798);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.auth-success {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--spc-border);
+  border-radius: 9px;
+  color: var(--spc-success, #278056);
+  background: var(--spc-success-bg, #eaf8f0);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.auth-success svg { flex-shrink: 0; }

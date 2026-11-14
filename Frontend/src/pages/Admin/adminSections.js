@@ -28,7 +28,7 @@ export const adminCollections = {
     title: "User management",
     description: "Search and inspect registered accounts. Account changes require backend governance support.",
     columns: [
-      ["Name", "full_name"], ["Email", "email"], ["Role", "role", "status"],
+      ["Name", "full_name"], ["Email", "email"], ["Email verification", "email_verified", "verification"], ["Role", "role", "status"],
       ["Status", "status", "status"], ["Last active", "last_active_at", "date"],
     ],
   },

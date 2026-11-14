@@ -1,0 +1,39 @@
+/* Reuse the existing SPC auth layout, colors and light/dark theme tokens. */
+.verification-hero-content { display: flex; flex-direction: column; }
+.verification-hero-note {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 34px;
+  padding: 20px;
+  max-width: 430px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 14px;
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.verification-hero-note svg { flex-shrink: 0; }
+.verification-symbol {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  color: var(--spc-purple);
+  background: var(--spc-purple-soft);
+  border-radius: 17px;
+}
+.auth-field .verification-code-input {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: .35em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.verification-resend { margin-top: 24px; text-align: center; }
+.verification-resend p { margin: 0 0 8px; color: var(--spc-muted); font-size: 12px; }
+.verification-resend .auth-link-button { font-size: 12px; }
+.verification-resend .auth-link-button:disabled { opacity: .65; cursor: not-allowed; }
+@media (max-width: 950px) { .verification-hero-note { display: none; } }

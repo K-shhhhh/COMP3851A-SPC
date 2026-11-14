@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import {
   useNavigate,
+  useLocation,
 } from "react-router-dom";
 
 import {
@@ -28,11 +29,14 @@ import {
   readSessionNotice,
 } from "../../utils/sessionNotice.js";
 
+import { rememberPendingVerification } from "../../utils/pendingVerification.js";
 import "../../styles/styles.css";
 
 function LoginPage() {
   const navigate =
     useNavigate();
+  const location = useLocation();
+  const notice = location.state?.notice;
 
   const {
     login,
@@ -116,6 +120,9 @@ function LoginPage() {
         setError(
           "Incorrect email or password.",
         );
+      } else if (err.code === "EMAIL_NOT_VERIFIED") {
+        const pending = rememberPendingVerification(email);
+        navigate("/verify-email", { replace: true, state: { email: pending?.email } });
       } else if (
         err.code ===
         "ACCOUNT_INACTIVE"
@@ -456,6 +463,9 @@ function LoginPage() {
 
             </div>
 
+            {notice && (
+              <div className="auth-success" role="status">{notice}</div>
+            )}
             {error && (
               <div className="auth-error">
                 {error}

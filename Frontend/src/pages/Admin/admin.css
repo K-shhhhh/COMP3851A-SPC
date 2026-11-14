@@ -360,3 +360,18 @@
 .admin-log-muted { font-size:12px; color:var(--admin-muted); }
 .admin-log-help { background:var(--admin-canvas); color:var(--admin-muted); border-radius:9px; padding:12px 14px; margin:22px 0 0; font-size:12px; line-height:1.6; }
 @media (max-width:620px) { .admin-log-modal { padding:18px; } .admin-log-details-grid { grid-template-columns:1fr; } .admin-log-filter-form { padding:16px; } .admin-log-filter-actions { width:100%; } }
+
+/* Email verification status and guidance (frontend uses backend as authority). */
+.admin-pill-verified { color: var(--admin-success-color); background: var(--admin-success-bg); }
+.admin-pill-unverified { color: var(--admin-warning-color); background: var(--admin-warning-bg); }
+.admin-email-guidance { display: block; margin-top: 7px; color: var(--admin-muted); font-size: 12px; line-height: 1.5; }
+.admin-account-notice {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  color: var(--admin-success-color);
+  background: var(--admin-success-bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
