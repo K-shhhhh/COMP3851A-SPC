@@ -7,6 +7,7 @@ import {
 
 import LoginPage from "./pages/Login/LoginPage.jsx";
 import RegisterPage from "./pages/Register/RegisterPage";
+import EmailVerificationPage from "./pages/EmailVerification/EmailVerificationPage.jsx";
 import DashboardPage from "./pages/Dashboard/DashboardPage";
 import UploadNotesPage from "./pages/UploadNotes/UploadNotesPage";
 import NotesPage from "./pages/Notes/NotesPage.jsx";
@@ -50,6 +51,11 @@ function App() {
         <Route
           path="/register"
           element={<GuestRoute><RegisterPage /></GuestRoute>}
+        />
+
+        <Route
+          path="/verify-email"
+          element={<GuestRoute><EmailVerificationPage /></GuestRoute>}
         />
 
         <Route

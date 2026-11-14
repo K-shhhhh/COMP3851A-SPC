@@ -15,6 +15,20 @@ export function register({
   });
 }
 
+export function confirmEmailVerification({ email, code }) {
+  return apiRequest("/auth/email-verification/confirm", {
+    method: "POST",
+    body: JSON.stringify({ email, code }),
+  });
+}
+
+export function resendEmailVerification({ email }) {
+  return apiRequest("/auth/email-verification/resend", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
 export function login({
   email,
   password,

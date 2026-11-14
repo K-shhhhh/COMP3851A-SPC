@@ -23,6 +23,7 @@ import {
   useTheme,
 } from "../../contexts/ThemeContext.jsx";
 
+import { rememberPendingVerification } from "../../utils/pendingVerification.js";
 import "../../styles/styles.css";
 
 function RegisterPage() {
@@ -120,22 +121,25 @@ function RegisterPage() {
     try {
       setIsSubmitting(true);
 
-      await register({
-        fullName:
-          fullName.trim(),
-
-        email:
-          email.trim(),
-
+      const result = await register({
+        fullName: fullName.trim(),
+        email: email.trim(),
         password,
       });
 
-      navigate(
-        "/login",
-        {
+      if (result?.verification_required) {
+        // Registration does not create a session until the email is verified.
+        const pending = rememberPendingVerification(result.email || email, {
+          expiresIn: result.verification_expires_in,
+          cooldownSeconds: 60,
+        });
+        navigate("/verify-email", { replace: true, state: { email: pending?.email } });
+      } else {
+        navigate("/login", {
           replace: true,
-        },
-      );
+          state: { notice: "Account created. You can now sign in." },
+        });
+      }
     } catch (err) {
       if (
         err.code ===
@@ -144,6 +148,10 @@ function RegisterPage() {
         setError(
           "An account with this email already exists.",
         );
+      } else if (err.code === "INSTITUTIONAL_EMAIL_REQUIRED") {
+        setError(err.message || "Student accounts require an @uon.edu.au email address.");
+      } else if (err.code === "VERIFICATION_DELIVERY_UNAVAILABLE") {
+        setError("Email delivery is temporarily unavailable. Please try again later.");
       } else if (
         err.code ===
         "VALIDATION_ERROR"
@@ -351,9 +359,8 @@ function RegisterPage() {
             </h2>
 
             <p>
-              Join Smart Peer
-              Companion and start
-              studying smarter.
+              Use your university email to join
+              Smart Peer Companion.
             </p>
 
           </div>
@@ -404,7 +411,7 @@ function RegisterPage() {
               <input
                 id="register-email"
                 type="email"
-                placeholder="you@university.edu"
+                placeholder="student@uon.edu.au"
                 value={email}
                 onChange={(
                   event,
@@ -418,6 +425,10 @@ function RegisterPage() {
                   isSubmitting
                 }
               />
+              <p className="auth-field-help">
+                Student accounts normally require @uon.edu.au. Approved demo/pilot
+                addresses are also accepted by the backend.
+              </p>
 
             </div>
 

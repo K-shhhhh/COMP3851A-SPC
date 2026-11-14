@@ -37,10 +37,14 @@ async function sendRequest(path, options, accessToken) {
     throw new ApiError("Unable to reach the backend.", { retryable: true });
   }
 
-  if (response.status === 204) return null;
+  if (response.status === 204 || response.status === 205) return null;
   let payload;
   try {
-    payload = await response.json();
+    // The email-verification resend endpoint returns 202 without JSON.
+    // Keep rejecting invalid non-empty success bodies rather than hiding API problems.
+    const body = await response.text();
+    if (response.ok && response.status === 202 && !body.trim()) return null;
+    payload = JSON.parse(body);
   } catch (error) {
     if (error?.name === "AbortError") throw error;
     if (response.ok) {
