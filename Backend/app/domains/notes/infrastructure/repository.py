@@ -174,27 +174,28 @@ class PostgreSQLAttachmentRepository(AttachmentRepository):
         user_uuid = self._parse_uuid(user_id)
         if user_uuid is None:
             return None
-        statement = (
-            select(ORMAttachment)
-            .outerjoin(
-                Membership,
-                Membership.group_id == ORMAttachment.group_id,
-            )
+        membership_exists = (
+            select(Membership.membership_id)
             .where(
-                ORMAttachment.attachment_id == attachment_id,
-                ORMAttachment.deleted_at.is_(None),
-                or_(
-                    (
-                        ORMAttachment.show_in_library.is_(True)
-                        & (ORMAttachment.uploaded_by == user_uuid)
-                    ),
-                    (
-                        ORMAttachment.channel_id.is_not(None)
-                        & (Membership.user_id == user_uuid)
-                    ),
-                ),
+                Membership.group_id == ORMAttachment.group_id,
+                Membership.user_id == user_uuid,
             )
-            .distinct()
+            .correlate(ORMAttachment)
+            .exists()
+        )
+        statement = select(ORMAttachment).where(
+            ORMAttachment.attachment_id == attachment_id,
+            ORMAttachment.deleted_at.is_(None),
+            or_(
+                (
+                    ORMAttachment.show_in_library.is_(True)
+                    & (ORMAttachment.uploaded_by == user_uuid)
+                ),
+                (
+                    ORMAttachment.channel_id.is_not(None)
+                    & membership_exists
+                ),
+            ),
         )
         attachment = await self.session.scalar(statement)
         return self._to_domain(attachment) if attachment is not None else None
