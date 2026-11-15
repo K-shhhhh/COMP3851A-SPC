@@ -1,6 +1,8 @@
 """PostgreSQL persistence for personal AI Assistant conversations."""
 
 import uuid
+from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -192,8 +194,19 @@ class PostgreSQLChatRepository(ChatRepository):
             .join(Group, Group.group_id == Channel.group_id)
             .where(*filters)
         )
+        latest_preview = (
+            select(Message.message_content)
+            .where(
+                Message.channel_id == Channel.channel_id,
+                Message.deleted_at.is_(None),
+            )
+            .order_by(Message.sent_at.desc(), Message.message_id.desc())
+            .limit(1)
+            .correlate(Channel)
+            .scalar_subquery()
+        )
         result = await self.session.execute(
-            select(Channel, Group)
+            select(Channel, Group, latest_preview)
             .join(Group, Group.group_id == Channel.group_id)
             .where(*filters)
             .order_by(
@@ -205,15 +218,10 @@ class PostgreSQLChatRepository(ChatRepository):
             .offset(offset)
             .limit(limit)
         )
-        chats = []
-        for channel, group in result.all():
-            chats.append(
-                self._to_chat(
-                    channel,
-                    group,
-                    preview=await self._latest_preview(channel.channel_id),
-                )
-            )
+        chats = [
+            self._to_chat(channel, group, preview=preview)
+            for channel, group, preview in result.all()
+        ]
         return chats, total or 0
 
     async def get_owned_chat(
@@ -401,27 +409,37 @@ class PostgreSQLChatRepository(ChatRepository):
             await self.session.rollback()
             raise
 
+    async def _response_sources_map(
+        self,
+        response_ids: Sequence[int],
+    ) -> dict[int, tuple[ChatSource, ...]]:
+        if not response_ids:
+            return {}
+        rows = await self.session.execute(
+            select(AIResponseSource.response_id, Chunk, Attachment)
+            .join(Chunk, Chunk.chunk_id == AIResponseSource.chunk_id)
+            .join(Attachment, Attachment.attachment_id == Chunk.attachment_id)
+            .where(AIResponseSource.response_id.in_(response_ids))
+            .order_by(AIResponseSource.response_id, AIResponseSource.retrieval_id)
+        )
+        grouped: dict[int, list[ChatSource]] = defaultdict(list)
+        for resp_id, chunk, attachment in rows.all():
+            grouped[resp_id].append(
+                ChatSource(
+                    note_id=attachment.attachment_id,
+                    note_title=attachment.title,
+                    chunk_id=chunk.chunk_id,
+                    page=chunk.source_page,
+                )
+            )
+        return {resp_id: tuple(items) for resp_id, items in grouped.items()}
+
     async def _response_sources(
         self,
         response_id: int,
     ) -> tuple[ChatSource, ...]:
-        rows = await self.session.execute(
-            select(Chunk, Attachment)
-            .join(Attachment, Attachment.attachment_id == Chunk.attachment_id)
-            .join(
-                AIResponseSource,
-                AIResponseSource.chunk_id == Chunk.chunk_id,
-            )
-            .where(AIResponseSource.response_id == response_id)
-        )
-        return tuple(
-            ChatSource(
-                note_id=attachment.attachment_id,
-                note_title=attachment.title,
-                chunk_id=chunk.chunk_id,
-                page=chunk.source_page,
-            )
-            for chunk, attachment in rows.all()
+        return (await self._response_sources_map([response_id])).get(
+            response_id, ()
         )
 
     async def list_messages(
@@ -448,40 +466,70 @@ class PostgreSQLChatRepository(ChatRepository):
             )
             .order_by(Message.sent_at, Message.message_id)
         )
-        history: list[ChatMessage] = []
-        for message in message_result.all():
-            history.append(
-                ChatMessage(
-                    message_id=message.message_id,
-                    chat_id=chat_id,
-                    role=ChatMessageRole.USER,
-                    content=message.message_content,
-                    status=ChatMessageStatus.COMPLETED,
-                    created_at=message.sent_at,
-                )
-            )
-            response_result = await self.session.scalars(
+        messages = list(message_result.all())
+        if not messages:
+            return [], 0
+
+        responses_by_message: dict[int, list[AIResponse]] = defaultdict(list)
+        response_rows = (
+            await self.session.scalars(
                 select(AIResponse)
                 .where(
-                    AIResponse.message_id == message.message_id,
+                    AIResponse.message_id.in_(
+                        [message.message_id for message in messages]
+                    ),
                     AIResponse.is_selected.is_(True),
                 )
-                .order_by(AIResponse.attempt_number)
+                .order_by(AIResponse.message_id, AIResponse.attempt_number)
             )
-            for response in response_result.all():
+        ).all()
+        for response in response_rows:
+            responses_by_message[response.message_id].append(response)
+
+        entries: list[tuple[str, Message | AIResponse]] = []
+        for message in messages:
+            entries.append(("user", message))
+            for response in responses_by_message[message.message_id]:
+                entries.append(("assistant", response))
+
+        total = len(entries)
+        page_entries = entries[offset : offset + limit]
+        assistant_response_ids = [
+            item.response_id
+            for kind, item in page_entries
+            if kind == "assistant"
+        ]
+        sources_by_response = await self._response_sources_map(
+            assistant_response_ids
+        )
+
+        history: list[ChatMessage] = []
+        for kind, item in page_entries:
+            if kind == "user":
+                assert isinstance(item, Message)
+                history.append(
+                    ChatMessage(
+                        message_id=item.message_id,
+                        chat_id=chat_id,
+                        role=ChatMessageRole.USER,
+                        content=item.message_content,
+                        status=ChatMessageStatus.COMPLETED,
+                        created_at=item.sent_at,
+                    )
+                )
+            else:
+                assert isinstance(item, AIResponse)
                 history.append(
                     ChatMessage(
                         message_id=(
-                            _ASSISTANT_ID_OFFSET + response.response_id
+                            _ASSISTANT_ID_OFFSET + item.response_id
                         ),
                         chat_id=chat_id,
                         role=ChatMessageRole.ASSISTANT,
-                        content=str(response.response.get("content", "")),
+                        content=str(item.response.get("content", "")),
                         status=ChatMessageStatus.COMPLETED,
-                        created_at=response.generated_at,
-                        sources=await self._response_sources(
-                            response.response_id
-                        ),
+                        created_at=item.generated_at,
+                        sources=sources_by_response.get(item.response_id, ()),
                     )
                 )
-        return history[offset : offset + limit], len(history)
+        return history, total

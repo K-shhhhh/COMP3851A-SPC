@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = (
         "postgresql+psycopg://postgres:password@localhost:5432/spc"
     )
+    DB_ECHO: bool = False
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
 
     SECRET_KEY: str = "CHANGE_ME"
 
@@ -169,6 +174,14 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_VERIFICATION_MAX_ATTEMPTS must be positive")
         if self.EMAIL_VERIFICATION_RESEND_SECONDS < 0:
             raise ValueError("EMAIL_VERIFICATION_RESEND_SECONDS cannot be negative")
+        if self.DB_POOL_SIZE <= 0:
+            raise ValueError("DB_POOL_SIZE must be positive")
+        if self.DB_MAX_OVERFLOW < 0:
+            raise ValueError("DB_MAX_OVERFLOW cannot be negative")
+        if self.DB_POOL_TIMEOUT <= 0:
+            raise ValueError("DB_POOL_TIMEOUT must be positive")
+        if self.DB_POOL_RECYCLE <= 0:
+            raise ValueError("DB_POOL_RECYCLE must be positive")
 
         return self
 

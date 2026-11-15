@@ -1,13 +1,12 @@
 from __future__ import annotations
 import enum
-import ipaddress
 import uuid
 from datetime import datetime
 from typing import Any
 from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Computed, DateTime, Float, ForeignKey, ForeignKeyConstraint, Identity, Index, Integer, String, Text, UniqueConstraint, func, text)
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
-from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # -----------------------------------------------------------------------------
@@ -115,22 +114,6 @@ class ReportActivityAction(str, enum.Enum):
 class InAppNotificationType(str, enum.Enum):
     NEW_GROUP_MESSAGE = "new_group_message"
     GROUP_MENTION = "group_mention"
-
-
-class Action(str, enum.Enum):
-    LOGIN = "login"
-    LOGOUT = "logout"
-    CREATE = "create"
-    UPDATE = "update"
-    DELETE = "delete"
-    UPLOAD = "upload"
-    DOWNLOAD = "download"
-    SEND = "send"
-    EDIT = "edit"
-    JOIN = "join"
-    LEAVE = "leave"
-    AI_REQUEST = "ai_request"
-    AI_FEEDBACK = "ai_feedback"
 
 
 def pg_enum(enum_class: type[enum.Enum], name: str) -> PGEnum:
@@ -309,19 +292,6 @@ class Notification(Base):
             "message_id",
             "notification_type",
             name="uq_notifications_recipient_message_type",
-        ),
-        Index(
-            "ix_notifications_recipient_created",
-            "recipient_user_id",
-            "created_at",
-            "notification_id",
-        ),
-        Index(
-            "ix_notifications_recipient_unread",
-            "recipient_user_id",
-            "created_at",
-            "notification_id",
-            postgresql_where=text("read_at IS NULL"),
         ),
     )
 
@@ -1157,31 +1127,6 @@ class ReportActivityEvent(Base):
     )
 
 
-class UserActivityLog(Base):
-    __tablename__ = "user_activity_logs"
-
-    activity_id: Mapped[int] = mapped_column(
-        BigInteger,
-        Identity(always=True),
-        primary_key=True,
-    )
-    # Intentionally no ForeignKey: the SQL schema does not define one.
-    user_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
-    user_action: Mapped[Action] = mapped_column(
-        pg_enum(Action, "actions"), nullable=False
-    )
-    entity_type: Mapped[str | None] = mapped_column(Text)
-    entity_id: Mapped[str | None] = mapped_column(Text)
-    ip_address: Mapped[ipaddress.IPv4Address | ipaddress.IPv6Address | None] = mapped_column(
-        INET
-    )
-    user_agent: Mapped[str | None] = mapped_column(Text)
-
-    # "metadata" is reserved by SQLAlchemy Declarative, so the Python attribute is named metadata_ while the actual PostgreSQL column remains "metadata".
-    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
 # -----------------------------------------------------------------------------
 # Indexes 
 # -----------------------------------------------------------------------------
@@ -1195,7 +1140,6 @@ Index(
     postgresql_where=Channel.deleted_at.is_(None),
 )
 
-Index("ix_memberships_group_id", Membership.group_id)
 Index(
     "uq_memberships_group_owner", Membership.group_id, unique=True,
     postgresql_where=Membership.member_role == MemberRole.OWNER,
@@ -1223,10 +1167,23 @@ Index(
     "ix_users_active_email", func.lower(User.email),
     postgresql_where=User.deleted_at.is_(None) & (User.status == ActivityStatus.ACTIVE),
 )
+Index("ix_users_email_lower", func.lower(User.email))
+Index(
+    "ix_users_active_created_id",
+    User.created_at.desc(),
+    User.user_id.desc(),
+    postgresql_where=User.deleted_at.is_(None),
+)
 Index(
     "ix_groups_active_type_updated", Group.group_type,
     func.coalesce(Group.last_updated_at, Group.created_at).desc(), Group.group_id,
     postgresql_where=Group.deleted_at.is_(None),
+)
+Index(
+    "ix_groups_type_created_id",
+    Group.group_type,
+    Group.created_at.desc(),
+    Group.group_id.desc(),
 )
 Index(
     "ix_groups_active_owner_updated", Group.created_by,
@@ -1239,10 +1196,34 @@ Index(
     postgresql_where=Channel.deleted_at.is_(None),
 )
 Index(
+    "ix_channels_active_group_updated",
+    Channel.group_id,
+    func.coalesce(Channel.last_updated_at, Channel.created_at).desc(),
+    Channel.channel_id,
+    postgresql_where=Channel.deleted_at.is_(None),
+)
+Index(
     "ix_messages_active_channel_sent", Message.channel_id, Message.sent_at, Message.message_id,
     postgresql_where=Message.deleted_at.is_(None),
 )
 Index("ix_message_mentions_user_id", MessageMention.user_id)
+Index(
+    "ix_notifications_recipient_created",
+    Notification.recipient_user_id,
+    Notification.notification_id.desc(),
+    Notification.created_at.desc(),
+)
+Index(
+    "ix_notifications_recipient_unread",
+    Notification.recipient_user_id,
+    Notification.notification_id.desc(),
+    Notification.created_at.desc(),
+    postgresql_where=Notification.read_at.is_(None),
+)
+Index("ix_notifications_actor_user_id", Notification.actor_user_id)
+Index("ix_notifications_group_id", Notification.group_id)
+Index("ix_notifications_channel_id", Notification.channel_id)
+Index("ix_notifications_message_id", Notification.message_id)
 Index(
     "ix_attachments_ready_group_channel", Attachment.group_id, Attachment.channel_id, Attachment.attachment_id,
     postgresql_where=Attachment.deleted_at.is_(None) & (Attachment.processing_status == AttachmentStatus.READY),
@@ -1273,6 +1254,11 @@ Index(
     Attachment.uploaded_by, Attachment.uploaded_at.desc(),
     postgresql_where=Attachment.deleted_at.is_(None) & Attachment.show_in_library.is_(True),
 )
+Index(
+    "ix_attachments_uploaded_id",
+    Attachment.uploaded_at.desc(),
+    Attachment.attachment_id.desc(),
+)
 
 Index(
     "ix_chunks_vector_embedding_hnsw",
@@ -1282,7 +1268,6 @@ Index(
     postgresql_ops={"vector_embedding": "vector_cosine_ops"},
 )
 
-Index("ix_user_reports_reporter_user_id", UserReport.reporter_user_id)
 Index(
     "ix_user_reports_reporter_created_id",
     UserReport.reporter_user_id,
@@ -1393,20 +1378,8 @@ Index(
     AuditEvent.target_id,
     AuditEvent.event_timestamp.desc(),
 )
-Index("ix_audit_events_event_timestamp", AuditEvent.event_timestamp.desc())
 Index(
     "ix_audit_events_timestamp_id",
     AuditEvent.event_timestamp.desc(),
     AuditEvent.audit_event_id.desc(),
-)
-
-Index(
-    "ix_user_activity_logs_user_created",
-    UserActivityLog.user_id,
-    UserActivityLog.created_at.desc(),
-)
-Index(
-    "ix_user_activity_logs_action_created",
-    UserActivityLog.user_action,
-    UserActivityLog.created_at.desc(),
 )

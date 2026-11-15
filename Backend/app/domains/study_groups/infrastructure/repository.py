@@ -5,6 +5,8 @@ It also repeats concurrency-sensitive membership and capacity rules inside the
 database transaction so simultaneous requests cannot bypass them.
 """
 
+from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -298,21 +300,10 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             return None
         return await self._channel_row(group_id, channel_id, for_update=True)
 
-    async def _message_to_domain(self, message: ORMMessage, group_id: UUID) -> StudyGroupMessage:
-        mentioned_ids = await self._session.scalars(
-            select(MessageMention.user_id)
-            .where(MessageMention.message_id == message.message_id)
-            .order_by(MessageMention.user_id)
-        )
-        return StudyGroupMessage(
-            message_id=message.message_id, group_id=str(group_id),
-            channel_id=str(message.channel_id), author_id=str(message.user_id),
-            content=message.message_content, sent_at=message.sent_at,
-            mentioned_user_ids=tuple(str(user_id) for user_id in mentioned_ids),
-            ai_mode_used=StudyGroupAiMode(message.ai_mode_used.value) if message.ai_mode_used is not None else None,
-            ai_response=await self._selected_response(message, group_id),
-            edited_at=message.edited_at, deleted_at=message.deleted_at,
-        )
+    async def _message_to_domain(
+        self, message: ORMMessage, group_id: UUID
+    ) -> StudyGroupMessage:
+        return (await self._messages_to_domain([message], group_id))[0]
 
     @staticmethod
     def _source_query(group_id: UUID, channel_id: UUID):
@@ -336,29 +327,116 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             )
         )
 
-    async def _selected_response(self, message: ORMMessage, group_id: UUID) -> StudyGroupAiResponse | None:
-        response = await self._session.scalar(
-            select(AIResponse).where(
-                AIResponse.message_id == message.message_id,
-                AIResponse.is_selected.is_(True),
-            ).order_by(AIResponse.attempt_number.desc(), AIResponse.response_id.desc()).limit(1)
-        )
-        if response is None:
-            return None
-        rows = await self._session.execute(
-            self._source_query(group_id, message.channel_id)
-            .join(AIResponseSource, AIResponseSource.chunk_id == Chunk.chunk_id)
-            .where(AIResponseSource.response_id == response.response_id)
-            .order_by(AIResponseSource.retrieval_id)
-        )
-        return StudyGroupAiResponse(
-            response_id=response.response_id, mode=StudyGroupAiMode(response.ai_mode_used.value),
-            content=response.response["content"], generated_at=response.generated_at,
-            sources=tuple(ChatSource(
-                note_id=attachment.attachment_id, note_title=attachment.title,
-                chunk_id=chunk.chunk_id, page=chunk.source_page,
-            ) for chunk, attachment in rows),
-        )
+    async def _messages_to_domain(
+        self,
+        messages: Sequence[ORMMessage],
+        group_id: UUID,
+    ) -> list[StudyGroupMessage]:
+        """Batch-hydrate mentions, selected AI responses, and citations for messages."""
+
+        if not messages:
+            return []
+
+        message_ids = [message.message_id for message in messages]
+        mentions_by_message: dict[int, list[str]] = defaultdict(list)
+        for msg_id, user_id in (
+            await self._session.execute(
+                select(MessageMention.message_id, MessageMention.user_id)
+                .where(MessageMention.message_id.in_(message_ids))
+                .order_by(MessageMention.message_id, MessageMention.user_id)
+            )
+        ).all():
+            mentions_by_message[msg_id].append(str(user_id))
+
+        selected_by_message: dict[int, AIResponse] = {}
+        for response in (
+            await self._session.scalars(
+                select(AIResponse)
+                .where(
+                    AIResponse.message_id.in_(message_ids),
+                    AIResponse.is_selected.is_(True),
+                )
+                .order_by(
+                    AIResponse.message_id,
+                    AIResponse.attempt_number.desc(),
+                    AIResponse.response_id.desc(),
+                )
+            )
+        ).all():
+            selected_by_message.setdefault(response.message_id, response)
+
+        sources_by_response: dict[int, tuple[ChatSource, ...]] = {}
+        if selected_by_message:
+            response_ids_by_channel: dict[UUID, list[int]] = defaultdict(list)
+            for message in messages:
+                response = selected_by_message.get(message.message_id)
+                if response is not None:
+                    response_ids_by_channel[message.channel_id].append(
+                        response.response_id
+                    )
+            for ch_id, resp_ids in response_ids_by_channel.items():
+                rows = await self._session.execute(
+                    self._source_query(group_id, ch_id)
+                    .add_columns(AIResponseSource.response_id)
+                    .join(
+                        AIResponseSource,
+                        AIResponseSource.chunk_id == Chunk.chunk_id,
+                    )
+                    .where(AIResponseSource.response_id.in_(resp_ids))
+                    .order_by(
+                        AIResponseSource.response_id,
+                        AIResponseSource.retrieval_id,
+                    )
+                )
+                grouped_sources: dict[int, list[ChatSource]] = defaultdict(list)
+                for chunk, attachment, resp_id in rows:
+                    grouped_sources[resp_id].append(
+                        ChatSource(
+                            note_id=attachment.attachment_id,
+                            note_title=attachment.title,
+                            chunk_id=chunk.chunk_id,
+                            page=chunk.source_page,
+                        )
+                    )
+                for resp_id, items in grouped_sources.items():
+                    sources_by_response[resp_id] = tuple(items)
+
+        hydrated: list[StudyGroupMessage] = []
+        for message in messages:
+            response = selected_by_message.get(message.message_id)
+            ai_response = (
+                StudyGroupAiResponse(
+                    response_id=response.response_id,
+                    mode=StudyGroupAiMode(response.ai_mode_used.value),
+                    content=response.response["content"],
+                    generated_at=response.generated_at,
+                    sources=sources_by_response.get(response.response_id, ()),
+                )
+                if response is not None
+                else None
+            )
+            hydrated.append(
+                StudyGroupMessage(
+                    message_id=message.message_id,
+                    group_id=str(group_id),
+                    channel_id=str(message.channel_id),
+                    author_id=str(message.user_id),
+                    content=message.message_content,
+                    sent_at=message.sent_at,
+                    mentioned_user_ids=tuple(
+                        mentions_by_message[message.message_id]
+                    ),
+                    ai_mode_used=(
+                        StudyGroupAiMode(message.ai_mode_used.value)
+                        if message.ai_mode_used is not None
+                        else None
+                    ),
+                    ai_response=ai_response,
+                    edited_at=message.edited_at,
+                    deleted_at=message.deleted_at,
+                )
+            )
+        return hydrated
 
     async def save_ai_response(
         self, *, group_id: str, channel_id: str, message_id: int,
@@ -511,11 +589,16 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         total = int(await self._session.scalar(
             select(func.count()).select_from(statement.subquery())
         ) or 0)
-        messages = await self._session.scalars(
-            statement.order_by(ORMMessage.sent_at, ORMMessage.message_id)
-            .offset(offset).limit(limit)
+        messages = list(
+            (
+                await self._session.scalars(
+                    statement.order_by(ORMMessage.sent_at, ORMMessage.message_id)
+                    .offset(offset)
+                    .limit(limit)
+                )
+            ).all()
         )
-        return [await self._message_to_domain(message, group_uuid) for message in messages], total
+        return await self._messages_to_domain(messages, group_uuid), total
 
     async def get_message(self, *, group_id: str, channel_id: str, message_id: int):
         group_uuid = self._uuid(group_id, "group_id")
@@ -643,10 +726,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         groups = list((await self._session.scalars(statement)).all())
 
         return (
-            [
-                await self._to_summary(group=group, user_id=user_uuid)
-                for group in groups
-            ],
+            await self._to_summaries(groups=groups, user_id=user_uuid),
             total,
         )
 
@@ -706,10 +786,7 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
         groups = list((await self._session.scalars(statement)).all())
 
         return (
-            [
-                await self._to_summary(group=group, user_id=user_uuid)
-                for group in groups
-            ],
+            await self._to_summaries(groups=groups, user_id=user_uuid),
             total,
         )
 
@@ -1098,6 +1175,77 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
             or 0
         )
 
+    async def _to_summaries(
+        self,
+        *,
+        groups: Sequence[ORMGroup],
+        user_id: UUID,
+    ) -> list[StudyGroupSummary]:
+        """Batch-build group summaries with memberships and member counts."""
+
+        if not groups:
+            return []
+
+        group_ids = [group.group_id for group in groups]
+        memberships_by_group = {
+            row.group_id: row
+            for row in (
+                await self._session.scalars(
+                    select(ORMMembership)
+                    .where(
+                        ORMMembership.group_id.in_(group_ids),
+                        ORMMembership.user_id == user_id,
+                    )
+                    .execution_options(populate_existing=True)
+                )
+            ).all()
+        }
+        counts_by_group = {
+            gid: int(cnt)
+            for gid, cnt in (
+                await self._session.execute(
+                    select(
+                        ORMMembership.group_id,
+                        func.count(ORMMembership.membership_id),
+                    )
+                    .where(ORMMembership.group_id.in_(group_ids))
+                    .group_by(ORMMembership.group_id)
+                )
+            ).all()
+        }
+        return [
+            self._build_summary(
+                group=group,
+                member_count=counts_by_group.get(group.group_id, 0),
+                membership=memberships_by_group.get(group.group_id),
+            )
+            for group in groups
+        ]
+
+    def _build_summary(
+        self,
+        *,
+        group: ORMGroup,
+        member_count: int,
+        membership: ORMMembership | None,
+    ) -> StudyGroupSummary:
+        """Assemble a safe StudyGroupSummary from preloaded group metadata."""
+
+        return StudyGroupSummary(
+            group=self._to_domain(group),
+            member_count=member_count,
+            is_member=membership is not None,
+            is_owner=(
+                membership is not None
+                and membership.member_role == MemberRole.OWNER
+            ),
+            membership_role=(
+                StudyGroupMemberRole(membership.member_role.value)
+                if membership is not None
+                else None
+            ),
+        )
+
     async def _to_summary(
         self,
         *,
@@ -1112,16 +1260,10 @@ class PostgreSQLStudyGroupRepository(StudyGroupRepository):
                 group_id=group.group_id,
                 user_id=user_id,
             )
-        return StudyGroupSummary(
-            group=self._to_domain(group),
+        return self._build_summary(
+            group=group,
             member_count=await self._count_members_uuid(group.group_id),
-            is_member=membership is not None,
-            is_owner=membership is not None and membership.member_role == MemberRole.OWNER,
-            membership_role=(
-                StudyGroupMemberRole(membership.member_role.value)
-                if membership is not None
-                else None
-            ),
+            membership=membership,
         )
 
     @staticmethod
