@@ -28,13 +28,7 @@ DEFAULT_CHAT_MODEL = "meta-llama/llama-3.1-8b-instruct"
 CHAT_MODEL = os.environ.get("CHAT_MODEL") or DEFAULT_CHAT_MODEL
 
 
-def generate_answer(
-    question: str,
-    context: str,
-    model: str = CHAT_MODEL,
-    response_format: str | None = None,
-    mode: str | None = None,
-    history: list[dict[str, str]] | None = None,
+def generate_answer(question: str, context: str, model: str = CHAT_MODEL, response_format: str | None = None, mode: str | None = None, history: list[dict[str, str]] | None = None,
 ) -> str:
     """Generate a grounded answer, optionally in a requested display format
     and AI mode (default/summarizer/quiz/facilitator).
