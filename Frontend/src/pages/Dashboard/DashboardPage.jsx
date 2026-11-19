@@ -3,8 +3,6 @@ import {
   BrainCircuit,
   Clock3,
   FileText,
-  Target,
-  TrendingUp,
   Upload,
   Users,
 } from "lucide-react";
@@ -71,7 +69,6 @@ function formatRelativeTime(value) {
 function DashboardPage() {
   const { accessToken } = useAuth();
 
-  const [totalNotes, setTotalNotes] = useState(0);
   const [studyGroups, setStudyGroups] = useState(0);
   const [recentNotes, setRecentNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +108,6 @@ function DashboardPage() {
 
         if (cancelled) return;
 
-        setTotalNotes(notesResult?.total ?? notesResult?.items?.length ?? 0);
         setStudyGroups(groupsResult?.total ?? groupsResult?.items?.length ?? 0);
         setRecentNotes(notesResult?.items ?? []);
       } catch (error) {
@@ -155,17 +151,6 @@ function DashboardPage() {
         <section className="dashboard-stats">
           <div className="dashboard-stat-card">
             <div className="dashboard-stat-icon">
-              <FileText size={22} />
-            </div>
-            <div>
-              <span>Total Notes</span>
-              <strong>{loading ? "—" : totalNotes}</strong>
-              <small>Files you have uploaded</small>
-            </div>
-          </div>
-
-          <div className="dashboard-stat-card">
-            <div className="dashboard-stat-icon">
               <Users size={22} />
             </div>
             <div>
@@ -183,47 +168,6 @@ function DashboardPage() {
               <span>Signed in for</span>
               <strong>{formatDuration(sessionSeconds)}</strong>
               <small>Logs out after 30 minutes of inactivity</small>
-            </div>
-          </div>
-        </section>
-
-        <section className="dashboard-learning-grid">
-          <div className="dashboard-panel dashboard-progress-panel">
-            <div className="dashboard-panel-header">
-              <div>
-                <h2>
-                  <TrendingUp size={18} />
-                  Topic Coverage
-                </h2>
-                <p>Progress data will be connected once backend integration is finalised</p>
-              </div>
-            </div>
-
-            <div className="dashboard-progress-empty">
-              <Target size={28} />
-              <strong>Waiting for quiz integration</strong>
-              <span>
-                Your topic coverage will appear here once quiz results are connected.
-              </span>
-            </div>
-          </div>
-
-          <div className="dashboard-panel dashboard-review-panel">
-            <div className="dashboard-panel-header">
-              <div>
-                <h2>
-                  <Target size={18} />
-                  Review Next
-                </h2>
-                <p>Recommendations will use the final backend progress data</p>
-              </div>
-            </div>
-
-            <div className="dashboard-progress-empty">
-              <strong>Waiting for quiz integration</strong>
-              <span>
-                Your recommended review topics will appear here once the final API is connected.
-              </span>
             </div>
           </div>
         </section>

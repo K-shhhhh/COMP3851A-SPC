@@ -3544,3 +3544,42 @@
 .message-source-link:hover {
   text-decoration: underline;
 }
+
+/* Per-conversation selected-note context, visible beside the chat composer. */
+.chat-note-scope {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 9px;
+}
+.chat-note-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--spc-purple-soft);
+  color: var(--spc-purple);
+  font-size: 11px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-note-scope-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-note-scope-notice {
+  color: var(--spc-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+@media (max-width: 700px) {
+  .response-format-control { flex-wrap: wrap; }
+  .chat-note-scope-chip { font-size: 10px; }
+}
