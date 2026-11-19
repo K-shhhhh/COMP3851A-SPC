@@ -121,7 +121,7 @@ export function sendChatMessage(
   chatId,
   content,
   {
-    responseFormat = null,
+    responseFormat = "paragraph",
     noteId = null,
   } = {},
 ) {
@@ -129,14 +129,8 @@ export function sendChatMessage(
     content,
   };
 
-  /*
-   * Optional: "paragraph", "bullet_points" or "table".
-   * Leave it out so the AI follows what the student types.
-   */
-  if (responseFormat) {
-    body.response_format =
-      responseFormat;
-  }
+  // Explicitly send the chosen format with every personal AI message.
+  body.response_format = responseFormat || "paragraph";
 
   /*
    * Optional: limit the answer to one of the student's

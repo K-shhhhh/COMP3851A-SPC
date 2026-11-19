@@ -38,6 +38,12 @@ import {
 
 import { getNotes } from "../../services/noteService.js";
 import {
+  pruneUnavailableNoteChoices,
+  readChatNoteChoices,
+  setChatNoteChoice,
+  writeChatNoteChoices,
+} from "../../utils/chatNotePreferences.js";
+import {
   citationViewerPath,
 } from "../../utils/citationLinks.js";
 
@@ -66,7 +72,7 @@ const suggestedPrompts = [
 ];
 
 function CompanionPage() {
-  const { accessToken, logout } = useAuth();
+  const { accessToken, logout, user } = useAuth();
 
   const {
     requestConfirmation,
@@ -160,24 +166,51 @@ function CompanionPage() {
   ] = useState(false);
 
   /*
-   * AI Assistant answer settings.
-   * responseFormat "" means the AI follows what the student types.
-   * selectedNoteId "" means search all of the student's notes.
+   * Answer format is sent with each request. Note choices are scoped to
+   * individual conversations; the empty value means All my notes.
    */
   const [
     responseFormat,
     setResponseFormat,
-  ] = useState("");
+  ] = useState("paragraph");
 
   const [
     readyNotes,
     setReadyNotes,
   ] = useState([]);
 
-  const [
-    selectedNoteId,
-    setSelectedNoteId,
-  ] = useState("");
+  const [noteChoices, setNoteChoices] = useState(() =>
+    readChatNoteChoices(user?.id, window.localStorage),
+  );
+  const [draftNoteId, setDraftNoteId] = useState("");
+  const [noteNotice, setNoteNotice] = useState("");
+  const [readyNotesLoaded, setReadyNotesLoaded] = useState(false);
+  const selectedNoteId = selectedChatId
+    ? noteChoices[selectedChatId] || ""
+    : draftNoteId;
+  const selectedNote = readyNotes.find(
+    (note) => String(note.id) === selectedNoteId,
+  );
+
+  function saveNoteChoice(chatId, noteId) {
+    if (!chatId) {
+      setDraftNoteId(noteId);
+    } else {
+      setNoteChoices((current) => {
+        const next = setChatNoteChoice(current, chatId, noteId);
+        writeChatNoteChoices(user?.id, next, window.localStorage);
+        return next;
+      });
+    }
+    setNoteNotice("");
+  }
+
+  // Authenticated accounts must not share locally remembered chat choices.
+  useEffect(() => {
+    setNoteChoices(readChatNoteChoices(user?.id, window.localStorage));
+    setDraftNoteId("");
+    setNoteNotice("");
+  }, [user?.id]);
 
   const messagesEndRef =
     useRef(null);
@@ -206,65 +239,65 @@ function CompanionPage() {
    * Keep the AI wait timer accurate even if the browser delays
    * interval callbacks while the tab is in the background.
    */
-  /*
-   * Load the student's ready notes for the note picker.
-   * Reload when an attached PDF finishes processing.
-   */
+  /* Reload all pages of Ready notes. Recheck on window focus so a PDF
+   * deleted in another tab is removed from the picker on return. */
   useEffect(() => {
-    if (!accessToken) {
-      return undefined;
-    }
-
+    if (!accessToken) return undefined;
     let cancelled = false;
 
     async function loadReadyNotes() {
       try {
-        const result =
-          await getNotes(
-            accessToken,
-            {
-              status: "ready",
-              page: 1,
-              pageSize: 100,
-            },
-          );
-
-        if (cancelled) {
-          return;
-        }
-
-        const items =
-          result?.items || [];
-
-        setReadyNotes(items);
-
-        /*
-         * Go back to All my notes if the chosen note is gone.
-         */
-        setSelectedNoteId(
-          (current) =>
-            items.some(
-              (note) =>
-                String(note.id) ===
-                current,
-            )
-              ? current
-              : "",
-        );
+        const notes = [];
+        let page = 1;
+        let total = 0;
+        do {
+          const result = await getNotes(accessToken, {
+            status: "ready", page, pageSize: 100,
+          });
+          if (cancelled) return;
+          const items = result?.items || [];
+          notes.push(...items);
+          total = result?.total ?? notes.length;
+          if (!items.length) break;
+          page += 1;
+        } while (notes.length < total);
+        if (cancelled) return;
+        setReadyNotes(notes);
+        setReadyNotesLoaded(true);
       } catch (err) {
-        console.error(
-          "Unable to load notes for the picker:",
-          err.code,
-        );
+        console.error("Unable to load notes for the picker:", err.code);
+        // Keep prior preferences if the request fails: a network error
+        // does not mean that a student's selected note was deleted.
       }
     }
 
-    loadReadyNotes();
-
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") void loadReadyNotes();
+    }
+    void loadReadyNotes();
+    window.addEventListener("focus", loadReadyNotes);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", loadReadyNotes);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [accessToken, attachment?.status]);
+
+  useEffect(() => {
+    if (!readyNotesLoaded) return;
+    const next = pruneUnavailableNoteChoices(noteChoices, readyNotes);
+    const available = new Set(readyNotes.map((note) => String(note.id)));
+    const currentSelectionMissing = selectedNoteId && !available.has(selectedNoteId);
+    if (next !== noteChoices) {
+      setNoteChoices(next);
+      writeChatNoteChoices(user?.id, next, window.localStorage);
+    }
+    if (!selectedChatId && currentSelectionMissing) setDraftNoteId("");
+    if (currentSelectionMissing) {
+      setNoteNotice("Your selected note is no longer available. Switched to All my notes.");
+    }
+  }, [readyNotes, readyNotesLoaded, noteChoices, selectedChatId, selectedNoteId, user?.id]);
 
   useEffect(() => {
     if (!aiWaiting) {
@@ -617,6 +650,8 @@ function CompanionPage() {
       setSelectedChatId(
         newChat.id,
       );
+      setDraftNoteId("");
+      setNoteNotice("");
 
       setMessages([]);
 
@@ -673,6 +708,7 @@ function CompanionPage() {
     setSelectedChatId(
       chatId,
     );
+    setNoteNotice("");
 
     setMessage("");
 
@@ -847,6 +883,12 @@ function CompanionPage() {
         accessToken,
         conversation.id,
       );
+
+      setNoteChoices((current) => {
+        const next = setChatNoteChoice(current, conversation.id, "");
+        writeChatNoteChoices(user?.id, next, window.localStorage);
+        return next;
+      });
 
       const remainingChats =
         conversations.filter(
@@ -1150,6 +1192,8 @@ function CompanionPage() {
         setSelectedChatId(
           newChat.id,
         );
+        if (draftNoteId) saveNoteChoice(newChat.id, draftNoteId);
+        setDraftNoteId("");
 
         setMessages([]);
 
@@ -1283,6 +1327,7 @@ function CompanionPage() {
       return;
     }
 
+    let submittedChatId = selectedChatId;
     try {
       setIsSending(true);
 
@@ -1322,11 +1367,14 @@ function CompanionPage() {
         setSelectedChatId(
           newChat.id,
         );
+        if (draftNoteId) saveNoteChoice(newChat.id, draftNoteId);
+        setDraftNoteId("");
 
         chatId =
           newChat.id;
       }
 
+      submittedChatId = chatId;
       const result =
         await sendChatMessage(
           accessToken,
@@ -1409,12 +1457,11 @@ function CompanionPage() {
         err.code ===
         "SELECTED_NOTE_UNAVAILABLE"
       ) {
-        setSelectedNoteId("");
-
-        setError(
-          err.message ||
-            "That note is not available any more. Switched back to all of your notes.",
+        saveNoteChoice(submittedChatId, "");
+        setNoteNotice(
+          "Your selected note is no longer available. Switched to All my notes.",
         );
+        setError(err.message || "The selected note is no longer available.");
       } else if (
         err.code ===
         "NO_PROCESSED_NOTES"
@@ -2225,9 +2272,6 @@ function CompanionPage() {
                   isSending
                 }
               >
-                <option value="">
-                  Automatic
-                </option>
                 <option value="paragraph">
                   Paragraph
                 </option>
@@ -2243,7 +2287,7 @@ function CompanionPage() {
                 className="response-format-label"
                 htmlFor="answer-note-select"
               >
-                Note
+                Ask about:
               </label>
 
               <select
@@ -2255,10 +2299,9 @@ function CompanionPage() {
                 onChange={(
                   event,
                 ) =>
-                  setSelectedNoteId(
-                    event
-                      .target
-                      .value,
+                  saveNoteChoice(
+                    selectedChatId,
+                    event.target.value,
                   )
                 }
                 disabled={
@@ -2279,13 +2322,23 @@ function CompanionPage() {
                       )}
                     >
                       {
-                        note.title
+                        note.title || note.file_name || "Untitled note"
                       }
                     </option>
                   ),
                 )}
               </select>
 
+            </div>
+
+            <div className="chat-note-scope" aria-live="polite">
+              <span className="chat-note-scope-chip" title={selectedNote?.title || "All my notes"}>
+                <FileText size={13} aria-hidden="true" />
+                <span>Asking about: {selectedNoteId
+                  ? (selectedNote?.title || "Selected note")
+                  : "All my notes"}</span>
+              </span>
+              {noteNotice && <span className="chat-note-scope-notice" role="status">{noteNotice}</span>}
             </div>
 
             {/* MESSAGE INPUT */}
